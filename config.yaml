@@ -1,0 +1,16 @@
+app:
+  exe_path: "D:\\LargeScreen\\zhaiwan2\\project\\se-launcher-zhaiwan\\se-launcher-zhaiwan.exe"
+  debug_port: 9222
+  viewport:
+    width: 2560
+    height: 1440
+    device_pixel_ratio: 1.5
+
+llm:
+  provider: "openai" # 使用 OpenAI 兼容模式
+  api_key: ""        # 请在 .env 文件中配置 LLM_API_KEY，此处留空以防泄露
+  base_url: "https://generativelanguage.googleapis.com/v1beta/openai/"
+  model: "gemini-3.1-pro" 
+
+reports:
+  dir: "reports"
