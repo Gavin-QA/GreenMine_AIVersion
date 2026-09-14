@@ -1,0 +1,29 @@
+name: 生产管理大屏例行巡检
+steps:
+  - type: action
+    prompt: "在画面右上角找到并点击'登录'按钮"
+
+  - type: wait
+    seconds: 2
+
+  - type: input
+    prompt: "在弹出的登录框中，找到'用户名'输入框并点击"
+    text: "admin"
+
+  - type: wait
+    seconds: 1
+
+  - type: action
+    prompt: "找到'登录'确认按钮并点击"
+
+  - type: wait
+    seconds: 5
+
+  # 铁律二：防假死检测
+  - type: freeze_check
+    prompt: "检查画面中央的'今日产量折线图'，确认曲线或数值是否有跳动刷新"
+    wait_seconds: 5
+
+  # 铁律三：常识与业务边界断言
+  - type: assert
+    prompt: "检查左下角的'当前全厂负荷率'指标，它的数值必须大于 0 且不能超过 120%。同时页面不能出现任何红色的报错提示框。"

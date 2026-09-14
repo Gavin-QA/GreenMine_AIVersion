@@ -81,7 +81,7 @@ JSON 结构如下：
             text = re.sub(r"^```(?:json)?\n?(.*?)\n?```$", r"\1", text, flags=re.DOTALL)
         return text.strip()
 
-    def _call_llm(self, system_prompt: str, user_prompt: str, base64_image: Optional[str] = None) -> Dict[str, Any]:
+    def _call_llm(self, system_prompt: str, user_prompt: str, base64_image: Optional[str] = None, base64_images: Optional[List[str]] = None) -> Dict[str, Any]:
         """发起对大模型的 HTTP 请求"""
         if not self.api_key:
             raise VisionAgentException("LLM_API_KEY is not configured.")
@@ -91,18 +91,24 @@ JSON 结构如下：
             {"role": "system", "content": system_prompt}
         ]
 
-        user_content = [{"type": "text", "text": user_prompt}]
+        user_content: List[Dict[str, Any]] = [{"type": "text", "text": user_prompt}]
         
+        images_to_send = []
         if base64_image:
+            images_to_send.append(base64_image)
+        if base64_images:
+            images_to_send.extend(base64_images)
+            
+        for img_b64 in images_to_send:
             # 根据截图格式构建 image_url
             prefix = "data:image/png;base64,"
-            if not base64_image.startswith("data:image"):
-                base64_image = prefix + base64_image
+            if not img_b64.startswith("data:image"):
+                img_b64 = prefix + img_b64
                 
             user_content.append({
                 "type": "image_url",
                 "image_url": {
-                    "url": base64_image
+                    "url": img_b64
                 }
             })
 
@@ -208,5 +214,29 @@ JSON 结构如下：
         
         status_icon = "✅" if passed else "❌"
         logger.info(f"{status_icon} 断言结果: {passed} | 理由: {reason}")
+        
+        return passed, reason
+
+    def compare_images_for_freeze(self, instruction: str, base64_image_a: str, base64_image_b: str) -> Tuple[bool, str]:
+        """
+        防假死检测特供：发送前后两张时序截图给大模型，判断是否有动态变化。
+        返回 (是否通过防假死检测, 详细理由)
+        """
+        logger.info(f"⚖️ 执行双图防假死断言指令: '{instruction}'")
+        
+        result = self._call_llm(
+            system_prompt=self.ASSERT_SYSTEM_PROMPT,
+            user_prompt=f"请对附带的两张时序截图执行以下断言：{instruction}",
+            base64_images=[base64_image_a, base64_image_b]
+        )
+        
+        thought = result.get("thought", "")
+        logger.info(f"💡 AI 思考链: {thought}")
+        
+        passed = result.get("passed", False)
+        reason = result.get("assert_reason", "")
+        
+        status_icon = "✅" if passed else "❌"
+        logger.info(f"{status_icon} 防假死比对结果: {passed} | 理由: {reason}")
         
         return passed, reason
