@@ -177,22 +177,45 @@ class ElectronDriver:
 
         js_code = """
         () => {
-            const elements = document.querySelectorAll('button, a, input, select, textarea, [role="button"], [role="menuitem"], [role="tab"], [onclick]');
+            // 获取所有元素，通过通用规则和样式来过滤可交互元素
+            const elements = document.querySelectorAll('*');
             const results = [];
             let index = 0;
+            
             for (const el of elements) {
+                // 1. 基础过滤：排除不可见或在屏幕外的元素
                 const rect = el.getBoundingClientRect();
-                // 过滤掉不可见或移出屏幕的元素
-                if (rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.right > 0 && 
-                    rect.top < window.innerHeight && rect.left < window.innerWidth) {
-                    
+                if (rect.width <= 0 || rect.height <= 0 || rect.bottom <= 0 || rect.right <= 0 || 
+                    rect.top >= window.innerHeight || rect.left >= window.innerWidth) {
+                    continue;
+                }
+                
+                // 2. 交互性判断：
+                // a. 原生可交互标签
+                const tag = el.tagName.toLowerCase();
+                const isNativeInteractive = ['button', 'a', 'input', 'select', 'textarea'].includes(tag);
+                // b. 具有可点击角色或属性
+                const hasClickRole = ['button', 'menuitem', 'tab', 'link'].includes(el.getAttribute('role'));
+                const hasOnClick = el.hasAttribute('onclick');
+                // c. Vue/React 单页面应用常用做法：普通的 div/span 加上 cursor: pointer
+                const style = window.getComputedStyle(el);
+                const isPointer = style.cursor === 'pointer';
+                // d. 包含直接文本的节点（很多大屏开发者会把普通的 div/span 当做按钮，且忘了加 cursor: pointer）
+                const hasDirectText = Array.from(el.childNodes).some(node => node.nodeType === Node.TEXT_NODE && node.textContent.trim().length > 0);
+                
+                if (isNativeInteractive || hasClickRole || hasOnClick || isPointer || hasDirectText) {
                     // 获取可读文本或标签
                     let text = el.innerText || el.value || el.placeholder || el.getAttribute('aria-label') || '';
-                    text = String(text).trim().slice(0, 50);
+                    text = String(text).trim().replace(/\\n/g, ' ').slice(0, 50);
+                    
+                    // 如果本身没有文字，且不是 input，可能是一个纯图标，尽量尝试获取 aria-label
+                    if (!text && !['input', 'textarea'].includes(tag)) {
+                        text = el.getAttribute('title') || 'icon_or_empty';
+                    }
                     
                     results.push({
                         id: index++,
-                        tag: el.tagName.toLowerCase(),
+                        tag: tag,
                         text: text,
                         rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
                     });
