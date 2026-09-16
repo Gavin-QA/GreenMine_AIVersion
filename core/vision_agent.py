@@ -23,37 +23,6 @@ class VisionAgent:
     3. 解析大模型响应，将百分比坐标转换为当前物理视口的绝对像素坐标 (x, y)。
     """
 
-    # 针对动作类步骤（点击、输入）的系统提示词
-    ACTION_SYSTEM_PROMPT = """你是一个高精度的 UI 自动化操作助手，专门用于视觉驱动的屏幕坐标定位。
-基于用户给出的指令和提供的屏幕截图，你的任务是在画面中找到对应的 UI 元素，并返回其精确的中心点坐标。
-坐标应该被归一化到 0.0 到 1.0 的百分比之间（左上角为 0,0，右下角为 1,1）。
-你必须输出且仅输出一个合法的 JSON 对象，不要包含任何 markdown 代码块标识。
-
-JSON 结构如下:
-{
-  "found": true,
-  "thought": "你的思考和推理过程，解释你是在屏幕哪个区域找到该元素的",
-  "x_percent": 0.152,
-  "y_percent": 0.853
-}
-如果元素确实在屏幕上不存在，请将 found 设为 false。
-"""
-
-    # 针对 Hybrid 模式的 DOM 匹配提示词
-    DOM_MATCH_SYSTEM_PROMPT = """你是一个高精度的 UI 自动化操作助手。
-当前系统提供了一份从浏览器 DOM 抓取的页面上所有可见可交互元素的列表（JSON 数组格式，包含元素的文本与ID）。
-你的任务是：结合用户给出的指令，以及当前屏幕的截图，从给定的元素列表中选出最匹配目标的元素 ID。
-
-你必须输出且仅输出一个合法的 JSON 对象，不要包含任何 markdown 代码块标识。
-JSON 结构如下:
-{
-  "found": true,
-  "thought": "你的思考和推理过程",
-  "target_id": 2 // 选出的目标元素的 id
-}
-如果所有给定的元素都不符合，或者目标元素在截图中不存在，请将 found 设为 false。
-"""
-
     # 针对自主探索步骤的系统提示词 (Planner)
     PLANNER_SYSTEM_PROMPT = """你是一个高层规划者 (Planner Agent)，负责在一个未知的 UI 系统中进行自主探索的宏观规划。
 基于用户的宏观探索目标、当前的屏幕截图，以及历史已交互过的元素，你的任务是制定下一个短期子目标 (Sub-Objective)。
@@ -83,6 +52,37 @@ JSON 结构如下:
   "x_percent": 0.5, // 仅在 click/hover 时需要。水平坐标百分比 (0.0 到 1.0)
   "y_percent": 0.5  // 仅在 click/hover 时需要。垂直坐标百分比 (0.0 到 1.0)
 }
+"""
+
+    # 针对动作类步骤（点击、输入）的系统提示词
+    ACTION_SYSTEM_PROMPT = """你是一个高精度的 UI 自动化操作助手，专门用于视觉驱动的屏幕坐标定位。
+基于用户给出的指令和提供的屏幕截图，你的任务是在画面中找到对应的 UI 元素，并返回其精确的中心点坐标。
+坐标应该被归一化到 0.0 到 1.0 的百分比之间（左上角为 0,0，右下角为 1,1）。
+你必须输出且仅输出一个合法的 JSON 对象，不要包含任何 markdown 代码块标识。
+
+JSON 结构如下:
+{
+  "found": true,
+  "thought": "你的思考和推理过程，解释你是在屏幕哪个区域找到该元素的",
+  "x_percent": 0.152,
+  "y_percent": 0.853
+}
+如果元素确实在屏幕上不存在，请将 found 设为 false。
+"""
+
+    # 针对 Hybrid 模式的 DOM 匹配提示词
+    DOM_MATCH_SYSTEM_PROMPT = """你是一个高精度的 UI 自动化操作助手。
+当前系统提供了一份从浏览器 DOM 抓取的页面上所有可见可交互元素的列表（JSON 数组格式，包含元素的文本与ID）。
+你的任务是：结合用户给出的指令，以及当前屏幕的截图，从给定的元素列表中选出最匹配目标的元素 ID。
+
+你必须输出且仅输出一个合法的 JSON 对象，不要包含任何 markdown 代码块标识。
+JSON 结构如下:
+{
+  "found": true,
+  "thought": "你的思考和推理过程",
+  "target_id": 2 // 选出的目标元素的 id
+}
+如果所有给定的元素都不符合，或者目标元素在截图中不存在，请将 found 设为 false。
 """
 
     # 针对断言类步骤的系统提示词
@@ -250,7 +250,7 @@ JSON 结构如下：
         """
         基于自然语言指令寻找目标元素的绝对坐标
         返回 (x, y) 物理像素坐标。如果找不到则抛出异常。
-        如果提供了 dom_elements，则走精确的 Midscene 风格选择题模式；否则降级为纯视觉坐标模式。
+        如果提供了 dom_elements，则优先走精确的 Midscene 风格选择题模式；如果 DOM 模式找不到目标，则自动降级为纯视觉坐标模式。
         """
         logger.info(f"🕵️‍♂️ 寻找元素指令: '{instruction}'")
         
@@ -271,51 +271,51 @@ JSON 结构如下：
             thought = result.get("thought", "")
             logger.info(f"💡 AI 思考链: {thought}")
             
-            if not result.get("found", False):
-                raise VisionAgentException(f"元素未找到，AI 解释: {thought}")
+            if result.get("found", False):
+                target_id = result.get("target_id")
+                if target_id is not None:
+                    # 找到对应的元素
+                    target_el = next((el for el in dom_elements if el["id"] == target_id), None)
+                    if target_el:
+                        rect = target_el["rect"]
+                        x = int(rect["x"] + rect["width"] / 2)
+                        y = int(rect["y"] + rect["height"] / 2)
+                        logger.info(f"🎯 精确命中 DOM 元素 ID: {target_id} [{target_el['tag']}] '{target_el['text']}', 计算中心物理坐标({x}, {y})")
+                        return x, y
+                    else:
+                        logger.warning(f"⚠️ AI 返回了无效的 target_id: {target_id}，准备降级到纯视觉模式...")
+                else:
+                    logger.warning("⚠️ 大模型返回的数据中缺少 target_id 字段，准备降级到纯视觉模式...")
+            else:
+                logger.warning(f"⚠️ Hybrid DOM 未找到目标 (AI 解释: {thought})，准备降级到纯视觉模式...")
                 
-            target_id = result.get("target_id")
-            if target_id is None:
-                raise VisionAgentException("大模型返回的数据中缺少 target_id 字段。")
-                
-            # 找到对应的元素
-            target_el = next((el for el in dom_elements if el["id"] == target_id), None)
-            if not target_el:
-                raise VisionAgentException(f"AI 返回了无效的 target_id: {target_id}")
-                
-            rect = target_el["rect"]
-            x = int(rect["x"] + rect["width"] / 2)
-            y = int(rect["y"] + rect["height"] / 2)
-            logger.info(f"🎯 精确命中 DOM 元素 ID: {target_id} [{target_el['tag']}] '{target_el['text']}', 计算中心物理坐标({x}, {y})")
-            return x, y
+        # Fallback: 纯视觉预测模式
+        logger.info("👀 启用纯视觉坐标预测模式 (Fallback)")
+        result = self._call_llm(
+            system_prompt=self.ACTION_SYSTEM_PROMPT,
+            user_prompt=f"当前页面截图如附图所示。指令：{instruction}",
+            base64_image=base64_image
+        )
+        
+        thought = result.get("thought", "")
+        logger.info(f"💡 AI 思考链 (纯视觉): {thought}")
+        
+        if not result.get("found", False):
+            raise VisionAgentException(f"元素完全未找到，AI 纯视觉判定解释: {thought}")
             
-        else:
-            logger.info("👀 启用纯视觉坐标预测模式 (Fallback)")
-            result = self._call_llm(
-                system_prompt=self.ACTION_SYSTEM_PROMPT,
-                user_prompt=f"当前页面截图如附图所示。指令：{instruction}",
-                base64_image=base64_image
-            )
+        x_pct = result.get("x_percent")
+        y_pct = result.get("y_percent")
+        
+        if x_pct is None or y_pct is None:
+            raise VisionAgentException("大模型纯视觉预测返回的数据中缺少坐标字段。")
             
-            thought = result.get("thought", "")
-            logger.info(f"💡 AI 思考链: {thought}")
-            
-            if not result.get("found", False):
-                raise VisionAgentException(f"元素未找到，AI 解释: {thought}")
-                
-            x_pct = result.get("x_percent")
-            y_pct = result.get("y_percent")
-            
-            if x_pct is None or y_pct is None:
-                raise VisionAgentException("大模型返回的数据中缺少坐标字段。")
-                
-            # 归一化百分比坐标 -> 绝对物理像素
-            # 坐标需被约束在合法的屏幕范围内
-            x = int(max(0, min(1, float(x_pct))) * viewport_width)
-            y = int(max(0, min(1, float(y_pct))) * viewport_height)
-            
-            logger.info(f"🎯 换算坐标: 屏幕比例({x_pct:.2f}, {y_pct:.2f}) -> 物理坐标({x}, {y})")
-            return x, y
+        # 归一化百分比坐标 -> 绝对物理像素
+        # 坐标需被约束在合法的屏幕范围内
+        x = int(max(0, min(1, float(x_pct))) * viewport_width)
+        y = int(max(0, min(1, float(y_pct))) * viewport_height)
+        
+        logger.info(f"🎯 换算坐标: 屏幕比例({x_pct:.2f}, {y_pct:.2f}) -> 物理坐标({x}, {y})")
+        return x, y
 
     def check_assertion(self, instruction: str, base64_image: str) -> Tuple[bool, str]:
         """
