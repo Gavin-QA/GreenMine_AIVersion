@@ -7,8 +7,8 @@
 ## 🤖 System Context for LLMs (大模型阅读指南)
 **[CRITICAL INSTRUCTION FOR AI AGENTS]** 
 如果你是正在辅助开发本项目的 AI 助手，请严格遵守以下架构规约：
-1. **No Page Objects & No Selectors**: 本项目彻底摒弃 POM 模式。**绝对不要**生成基于 `id`, `xpath`, `css` 等底层 DOM 的定位代码。
-2. **Vision-First Execution**: 所有的页面交互（点击、输入）与断言，均需通过 `core/vision_agent.py` 将屏幕截图发送给多模态大模型，由大模型返回目标元素的绝对坐标 `(x, y)` 或语义状态验证结果。
+1. **No Hardcoded Selectors (Hybrid Architecture)**: 本项目彻底摒弃传统的 POM 模式与硬编码选择器。**测试脚本中绝对不能出现** `id`、`xpath` 或 `css`。在底层驱动上，框架采用 **DOM 节点实时抽取 + 纯视觉回退 (Hybrid DOM/Vision)** 机制，由 AI 在运行时动态将自然语言意图与提取到的 DOM 元素（如没有 DOM，则回退到视觉绝对坐标）进行对齐映射。
+2. **Vision-First Execution**: 所有的页面交互（点击、输入）与断言，均需通过 `core/vision_agent.py` 将屏幕截图与底层数据包发送给多模态大模型，由大模型返回目标元素的 DOM 标识、绝对坐标 `(x, y)` 或是语义状态验证结果。
 3. **Natural Language Cases**: 测试用例一律在 `test_cases/` 目录下以 `.yaml` 格式使用自然语言编写，Python 代码仅作为底层执行器。
 
 ---
