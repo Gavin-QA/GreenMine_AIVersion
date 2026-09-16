@@ -102,6 +102,27 @@ JSON 结构如下：
   "passed": true,
   "assert_reason": "详细说明为什么判定为通过或失败"
 }
+}
+"""
+
+    API_ASSERT_SYSTEM_PROMPT = """
+你是一个高级 UI 自动化测试断言 Agent，拥有“透视”底层网络数据的能力。
+你将同时收到一张“前端页面截图”和一段“底层接口响应 JSON 数组”。
+你的任务是根据用户的指令，从 JSON 数组中找出关键业务数据，并验证屏幕上的 UI 是否正确渲染了这些数据。
+
+【断言铁律】
+- 仔细阅读 JSON，找到最贴近用户意图的字段。
+- 容错性：前端可能会对数字进行格式化（如 14200 变成 14,200 或 1.42w），只要数值逻辑一致即算通过。
+- 只要发现 UI 漏渲、渲染成 NaN/undefined，或者数据不匹配，立刻判定为失败。
+
+【输出格式强制要求】
+你必须且只能输出合法的 JSON 格式。禁止输出任何 Markdown 标记（如 ```json），禁止包含任何前后缀文本。
+JSON 结构如下：
+{
+  "thought": "描述你从 JSON 中提取了什么字段（值为多少），并在截图中哪个位置找到了对应渲染，比对过程是什么",
+  "passed": true,
+  "assert_reason": "详细说明为什么判定为通过或失败"
+}
 """
 
     def __init__(self):
@@ -188,17 +209,42 @@ JSON 结构如下：
             logger.debug(f"[VisionAgent] 原始响应:\n{clean_content}")
             return json.loads(clean_content)
 
-        except Timeout:
-            logger.error("🧠 大模型请求超时！")
-            raise VisionAgentException("Vision LLM Request Timeout")
-        except json.JSONDecodeError as e:
-            logger.error(f"🧠 大模型返回了非法的 JSON: {e}")
-            raise VisionAgentException("Invalid JSON format from LLM")
-        except RequestException as e:
-            logger.error(f"🧠 大模型请求失败: {e}") 
-            if e.response is not None:
-                logger.error(f"Response: {e.response.text}")
-            raise VisionAgentException(f"LLM API Request Failed: {e}")
+        except Exception as e:
+            logger.error(f"🧠 大模型请求过程发生未知异常: {e}")
+            raise VisionAgentException(f"LLM API Unexpected Error: {e}")
+
+    def check_api_assertion(self, instruction: str, base64_image: str, api_data_json: str) -> Tuple[bool, str]:
+        """
+        基于视觉截图和截获的接口 JSON 数据，进行双向比对断言
+        返回 (passed, reason)
+        """
+        logger.info(f"⚖️ 执行 API 双重断言指令: '{instruction}'")
+        
+        user_prompt = f"当前页面截图如附图所示。断言指令：{instruction}\n\n【最新拦截到的 API JSON 响应数据】：\n{api_data_json}\n\n请比对截图与 JSON 数据是否一致。"
+        
+        try:
+            result = self._call_llm(
+                system_prompt=self.API_ASSERT_SYSTEM_PROMPT,
+                user_prompt=user_prompt,
+                base64_image=base64_image
+            )
+            
+            thought = result.get("thought", "")
+            passed = result.get("passed", False)
+            reason = result.get("assert_reason", "未提供理由")
+            
+            logger.info(f"💡 AI 思考链: {thought}")
+            
+            if passed:
+                logger.info(f"✅ API 断言结果: True | 理由: {reason}")
+            else:
+                logger.info(f"❌ API 断言结果: False | 理由: {reason}")
+                
+            return passed, reason
+            
+        except Exception as e:
+            logger.error(f"🧠 大模型执行 API 双重断言发生异常: {e}")
+            raise VisionAgentException(f"LLM API Unexpected Error: {e}")
 
     def find_element(self, instruction: str, base64_image: str, viewport_width: int, viewport_height: int, dom_elements: Optional[List[Dict[str, Any]]] = None) -> Tuple[int, int]:
         """

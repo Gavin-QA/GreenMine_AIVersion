@@ -53,6 +53,9 @@ class ElectronDriver:
         self.launcher: Optional[ElectronLauncher] = None
         self.context: Optional[BrowserContext] = None
         self.page: Optional[Page] = None
+        
+        # 接口数据捕获池 (Rolling buffer of recent JSON responses)
+        self.api_records = []
 
     def start(self) -> Page:
         """启动/连接 Electron 应用，并获取主页面 Target"""
@@ -72,6 +75,18 @@ class ElectronDriver:
 
         # 等待并锁定有效页面
         self.page = self.get_active_page()
+
+        # 挂载网络接口监听器
+        self._setup_network_listeners()
+
+        # 针对 Attach 热连接模式的防御性刷新 (规避 UE 掉线)
+        if getattr(self.launcher, 'was_already_running', False):
+            logger.info("⚡ 检测到 Attach 热连接模式，模拟 Ctrl+R 重载前端以无伤捕获初始 API...")
+            try:
+                self.page.keyboard.press("Control+r")
+                time.sleep(1)
+            except Exception as e:
+                logger.warning(f"模拟 Ctrl+R 失败: {e}")
 
         # 在启动器底层进行编程式判断，确保前端核心 DOM 已经加载完成
         try:
@@ -137,6 +152,44 @@ class ElectronDriver:
         """挂载控制台日志与异常捕获"""
         if not self.page or self.page.is_closed():
             return
+            
+    def _setup_network_listeners(self):
+        """挂载底层 HTTP API 拦截器"""
+        if not self.page or self.page.is_closed():
+            return
+            
+        def handle_response(response):
+            if response.request.method == "OPTIONS":
+                return
+            if response.status == 200 and "application/json" in response.headers.get("content-type", ""):
+                try:
+                    data = response.json()
+                    # 避免拦截巨大的无用报文或非业务接口
+                    if data:
+                        url_path = response.url.split("?")[0].split("/")[-1]
+                        if len(url_path) < 2:
+                            url_path = response.url.split("?")[0]
+                        self.api_records.append({
+                            "url": url_path,
+                            "data": data
+                        })
+                except Exception:
+                    pass
+        
+        self.page.on("response", handle_response)
+        
+    def clear_api_records(self):
+        """清空缓存的网络接口记录，开始新的生命周期抓取"""
+        self.api_records = []
+        
+    def get_api_records_summary(self) -> str:
+        """返回最近拦截到的核心 JSON 数据（为了节约 Token，转为紧凑字符串）"""
+        if not self.api_records:
+            return "[]"
+        import json
+        # 取最近的 15 个接口防止过大
+        recent_records = self.api_records[-15:]
+        return json.dumps(recent_records, ensure_ascii=False)
 
         def on_console(msg):
             logger.debug(f"[Electron Console][{msg.type}] {msg.text}")

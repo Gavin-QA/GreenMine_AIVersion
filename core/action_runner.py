@@ -92,6 +92,8 @@ class ActionRunner:
                     self._do_input(prompt, str(text))
                 elif step_type == "assert":
                     self._do_assert(prompt)
+                elif step_type == "api_assert":
+                    self._do_api_assert(prompt)
                 elif step_type == "freeze_check":
                     wait_sec = float(step.get("wait_seconds", 5.0))
                     self._do_freeze_check(prompt, wait_sec)
@@ -133,6 +135,7 @@ class ActionRunner:
         )
         
         # 3. Action
+        # 移除 clear_api_records()，保留全局 15 个请求的滑动窗口，防止首屏请求被后续点击动作清空
         self.driver.click(x, y)
 
     def _do_input(self, prompt: str, text: str):
@@ -162,6 +165,20 @@ class ActionRunner:
         
         if not passed:
             raise ActionRunnerException(f"视觉断言失败！理由: {reason}")
+
+    def _do_api_assert(self, prompt: str):
+        """执行 API 接口与视觉双重断言"""
+        b64_img = self.driver.capture_screenshot_base64()
+        api_data_json = self.driver.get_api_records_summary()
+        
+        passed, reason = self.vision.check_api_assertion(
+            instruction=prompt, 
+            base64_image=b64_img, 
+            api_data_json=api_data_json
+        )
+        
+        if not passed:
+            raise ActionRunnerException(f"API 双重断言失败！理由: {reason}")
 
     def _do_wait_for(self, prompt: str, timeout: float = 60.0, interval: float = 3.0):
         """
