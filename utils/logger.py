@@ -42,7 +42,6 @@ class SafeUnicodeStreamHandler(logging.StreamHandler):
 # 尝试导入 colorlog 用于控制台彩色日志输出
 try:
     import colorlog
-
     HAS_COLORLOG = True
 except ImportError:
     HAS_COLORLOG = False
@@ -74,8 +73,8 @@ class LoggerManager:
 
     def _setup_logger(self) -> None:
         """使用 Handler 和 Formatter 配置日志记录器。"""
-        # 获取此模块的根日志记录器
-        self._logger = logging.getLogger("zhaiwan2UI")
+        # 获取根日志记录器，拦截所有模块的日志
+        self._logger = logging.getLogger()
         self._logger.setLevel(getattr(logging, getattr(settings, 'log_level', 'INFO').upper(), logging.INFO))
 
         # 避免重复添加 Handler
@@ -94,10 +93,8 @@ class LoggerManager:
             console_handler = self._create_console_handler()
             self._logger.addHandler(console_handler)
 
-        # 文件 Handler
-        if getattr(settings, 'log_to_file', True):
-            file_handler = self._create_file_handler()
-            self._logger.addHandler(file_handler)
+        # 文件 Handler 会通过显式调用 switch_file_handler 进行挂载，不再默认创建
+        # 控制台 Handler 继续保留
 
         self._logger.propagate = False
 
@@ -136,9 +133,22 @@ class LoggerManager:
         handler.setFormatter(formatter)
         return handler
 
-    def _create_file_handler(self) -> logging.Handler:
+    def switch_file_handler(self, case_name: str) -> None:
+        """动态切换日志文件，用于隔离不同用例的日志。"""
+        # 移除现有的 FileHandler
+        for handler in self._logger.handlers[:]:
+            if isinstance(handler, logging.FileHandler):
+                self._logger.removeHandler(handler)
+                handler.close()
+                
+        # 挂载新的 FileHandler
+        if getattr(settings, 'log_to_file', True):
+            file_handler = self._create_file_handler(case_name)
+            self._logger.addHandler(file_handler)
+
+    def _create_file_handler(self, case_name: str) -> logging.Handler:
         """创建带详细格式化器的文件 Handler。"""
-        run_log_file = current_run_log_path()
+        run_log_file = current_run_log_path(case_name)
         settings.log_file_path = str(run_log_file)
         handler = logging.FileHandler(
             run_log_file,

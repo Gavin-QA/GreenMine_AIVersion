@@ -25,7 +25,7 @@ class ActionRunner:
         self.vision = vision_agent
         self._step_counter = 0
 
-    def run_yaml_case(self, yaml_path: str):
+    def run_yaml_case(self, yaml_path: str, global_ignore_errors: bool = False):
         """执行单个 YAML 测试用例"""
         path = Path(yaml_path)
         if not path.exists():
@@ -35,25 +35,40 @@ class ActionRunner:
             case_data = yaml.safe_load(f)
 
         case_name = case_data.get("name", "未命名测试场景")
+        yaml_ignore_error = case_data.get("ignore_error", False)
+        should_ignore = global_ignore_errors or yaml_ignore_error
         steps = case_data.get("steps", [])
 
         logger.info("=" * 60)
         logger.info(f"▶️ 开始执行巡检用例: {case_name}")
         logger.info("=" * 60)
 
+        errors = []
         for i, step in enumerate(steps, 1):
             self._step_counter = i
-            logger.info(f"--- [Step {i}/{len(steps)}] 类型: {step.get('type')} ---")
+            # 在步骤开始前加入一个换行符，以便在日志中形成视觉分隔
+            logger.info(f"\n--- [Step {i}/{len(steps)}] 类型: {step.get('type')} ---")
             
             try:
                 self._execute_step(step)
             except Exception as e:
                 # 出现异常时，立刻留存案发现场截图
-                crash_pic = screenshot_path(f"CRASH_step_{i}")
+                crash_pic = screenshot_path(f"{path.stem}_CRASH_step_{i}")
                 self.driver.capture_screenshot(str(crash_pic))
                 logger.error(f"❌ 步骤 {i} 执行失败！现场已保存: {crash_pic}")
                 logger.error(f"异常详情: {e}")
-                raise ActionRunnerException(f"用例执行失败: {case_name} -> Step {i}") from e
+                
+                if step.get("ignore_error", should_ignore):
+                    logger.warning(f"⚠️ 步骤 {i} 触发了 ignore_error 机制，记录错误并继续往下执行。")
+                    errors.append(f"Step {i}: {str(e)}")
+                else:
+                    raise ActionRunnerException(f"用例执行失败: {case_name} -> Step {i}") from e
+
+        if errors:
+            logger.error("=" * 60)
+            logger.error(f"⚠️ 用例执行完毕，但存在 {len(errors)} 个忽略的报错。")
+            error_summary = '\n'.join(errors)
+            raise ActionRunnerException(f"用例包含被忽略的报错（Soft Errors）:\n{error_summary}")
 
         logger.info("=" * 60)
         logger.info(f"✅ 用例执行圆满完成: {case_name}")
@@ -80,6 +95,10 @@ class ActionRunner:
                 elif step_type == "freeze_check":
                     wait_sec = float(step.get("wait_seconds", 5.0))
                     self._do_freeze_check(prompt, wait_sec)
+                elif step_type == "wait_for":
+                    timeout = float(step.get("timeout", 60.0))
+                    interval = float(step.get("interval", 3.0))
+                    self._do_wait_for(prompt, timeout, interval)
                 elif step_type == "wait":
                     wait_sec = float(step.get("seconds", 2.0))
                     self.driver.wait(wait_sec)
@@ -102,13 +121,15 @@ class ActionRunner:
         # 1. Perception
         b64_img = self.driver.capture_screenshot_base64()
         viewport = self.driver.get_viewport_info()
+        dom_elements = self.driver.extract_interactive_elements()
         
         # 2. Cognition
         x, y = self.vision.find_element(
             instruction=prompt,
             base64_image=b64_img,
             viewport_width=viewport["width"],
-            viewport_height=viewport["height"]
+            viewport_height=viewport["height"],
+            dom_elements=dom_elements
         )
         
         # 3. Action
@@ -119,13 +140,15 @@ class ActionRunner:
         # 1. Perception
         b64_img = self.driver.capture_screenshot_base64()
         viewport = self.driver.get_viewport_info()
+        dom_elements = self.driver.extract_interactive_elements()
         
         # 2. Cognition
         x, y = self.vision.find_element(
             instruction=prompt,
             base64_image=b64_img,
             viewport_width=viewport["width"],
-            viewport_height=viewport["height"]
+            viewport_height=viewport["height"],
+            dom_elements=dom_elements
         )
         
         # 3. Action
@@ -139,6 +162,31 @@ class ActionRunner:
         
         if not passed:
             raise ActionRunnerException(f"视觉断言失败！理由: {reason}")
+
+    def _do_wait_for(self, prompt: str, timeout: float = 60.0, interval: float = 3.0):
+        """
+        智能视觉轮询等待。
+        不断截屏并利用大模型断言目标条件，直到通过或超时。
+        """
+        logger.info(f"⏳ [Vision Wait] 开始智能等待 (超时: {timeout}s): {prompt}")
+        start_time = time.time()
+        attempt = 1
+        
+        while True:
+            elapsed = time.time() - start_time
+            if elapsed > timeout:
+                raise ActionRunnerException(f"智能视觉等待超时 ({timeout}s)! 条件始终未满足: {prompt}")
+                
+            b64_img = self.driver.capture_screenshot_base64()
+            passed, reason = self.vision.check_assertion(instruction=prompt, base64_image=b64_img)
+            
+            if passed:
+                logger.info(f"✅ [Vision Wait] 画面满足条件，等待结束 (耗时: {elapsed:.1f}s)")
+                break
+                
+            logger.info(f"🔄 [Vision Wait] 画面尚未就绪，{interval}s 后重试 (第 {attempt} 次检测)...")
+            time.sleep(interval)
+            attempt += 1
 
     def _do_freeze_check(self, prompt: str, wait_seconds: float):
         """

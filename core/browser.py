@@ -4,7 +4,7 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, Generator, Optional, Tuple
+from typing import Any, Dict, List, Generator, Optional, Tuple
 
 import yaml
 from playwright.sync_api import BrowserContext, Page
@@ -72,6 +72,15 @@ class ElectronDriver:
 
         # 等待并锁定有效页面
         self.page = self.get_active_page()
+
+        # 在启动器底层进行编程式判断，确保前端核心 DOM 已经加载完成
+        try:
+            logger.info("⏳ 等待应用前端底层加载 (domcontentloaded)...")
+            self.page.wait_for_load_state("domcontentloaded", timeout=15000)
+            logger.info("⏳ 等待应用前端网络空闲 (networkidle)...")
+            self.page.wait_for_load_state("networkidle", timeout=15000)
+        except Exception as e:
+            logger.warning(f"⚠️ 前端底层状态等待超时，可能存在持续的轮询请求，将强制继续... ({e})")
 
         # 注册控制台日志与页面错误监听
         self._setup_page_listeners()
@@ -157,6 +166,48 @@ class ElectronDriver:
             logger.warning(f"获取页面视口信息失败: {e}")
             return {"width": self.default_width, "height": self.default_height, "devicePixelRatio": 1.0}
 
+    def extract_interactive_elements(self) -> List[Dict[str, Any]]:
+        """
+        [Hybrid Mode] 提取视口内所有可见可交互元素的文本与几何包围盒 (BoundingRect)。
+        用于 Midscene 风格的精确 DOM 匹配。
+        """
+        self.get_active_page()
+        if not self.page or self.page.is_closed():
+            return []
+
+        js_code = """
+        () => {
+            const elements = document.querySelectorAll('button, a, input, select, textarea, [role="button"], [role="menuitem"], [role="tab"], [onclick]');
+            const results = [];
+            let index = 0;
+            for (const el of elements) {
+                const rect = el.getBoundingClientRect();
+                // 过滤掉不可见或移出屏幕的元素
+                if (rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.right > 0 && 
+                    rect.top < window.innerHeight && rect.left < window.innerWidth) {
+                    
+                    // 获取可读文本或标签
+                    let text = el.innerText || el.value || el.placeholder || el.getAttribute('aria-label') || '';
+                    text = String(text).trim().slice(0, 50);
+                    
+                    results.push({
+                        id: index++,
+                        tag: el.tagName.toLowerCase(),
+                        text: text,
+                        rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
+                    });
+                }
+            }
+            return results;
+        }
+        """
+        try:
+            return self.page.evaluate(js_code)
+        except Exception as e:
+            logger.warning(f"获取页面可交互元素失败，自动回退到纯视觉模式: {e}")
+            return []
+
+
     # =========================================================================
     # 纯视觉交互核心接口 (Vision Actions)
     # =========================================================================
@@ -204,7 +255,22 @@ class ElectronDriver:
             raise RuntimeError("页面未就绪！")
 
         logger.info(f"👉 模拟物理点击: 坐标 ({x}, {y}) [button={button}]")
-        self.page.mouse.click(x, y, button=button)
+        
+        # 1. 模拟真人平滑移动鼠标过去 (PixelStreaming 经常需要检测持续的 MouseMove 才能触发 UE 内部的 Hover 事件)
+        self.page.mouse.move(x, y, steps=10)
+        time.sleep(0.2)
+        
+        # 2. 尝试强制让目标获取焦点 (防止部分 WebRTC 播放器不在焦点时不接收输入)
+        try:
+            self.page.evaluate(f"document.elementFromPoint({x}, {y})?.focus()")
+        except Exception:
+            pass
+
+        # 3. 拆解按下和抬起动作，并增加按压时间到 300ms (UE 引擎 tick 判定比常规 Web 长)
+        self.page.mouse.down(button=button)
+        time.sleep(0.3)
+        self.page.mouse.up(button=button)
+        
         if delay_after > 0:
             time.sleep(delay_after)
 

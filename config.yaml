@@ -9,8 +9,8 @@ app:
 llm:
   provider: "openai" # 使用 OpenAI 兼容模式
   api_key: ""        # 请在 .env 文件中配置 LLM_API_KEY，此处留空以防泄露
-  base_url: "https://generativelanguage.googleapis.com/v1beta/openai/"
-  model: "gemini-3.1-pro" 
+  base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+  model: "qwen3.7-plus" 
 
 reports:
   dir: "reports"

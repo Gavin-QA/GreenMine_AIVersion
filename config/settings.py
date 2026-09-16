@@ -52,8 +52,8 @@ class Settings:
         # 3. LLM 模型配置（优先 .env 保护敏感信息，其次 yaml）
         self.llm_provider: str = os.getenv("LLM_PROVIDER") or llm_cfg.get("provider", "openai")
         self.llm_api_key: str = os.getenv("LLM_API_KEY") or llm_cfg.get("api_key", "")
-        self.llm_base_url: str = os.getenv("LLM_BASE_URL") or llm_cfg.get("base_url", "")
-        self.llm_model: str = os.getenv("LLM_MODEL") or llm_cfg.get("model", "gemini-3.1-pro")
+        self.llm_base_url: str = os.getenv("LLM_BASE_URL") or llm_cfg.get("base_url", "https://api.deepseek.com/v1")
+        self.llm_model: str = os.getenv("LLM_MODEL") or llm_cfg.get("model", "deepseek-v4-flash-vision-exp")
 
         # 4. 测试账号配置
         self.test_username: str = os.getenv("TEST_USERNAME", "")
