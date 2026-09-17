@@ -1,0 +1,32 @@
+name: "寨湾大屏【漫游专用测试】"
+description: "仅用于测试 603漫游 和 725漫游 的控制条操作"
+
+steps:
+  # 1. 智能等待：断言应用是否成功加载
+  - type: wait_for
+    prompt: "画面左上角完全显示出'寨湾磷矿智能矿山安全管控平台'的主标题，确认应用已成功加载"
+    timeout: 30
+
+  # 11.6 603漫游
+  - type: action
+    prompt: "在底部导航栏里，点击'603漫游'标签。"
+  - type: wait
+    seconds: 3
+  - type: action
+    prompt: "在画面中下方的漫游控制条右侧，寻找倍速下拉按钮（'1x ▼'）。点击它一下以激活焦点。"
+  - type: wait
+    seconds: 1
+  - type: action
+    prompt: "在漫游控制条右侧，再次点击倍速下拉按钮（'1x ▼'），以展开倍速菜单。"
+  - type: wait
+    seconds: 3
+  - type: action
+    prompt: "在展开的倍速菜单中，找到并点击 '4x' 选项。"
+    ignore_error: true
+  - type: action
+    prompt: "在漫游控制条的最左侧，寻找播放按钮（三角形）并点击它启动漫游。如果 DOM 列表中没有明确标示为'播放'的控件，请务必返回 found=false 以触发纯视觉预测。"
+  - type: wait
+    seconds: 2
+  - type: assert
+    prompt: "请仅仅作为一个视觉检测器：检查漫游控制条的最左侧，如果原来的播放按钮变成了'暂停(两根竖线)'图标，说明漫游视频正在正常播放，请直接判定为 True。"
+

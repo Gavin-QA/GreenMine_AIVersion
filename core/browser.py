@@ -56,6 +56,9 @@ class ElectronDriver:
         
         # 接口数据捕获池 (Rolling buffer of recent JSON responses)
         self.api_records = []
+        
+        # 后台静默报错捕获池 (Console Errors, Network Errors)
+        self.caught_bugs = []
 
     def start(self) -> Page:
         """启动/连接 Electron 应用，并获取主页面 Target"""
@@ -79,14 +82,15 @@ class ElectronDriver:
         # 挂载网络接口监听器
         self._setup_network_listeners()
 
-        # 针对 Attach 热连接模式的防御性刷新 (规避 UE 掉线)
-        if getattr(self.launcher, 'was_already_running', False):
-            logger.info("⚡ 检测到 Attach 热连接模式，模拟 Ctrl+R 重载前端以无伤捕获初始 API...")
-            try:
-                self.page.keyboard.press("Control+r")
-                time.sleep(1)
-            except Exception as e:
-                logger.warning(f"模拟 Ctrl+R 失败: {e}")
+        # 强制防御性刷新 (Ctrl+R)：
+        # 1. 规避新启动时的竞态条件 (防止在挂载监听器前首屏 API 已发完而漏抓)
+        # 2. 针对 Attach 模式，无伤重载前端而不掉线 UE
+        logger.info("⚡ 正在执行防御性刷新 (Ctrl+R) 以确保完美捕获首屏 API 数据...")
+        try:
+            self.page.keyboard.press("Control+r")
+            time.sleep(1)
+        except Exception as e:
+            logger.warning(f"模拟 Ctrl+R 失败: {e}")
 
         # 在启动器底层进行编程式判断，确保前端核心 DOM 已经加载完成
         try:
@@ -153,6 +157,23 @@ class ElectronDriver:
         if not self.page or self.page.is_closed():
             return
             
+        def on_console(msg):
+            if msg.type == "error":
+                logger.debug(f"[Electron Console Error] {msg.text}")
+                self.caught_bugs.append({"type": "console_error", "msg": msg.text})
+            else:
+                logger.debug(f"[Electron Console][{msg.type}] {msg.text}")
+
+        def on_pageerror(err):
+            logger.warning(f"[Electron PageError] {err}")
+            self.caught_bugs.append({"type": "page_error", "msg": str(err)})
+
+        try:
+            self.page.on("console", on_console)
+            self.page.on("pageerror", on_pageerror)
+        except Exception:
+            pass
+
     def _setup_network_listeners(self):
         """挂载底层 HTTP API 拦截器"""
         if not self.page or self.page.is_closed():
@@ -161,6 +182,11 @@ class ElectronDriver:
         def handle_response(response):
             if response.request.method == "OPTIONS":
                 return
+                
+            if response.status >= 400:
+                self.caught_bugs.append({"type": "network_error", "url": response.url, "status": response.status})
+                return
+                
             if response.status == 200 and "application/json" in response.headers.get("content-type", ""):
                 try:
                     data = response.json()
@@ -191,17 +217,11 @@ class ElectronDriver:
         recent_records = self.api_records[-15:]
         return json.dumps(recent_records, ensure_ascii=False)
 
-        def on_console(msg):
-            logger.debug(f"[Electron Console][{msg.type}] {msg.text}")
-
-        def on_pageerror(err):
-            logger.warning(f"[Electron PageError] {err}")
-
-        try:
-            self.page.on("console", on_console)
-            self.page.on("pageerror", on_pageerror)
-        except Exception:
-            pass
+    def get_and_clear_bugs(self) -> list:
+        """获取并清空后台捕获到的所有异常报错"""
+        bugs = list(self.caught_bugs)
+        self.caught_bugs = []
+        return bugs
 
     def get_viewport_info(self) -> Dict[str, Any]:
         """获取当前页面的内部视口宽高与设备像素比"""
@@ -342,11 +362,17 @@ class ElectronDriver:
         except Exception:
             pass
 
-        # 3. 拆解按下和抬起动作，并增加按压时间到 300ms (UE 引擎 tick 判定比常规 Web 长)
+        # 3. 拆解按下和抬起动作，按压时间调整为 100ms (防止 300ms 被误判为长按，导致 DOM 点击失效)
         self.page.mouse.down(button=button)
-        time.sleep(0.3)
+        time.sleep(0.1)
         self.page.mouse.up(button=button)
         
+        # 4. 终极 DOM 防御：如果目标是一个纯前端 DOM 元素（非 UE 画布），强制触发它的原生 click 事件！
+        try:
+            self.page.evaluate(f"document.elementFromPoint({x}, {y})?.click()")
+        except Exception:
+            pass
+            
         if delay_after > 0:
             time.sleep(delay_after)
 
@@ -447,7 +473,11 @@ class ElectronDriver:
 
     # 上下文管理器支持 (支持 with ElectronDriver() as driver: 语法)
     def __enter__(self):
-        self.start()
+        try:
+            self.start()
+        except Exception:
+            self.close()
+            raise
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):

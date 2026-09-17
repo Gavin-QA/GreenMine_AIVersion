@@ -2,8 +2,8 @@
 测试产物辅助工具，用于管理截图和日志。
 
 该模块集中管理生成的测试输出路径，确保执行脚本生成一致的目录结构：
-- reports/screenshots/     测试过程中捕获的截图
-- logs/                    框架运行日志
+- logs/<run_id>/                 框架运行日志与历史数据
+- logs/<run_id>/screenshots/     测试或探索过程中捕获的截图
 """
 
 from __future__ import annotations
@@ -16,16 +16,12 @@ from typing import Optional
 
 
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
-REPORTS_DIR = PROJECT_ROOT / "reports"
-SCREENSHOTS_DIR = REPORTS_DIR / "screenshots"
 LOGS_DIR = PROJECT_ROOT / "logs"
 
 
 def ensure_artifact_dirs() -> None:
     """如果标准的产物目录不存在，则自动创建它们。"""
     for directory in (
-        REPORTS_DIR,
-        SCREENSHOTS_DIR,
         LOGS_DIR,
     ):
         directory.mkdir(parents=True, exist_ok=True)
@@ -65,9 +61,9 @@ def timestamp() -> str:
 
 
 def screenshot_path(name: str) -> Path:
-    """构建位于 reports/screenshots/run_id 下的专属截图路径。"""
+    """构建位于 logs/<run_id>/screenshots 下的专属截图路径。"""
     run_id = report_run_id()
-    run_screenshot_dir = SCREENSHOTS_DIR / run_id
+    run_screenshot_dir = LOGS_DIR / run_id / "screenshots"
     run_screenshot_dir.mkdir(parents=True, exist_ok=True)
     return run_screenshot_dir / f"{safe_filename(name)}.png"
 

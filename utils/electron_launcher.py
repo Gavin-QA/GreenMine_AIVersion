@@ -2,13 +2,16 @@ import os
 import subprocess
 import time
 import requests
+import logging
 from playwright.sync_api import sync_playwright
 
+logger = logging.getLogger("electron_launcher")
+
 class ElectronLauncher:
-    def __init__(self, headless: bool = False, debug_port: int = 9222, launch_args: list = None, target_name: str = None, exe_path: str = None, port: int = None, **kwargs):
-        self.exe_path = exe_path if exe_path else target_name  # 转换为目标应用路径
-        self.port = port if port else debug_port
-        self.cdp_url = f"http://localhost:{self.port}"
+    def __init__(self, exe_path: str, port: int, launch_args: list = None):
+        self.exe_path = exe_path
+        self.port = port
+        self.cdp_url = f"http://127.0.0.1:{self.port}"
         self.process = None
         self.playwright = None
         self.browser = None
@@ -23,18 +26,18 @@ class ElectronLauncher:
                 timeout=1,
                 proxies={"http": None, "https": None}
             )
-            return response.status_code == 200
+            return response.status_code in [200, 403]
         except Exception:
             return False
 
     def start_app(self):
         """启动 Electron 客户端并暴露 CDP 调试端口"""
         if self.is_cdp_alive():
-            print(f"CDP 调试端口 {self.port} 已在运行中，跳过进程启动，直接重用已有客户端。")
+            logger.info(f"CDP 调试端口 {self.port} 已在运行中，跳过进程启动，直接重用已有客户端。")
             self.was_already_running = True
             return
 
-        print(f"正在启动 Electron 客户端: {self.exe_path} on port {self.port}...")
+        logger.info(f"正在启动 Electron 客户端: {self.exe_path} on port {self.port}...")
 
         # 设置工作目录为 exe 所在的根路径，确保 Electron/UE 引擎能正确读取相对路径下的前端资源
         cwd = os.path.dirname(self.exe_path) if self.exe_path and os.path.exists(self.exe_path) else None
@@ -52,7 +55,8 @@ class ElectronLauncher:
         # 传入全套代理绕过参数，确保 WebRTC 像素流 (9527端口) 和本地 CDP (9222端口) 100% 本地直连
         proxy_args = [
             "--no-proxy-server",
-            "--proxy-bypass-list=*"
+            "--proxy-bypass-list=*",
+            "--remote-allow-origins=*"
         ]
         cmd = [self.exe_path, f"--remote-debugging-port={self.port}"] + proxy_args + self.launch_args
         self.process = subprocess.Popen(cmd, cwd=cwd, env=env)
@@ -60,7 +64,7 @@ class ElectronLauncher:
         self._wait_for_port()
 
     def launch(self):
-        """兼容 conftest.py 中的调用，建立 CDP 连接"""
+        """启动并建立 CDP 连接，返回上下文与页面对象"""
         if not self.browser:
             if self.is_cdp_alive():
                 self.was_already_running = True
@@ -74,12 +78,12 @@ class ElectronLauncher:
         page = pages[0] if pages else context.new_page()
         return context, page
 
-    def _wait_for_port(self, timeout: int = 30):
+    def _wait_for_port(self, timeout: int = 120):
         """等待 CDP 端口准备就绪"""
         start_time = time.time()
         while time.time() - start_time < timeout:
             if self.is_cdp_alive():
-                print("CDP 调试端口已就绪。")
+                logger.info("CDP 调试端口已就绪。")
                 return
             time.sleep(1)
 
@@ -90,18 +94,18 @@ class ElectronLauncher:
         if not self.playwright:
             self.playwright = sync_playwright().start()
 
-        print(f"Playwright 正在连接到 CDP: {self.cdp_url}...")
+        logger.info(f"Playwright 正在连接到 CDP: {self.cdp_url}...")
         self.browser = self.playwright.chromium.connect_over_cdp(self.cdp_url)
 
         # 获取 Electron 的默认上下文和所有窗口
         context = self.browser.contexts[0]
         pages = context.pages
-        print(f"CDP 已成功连接，当前监测到 {len(pages)} 个 Page/Window Target:")
+        logger.info(f"CDP 已成功连接，当前监测到 {len(pages)} 个 Page/Window Target:")
         for idx, p in enumerate(pages):
             try:
-                print(f"  Target [{idx}]: URL='{p.url}', Title='{p.title()}'")
+                logger.info(f"  Target [{idx}]: URL='{p.url}', Title='{p.title()}'")
             except Exception as e:
-                print(f"  Target [{idx}]: 无法获取信息: {e}")
+                logger.error(f"  Target [{idx}]: 无法获取信息: {e}")
 
         # 智能筛选真实的主页面（优先排除 about:blank 的背景页）
         main_page = None
@@ -113,7 +117,7 @@ class ElectronLauncher:
         if not main_page:
             main_page = pages[0] if pages else context.new_page()
 
-        print(f"已选定主页面 Target: URL='{main_page.url}', Title='{main_page.title()}'")
+        logger.info(f"已选定主页面 Target: URL='{main_page.url}', Title='{main_page.title()}'")
         return main_page
 
     def close(self):
@@ -139,13 +143,9 @@ class ElectronLauncher:
                     self.process.kill()
                 except Exception:
                     pass
-            print("Electron 进程已终止。")
+            logger.info("Electron 进程已终止。")
             
-            # 自动清理 UE 虚幻引擎孤儿渲染进程 (zhaiwan.exe)，彻底释放显存、内存与 9527 像素流端口
-            try:
-                subprocess.run(["taskkill", "/F", "/IM", "zhaiwan.exe"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            except Exception:
-                pass
+            # 启动器关闭时，UE 引擎 (zhaiwan.exe) 会随之正常退出，不需要再用 taskkill 暴力强杀，避免导致显卡驱动蓝屏 (BSOD)。
 
             time.sleep(1.5)  # 物理等待 1.5s 确保 Windows 回收 9222 端口，防止连抽用例时端口死锁
 

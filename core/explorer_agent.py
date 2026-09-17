@@ -6,7 +6,7 @@ from typing import Optional
 
 from core.browser import ElectronDriver
 from core.vision_agent import VisionAgent
-from utils.artifacts import SCREENSHOTS_DIR, report_run_id
+from utils.artifacts import report_run_id, LOGS_DIR
 
 logger = logging.getLogger("explorer_agent")
 
@@ -20,9 +20,12 @@ class ExplorerAgent:
         self.vision = vision
         self.run_id = report_run_id()
         
-        # 彻底隔离：存放在 reports/explore_screenshots 目录下
-        from utils.artifacts import PROJECT_ROOT
-        self.explore_dir = PROJECT_ROOT / "reports" / "explore_screenshots" / self.run_id
+        # 记录探索日志的目录
+        self.log_dir = LOGS_DIR / self.run_id
+        self.log_dir.mkdir(parents=True, exist_ok=True)
+        
+        # 统一归档：截图存放在 logs/<run_id>/screenshots 目录下
+        self.explore_dir = self.log_dir / "screenshots"
         self.explore_dir.mkdir(parents=True, exist_ok=True)
 
     def start_exploration(self, objective: str, max_steps: int = 20, context: str = ""):
@@ -163,10 +166,24 @@ class ExplorerAgent:
                 # 记录全局历史
                 if action_type in ("click", "hover") and element_desc not in global_history:
                     global_history.append(element_desc)
-                    # 实时持久化长期记忆到本地
-                    history_file = self.explore_dir / "global_history.json"
+                    # 实时持久化长期记忆到本地日志目录
+                    history_file = self.log_dir / "global_history.json"
                     with open(history_file, "w", encoding="utf-8") as f:
                         json.dump(global_history, f, ensure_ascii=False, indent=2)
+                        
+                # 检查是否在操作期间触发了后台 Bug
+                bugs = self.driver.get_and_clear_bugs()
+                if bugs:
+                    logger.error(f"🚨 [BUG FOUND] 在执行操作 [{action_type.upper()}] '{element_desc}' 时/后，系统捕获到 {len(bugs)} 个底层异常！")
+                    bug_report_file = self.log_dir / f"bug_report_{steps_taken}_{worker_step}.json"
+                    with open(bug_report_file, "w", encoding="utf-8") as f:
+                        json.dump(bugs, f, ensure_ascii=False, indent=2)
+                    
+                    # 保存 Bug 现场截图
+                    bug_img_path = str(self.explore_dir / f"bug_screenshot_{steps_taken}_{worker_step}.png")
+                    self.driver.capture_screenshot(bug_img_path)
+                    logger.error(f"📸 Bug 现场已保存至: {bug_img_path}")
+                    logger.error(f"📄 Bug 报告已存至: {bug_report_file}")
 
             if not worker_finished_early:
                 logger.info(f"✅ [Worker] 已耗尽预算步数 ({budget})，将控制权交还给 Planner。")
