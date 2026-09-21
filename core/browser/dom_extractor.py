@@ -49,9 +49,9 @@ class DomExtractorMixin:
                 // 2. 交互性判断：
                 // a. 原生可交互标签
                 const tag = el.tagName.toLowerCase();
-                const isNativeInteractive = ['button', 'a', 'input', 'select', 'textarea'].includes(tag);
+                const isNativeInteractive = ['button', 'a', 'input', 'select', 'textarea', 'li'].includes(tag);
                 // b. 具有可点击角色或属性
-                const hasClickRole = ['button', 'menuitem', 'tab', 'link'].includes(el.getAttribute('role'));
+                const hasClickRole = ['button', 'menuitem', 'tab', 'link', 'option', 'listbox', 'treeitem'].includes(el.getAttribute('role'));
                 const hasOnClick = el.hasAttribute('onclick');
                 // c. Vue/React 单页面应用常用做法：普通的 div/span 加上 cursor: pointer
                 const style = window.getComputedStyle(el);
