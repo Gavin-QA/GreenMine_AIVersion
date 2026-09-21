@@ -1,0 +1,11 @@
+name: Auto Generated Case - explore_20260920_143618
+description: 由 ExplorerAgent 探索模式自动生成的闭环测试用例。
+steps:
+- type: action
+  prompt: '[HOVER] 顶部导航栏中的‘生产管理’一级菜单'
+- type: action
+  prompt: '[CLICK] 生产统计'
+- type: action
+  prompt: '[HOVER] 生产管理一级菜单'
+- type: action
+  prompt: '[CLICK] 矿仓监测'

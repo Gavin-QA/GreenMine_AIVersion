@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from core.browser import ElectronDriver
-from core.vision_agent import VisionAgent, VisionAgentException
+from core.vision.agent import VisionAgent, VisionAgentException
 from utils.artifacts import screenshot_path
 
 logger = logging.getLogger("core.action_runner")
@@ -119,12 +119,22 @@ class ActionRunner:
                     raise
 
     def _do_action(self, prompt: str):
-        """执行视觉点击动作"""
+        """执行视觉动作 (支持自动解析 [HOVER]/[CLICK] 前缀)"""
         # 1. Perception
         b64_img = self.driver.capture_screenshot_base64()
         viewport = self.driver.get_viewport_info()
         dom_elements = self.driver.extract_interactive_elements()
         
+        # 解析动作类型 (支持 ExplorerAgent 自动生成的 [HOVER] / [CLICK] 前缀)
+        action_type = "click"
+        prompt_upper = prompt.strip().upper()
+        if prompt_upper.startswith("[HOVER]"):
+            action_type = "hover"
+            prompt = prompt.strip()[7:].strip()
+        elif prompt_upper.startswith("[CLICK]"):
+            action_type = "click"
+            prompt = prompt.strip()[7:].strip()
+            
         # 2. Cognition
         x, y = self.vision.find_element(
             instruction=prompt,
@@ -135,8 +145,10 @@ class ActionRunner:
         )
         
         # 3. Action
-        # 移除 clear_api_records()，保留全局 15 个请求的滑动窗口，防止首屏请求被后续点击动作清空
-        self.driver.click(x, y)
+        if action_type == "hover":
+            self.driver.hover(x, y)
+        else:
+            self.driver.click(x, y)
 
     def _do_input(self, prompt: str, text: str):
         """执行视觉点击后输入文本"""

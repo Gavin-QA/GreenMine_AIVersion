@@ -135,15 +135,15 @@ class ElectronLauncher:
                 pass
 
         if self.process and not self.was_already_running:
+            logger.info("等待 Electron 进程自然退出 (已取消强杀以防蓝屏)...")
             try:
-                self.process.terminate()
-                self.process.wait(timeout=3)
-            except Exception:
-                try:
-                    self.process.kill()
-                except Exception:
-                    pass
-            logger.info("Electron 进程已终止。")
+                # 等待应用在前台收到关闭指令后自行退出
+                self.process.wait(timeout=5)
+                logger.info("Electron 进程已自然退出。")
+            except subprocess.TimeoutExpired:
+                logger.warning("Electron 进程未能按时退出，已放弃强杀以保护系统稳定。")
+            except Exception as e:
+                logger.warning(f"等待进程退出时发生异常: {e}")
             
             # 启动器关闭时，UE 引擎 (zhaiwan.exe) 会随之正常退出，不需要再用 taskkill 暴力强杀，避免导致显卡驱动蓝屏 (BSOD)。
 

@@ -25,6 +25,8 @@
 4. **超强自我容错与网络重试**：脱离底层 `class` 与 `id` 的绑定，不仅能应对前端组件重构，还具备底层大模型请求的防超时/断网自动重试恢复能力。
 5. **智能视觉等待 (Intelligent Visual Wait)**：彻底抛弃低效的“死等(sleep)”，支持传入自然语言条件（如“等待左侧菜单树渲染完毕”），由 AI 轮询屏幕直到满足条件，将启动与跳转的空耗延迟降至最低，极大提升脚本稳定性。
 6. **全自动零配置接口校验 (Auto-API Assertion)**：独创的底层静默抓包与大模型视觉双重比对机制。无需配置任何接口 URL 或抽取规则，框架会在后台自动维护滑动网络数据池。只需一句自然语言，大模型即可自主从底层 JSON 中提取数据，并与 UI 渲染的文字、图表进行深度交叉验证。附带热连接 (Attach) 模式下的 `Ctrl+R` 无伤重载保护，确保 3D/UE 场景下不掉线且不漏首屏初始网络包。
+7. **动态 UI 拓扑图生成 (Dynamic Self-Mapping)**：Agent 在探索过程中会自动感知并推断当前的“层级面包屑”，并在探索结束后将走过的所有菜单与弹窗自动渲染为 Mermaid 格式的软件组织架构图（`docs/auto_page_map.md`）。
+8. **探索闭环与用例沉淀 (Auto-YAML Generation)**：探索者模式不仅能找 Bug，它走过的每一条有效链路都会被结构化记录，并在结束后自动翻译为框架可直接执行的原生 YAML 回归测试脚本。
 
 ---
 
@@ -48,18 +50,29 @@ electron_ai_vision/
 ├── config/                # 框架配置模块
 │   └── settings.py        # 环境变量与 YAML 配置文件的读取与合并
 ├── core/                  # 框架底层核心驱动
-│   ├── browser.py         # 封装 Electron 启动、CDP 连接与截图获取
-│   ├── vision_agent.py    # 封装与视觉大模型的多模态交互请求与坐标解析
-│   └── action_runner.py   # 解析 YAML 步骤，控制底层执行流程，处理异常截图
+│   ├── action_runner.py   # 解析 YAML 步骤，控制底层执行流程，处理异常截图
+│   ├── browser/           # [驱动层] 封装 Electron 启动、CDP 连接与底层数据抓取
+│   │   ├── driver.py            # 核心生命周期与鼠标键盘动作模拟
+│   │   ├── dom_extractor.py     # Hybrid DOM 元素提取器
+│   │   ├── network_monitor.py   # 底层 API 静默抓包与控制台报错监控
+│   │   └── screenshot.py        # 截图裁剪与 Base64 预处理
+│   ├── explorer_agent/    # [探索层] 混沌探索者智能引擎
+│   │   ├── agent.py             # ReAct Planner-Worker 循环调度引擎
+│   │   ├── page_map_builder.py  # 动态 UI 架构树维护与 Mermaid 渲染
+│   │   └── trajectory_exporter.py # 操作轨迹记录与 YAML 用例自动生成
+│   └── vision/            # [感知层] 视觉大模型连接层
+│       ├── agent.py             # 封装多模态大模型的 API 请求与解析
+│       └── prompts.py           # 集中管控所有 AI System Prompts
 ├── utils/                 # 通用基础设施工具
 │   ├── artifacts.py       # 测试产物管理（按批次生成独立的日志与截图目录）
 │   ├── logger.py          # 框架级集中日志管理，支持多用例日志动态切分
 │   └── electron_launcher.py # Electron 进程管理辅助工具
 ├── docs/                  # 文档与规则区
-│   └── explore_rules.md   # 探索模式的先验知识与交互规矩 (如 DFS深度优先约束)
+│   ├── explore_rules.md   # 探索模式的先验知识与交互规矩 (如 DFS深度优先约束)
+│   └── auto_page_map.md   # [AI 自动生成] 动态软件架构拓扑图
 ├── test_cases/            # 纯自然语言用例区 (无需写代码)
-│   ├── test_home_mine_intro.yaml # 首页与UE视角等业务场景巡检
-│   └── page_map_and_test_matrix.md # 业务地图与自动化测试覆盖矩阵
+│   ├── test_home_mine_intro.yaml # 手工编写的业务场景巡检
+│   └── auto_generated_*.yaml     # [AI 自动生成] 探索闭环沉淀的回归用例
 ├── reports/               # 自动化产物存储区
 │   └── screenshots/       # 按时间戳(Run ID)隔离存放的运行时异常截图
 ├── logs/                  # 日志存储区

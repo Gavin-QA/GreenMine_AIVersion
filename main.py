@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 
 from core.browser import ElectronDriver
-from core.vision_agent import VisionAgent
+from core.vision.agent import VisionAgent
 from core.action_runner import ActionRunner
 from core.explorer_agent import ExplorerAgent
 from utils.logger import LoggerManager

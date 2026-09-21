@@ -1,0 +1,53 @@
+name: Auto Generated Case - explore_20260921_165639
+description: 由 ExplorerAgent 探索模式自动生成的闭环测试用例。
+steps:
+- type: action
+  prompt: '[HOVER] 顶部一级菜单‘生产管理’'
+- type: action
+  prompt: '[CLICK] 二级菜单‘生产统计’'
+- type: action
+  prompt: '[HOVER] 顶部一级菜单‘生产管理’'
+- type: action
+  prompt: '[HOVER] 顶部一级菜单‘生产管理’'
+- type: action
+  prompt: '[HOVER] 顶部一级菜单‘生产管理’'
+- type: action
+  prompt: '[HOVER] 顶部一级菜单‘生产管理’'
+- type: action
+  prompt: '[CLICK] 二级菜单项‘矿仓监测’'
+- type: action
+  prompt: '[CLICK] 装车记录区域的‘全部’按钮'
+- type: action
+  prompt: '[CLICK] 装车记录区域中的第一条记录（鄂P02007）'
+- type: action
+  prompt: '[CLICK] 料位预警区域中的第一个预警信息条目'
+- type: action
+  prompt: '[CLICK] 预警数据弹窗中的‘查询’按钮'
+- type: action
+  prompt: '[CLICK] 关闭‘预警数据’弹窗的右上角关闭按钮'
+- type: action
+  prompt: '[HOVER] 顶部一级菜单‘生产管理’'
+- type: action
+  prompt: '[CLICK] 处理人下拉框中的选项‘高开洋’'
+- type: action
+  prompt: '[CLICK] 预警等级下拉框'
+- type: action
+  prompt: '[CLICK] 预警等级下拉框中的‘红色预警’选项'
+- type: action
+  prompt: '[CLICK] 预警数据弹窗中的‘查询’按钮'
+- type: action
+  prompt: '[CLICK] 预警数据弹窗中的‘重置’按钮'
+- type: action
+  prompt: '[CLICK] 处理人下拉框'
+- type: action
+  prompt: '[CLICK] 处理人下拉框中的‘高开洋’选项'
+- type: action
+  prompt: '[CLICK] 预警数据弹窗中的‘查询’按钮'
+- type: action
+  prompt: '[CLICK] 预警数据表格中第一条记录的‘处理措施’空白项'
+- type: action
+  prompt: '[CLICK] 预警数据表格中第二条记录的‘处理人’空白项'
+- type: action
+  prompt: '[CLICK] 预警数据表格中第三条记录的‘处理措施’空白项'
+- type: action
+  prompt: '[CLICK] 预警数据表格中第四条记录的‘处理措施’空白项'
