@@ -14,7 +14,8 @@ from .prompts import (
     ACTION_SYSTEM_PROMPT,
     DOM_MATCH_SYSTEM_PROMPT,
     ASSERT_SYSTEM_PROMPT,
-    API_ASSERT_SYSTEM_PROMPT
+    API_ASSERT_SYSTEM_PROMPT,
+    SELF_HEAL_SYSTEM_PROMPT
 )
 
 logger = logging.getLogger("core.vision_agent")
@@ -273,7 +274,7 @@ class VisionAgent:
         
         return passed, reason
 
-    def plan_sub_objective(self, macro_objective: str, base64_image: str, global_history: list, context: str = "") -> dict:
+    def plan_sub_objective(self, macro_objective: str, base64_image: str, global_history: list, context: str = "", current_page_tree: dict = None) -> dict:
         """
         为探索生成短期子目标 (Planner)
         """
@@ -281,18 +282,22 @@ class VisionAgent:
         user_prompt = f"宏观目标：{macro_objective}\n"
         if context:
             user_prompt += f"【背景知识】:\n{context}\n"
+        if current_page_tree:
+            from core.explorer_agent.page_map_builder import PageMapBuilder
+            mermaid_str = PageMapBuilder.dict_to_mermaid_string(current_page_tree)
+            user_prompt += f"【当前已探索的应用架构图 (Mermaid)】:\n```mermaid\n{mermaid_str}\n```\n"
         if global_history:
             user_prompt += f"【全局已探索过的元素】: {', '.join(global_history)}\n请尽量避开已探索过的区域。\n"
-            
+
         user_prompt += "请分析截图，并生成下一个短期子目标及步数预算。"
-        
+
         return self._call_llm(
             system_prompt=PLANNER_SYSTEM_PROMPT,
             user_prompt=user_prompt,
             base64_image=base64_image
         )
 
-    def execute_sub_objective(self, sub_objective: str, base64_image: str, context: str = "", history: list = None, global_history: list = None) -> dict:
+    def execute_sub_objective(self, sub_objective: str, base64_image: str, context: str = "", history: list = None, global_history: list = None, current_page_tree: dict = None) -> dict:
         """
         执行短期子目标的具体动作 (Worker)
         """
@@ -300,15 +305,49 @@ class VisionAgent:
         user_prompt = f"当前子目标：{sub_objective}\n"
         if context:
             user_prompt += f"【背景知识】:\n{context}\n"
+        if current_page_tree:
+            from core.explorer_agent.page_map_builder import PageMapBuilder
+            mermaid_str = PageMapBuilder.dict_to_mermaid_string(current_page_tree)
+            user_prompt += f"【当前已探索的应用架构图 (Mermaid)】:\n```mermaid\n{mermaid_str}\n```\n"
         if global_history:
             user_prompt += f"【全局已探索过的元素】: {', '.join(global_history[-10:])}\n"
         if history:
             user_prompt += "【最近的动作历史】:\n" + "\n".join(history) + "\n⚠️ 警告：请分析历史记录，不要死循环执行刚做过的动作！\n"
-            
+
         user_prompt += "请结合截图决定下一步的精准操作。"
-        
+
         return self._call_llm(
             system_prompt=WORKER_SYSTEM_PROMPT,
+            user_prompt=user_prompt,
+            base64_image=base64_image
+        )
+
+    def analyze_failure_and_suggest_fix(self, failed_prompt: str, error_msg: str, base64_image: str) -> dict:
+        """
+        语义失败分析器 (Semantic Self-Healer)
+        当某个步骤物理重试耗尽后，让 AI 看一眼案发现场截图，
+        推断失败原因，并给出一个"前置补救动作"建议，
+        以便 ActionRunner 执行该补救后再次尝试原步骤。
+
+        返回 JSON 格式:
+        {
+            "can_fix": true/false,
+            "reason": "AI 对失败原因的分析",
+            "fix_action": "补救动作的自然语言描述，例如：点击触发弹窗的按钮",
+            "fix_type": "click" | "scroll_down" | "scroll_up" | "press_escape" | "wait"
+        }
+        """
+        system_prompt = SELF_HEAL_SYSTEM_PROMPT
+
+        user_prompt = (
+            f"【失败的操作指令】: {failed_prompt}\n"
+            f"【报错原因】: {error_msg}\n\n"
+            "请结合截图，分析失败原因，并给出前置补救动作。"
+        )
+
+        logger.info("🔬 [语义自愈] 启动失败分析器，请 AI 诊断失败根因并推荐补救方案...")
+        return self._call_llm(
+            system_prompt=system_prompt,
             user_prompt=user_prompt,
             base64_image=base64_image
         )

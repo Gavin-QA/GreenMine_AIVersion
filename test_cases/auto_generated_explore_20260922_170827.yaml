@@ -1,0 +1,41 @@
+name: Auto Generated Case - explore_20260922_170827
+description: 由 ExplorerAgent 探索模式自动生成的闭环测试用例。
+steps:
+- type: action
+  prompt: '[HOVER] 顶部导航栏中的‘生产管理’菜单'
+- type: action
+  prompt: '[CLICK] 生产统计按钮'
+- type: action
+  prompt: '[CLICK] 生产日报区域中的日志详情内容区域'
+- type: action
+  prompt: '[CLICK] 生产日报区域中的刷新按钮（若存在）或用于触发数据重载的交互元素'
+- type: action
+  prompt: '[HOVER] 顶部导航栏中的‘生产管理’菜单'
+- type: action
+  prompt: '[CLICK] 矿仓监测按钮'
+- type: action
+  prompt: '[CLICK] 矿仓总库存区域中的‘更多’按钮'
+- type: action
+  prompt: '[CLICK] 出入库统计分析区域中的‘详情’按钮'
+- type: action
+  prompt: '[CLICK] 1#矿仓标签页按钮'
+- type: action
+  prompt: '[CLICK] 2#矿仓标签页按钮'
+- type: action
+  prompt: '[CLICK] 3#矿仓标签页按钮'
+- type: action
+  prompt: '[CLICK] 4#矿仓标签页按钮'
+- type: action
+  prompt: '[CLICK] 图表区域中的时间轴或时间范围选择控件'
+- type: action
+  prompt: '[CLICK] 图表区域中心位置'
+- type: action
+  prompt: '[CLICK] 图表区域右下角的缩放控制点或视图重置按钮'
+- type: action
+  prompt: '[CLICK] 表格中‘时间’列的表头'
+- type: action
+  prompt: '[CLICK] 图表区域或表格附近的数据导出按钮（若存在）'
+- type: action
+  prompt: '[HOVER] 顶部导航栏中的‘生产管理’菜单'
+- type: action
+  prompt: '[CLICK] 生产管理下拉菜单中的‘卡车调度’选项'

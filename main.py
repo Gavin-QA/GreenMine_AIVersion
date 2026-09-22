@@ -21,6 +21,7 @@ def parse_args():
     parser.add_argument("--ignore-errors", action="store_true", help="全局忽略步骤报错，继续执行后续步骤")
     parser.add_argument("--explore", type=str, help="开启自主探索模式，并指定宏观探索目标")
     parser.add_argument("--explore-context", type=str, action="append", help="指定针对探索模式的项目背景知识或交互规则，可多次使用，支持纯文本或文件路径")
+    parser.add_argument("--resume-from", type=str, help="指定上一次探索的 log 目录（例如 logs/explore_xxx），以实现断点续传（继承记忆与页面架构树）")
     parser.add_argument("--max-steps", type=int, default=20, help="自主探索的最大步数限制（默认: 20）")
     parser.add_argument("--start-delay", type=float, default=15.0, help="启动应用后的等待时间(秒)，确保引擎和UI完全加载（默认: 15.0）")
     parser.add_argument("--wait-ready", type=str, help="【智能视觉等待】指定自然语言条件，持续轮询截屏直到满足条件")
@@ -96,7 +97,7 @@ def run_explore_mode(driver: ElectronDriver, vision_agent: VisionAgent, args):
                 contexts.append(ctx.strip())
         context_str = "\n".join(contexts)
         
-    explorer.start_exploration(objective=args.explore, max_steps=args.max_steps, context=context_str)
+    explorer.start_exploration(objective=args.explore, max_steps=args.max_steps, context=context_str, resume_from=args.resume_from)
 
 
 def run_yaml_mode(driver: ElectronDriver, vision_agent: VisionAgent, cases_to_run: list, args, logger: logging.Logger):

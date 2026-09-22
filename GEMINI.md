@@ -24,6 +24,9 @@
    - ExplorerAgent 在探索时能通过空间感知推断自己当前所处的 UI 路径层级，并在结束后自动生成 Mermaid 格式的整个应用架构地图。同时，能将走通的链路自动翻译成可供 ActionRunner 再次运行的 YAML 回归用例。
 5. **智能防假死检测 (Freeze Check)**：
    - 使用双图时序对比判定 3D 场景或动态大屏是否卡死。
+6. **智能缺陷闭环与大模型查重 (Auto Bug Reporting & Deduplication)**：
+   - 框架集成了完全解耦的 `BugReporter` 模块。当 ActionRunner 执行失败产生崩溃时，能自动进行快照隔离与缺陷归档（生成 JSON/MD/CSV 大盘）。
+   - 引入大模型语义判别机制，每次生成 Bug 前会利用 LLM 对全局 Bug 库进行比对，若发现相同本质的老 Bug，则仅增加复现次数，从根源解决测试缺陷去重痛点。
 
 ## 4. Playwright 的角色定位 (Role of Playwright)
 Playwright 在本框架中仅作为“底座外设”：

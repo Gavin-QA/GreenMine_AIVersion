@@ -1,0 +1,39 @@
+name: Auto Generated Case - explore_20260922_144557
+description: 由 ExplorerAgent 探索模式自动生成的闭环测试用例。
+steps:
+- type: action
+  prompt: '[HOVER] 顶部导航栏中的‘生产管理’一级菜单'
+- type: action
+  prompt: '[CLICK] 能耗监测'
+- type: action
+  prompt: '[CLICK] 用电Top3回路中的第一条记录（变压器）'
+- type: action
+  prompt: '[CLICK] 耗电量区域的数值显示部分（258300kWh）'
+- type: action
+  prompt: '[CLICK] 本月总能耗统计图表区域'
+- type: action
+  prompt: '[CLICK] 排水监测区域的柱状图'
+- type: action
+  prompt: '[CLICK] 炸药消耗数值区域'
+- type: action
+  prompt: '[CLICK] 雷管消耗数值区域'
+- type: action
+  prompt: '[CLICK] 火工器材消耗监测区域的‘月’切换按钮'
+- type: action
+  prompt: '[CLICK] 火工器材消耗监测区域的‘日’切换按钮'
+- type: action
+  prompt: '[HOVER] 顶部导航栏中的‘生产管理’一级菜单'
+- type: action
+  prompt: '[CLICK] 胶带运输监测'
+- type: action
+  prompt: '[CLICK] 4#F甲胶带的节点图标'
+- type: action
+  prompt: '[CLICK] 5#603石门胶带的节点图标'
+- type: action
+  prompt: '[CLICK] 视频监控区域中的实时摄像头画面'
+- type: action
+  prompt: '[CLICK] 视频窗口中的播放/暂停按钮'
+- type: action
+  prompt: '[CLICK] 卸料仓监控01视频窗口右上角的关闭按钮'
+- type: action
+  prompt: '[CLICK] 卸料仓监控01视频窗口'

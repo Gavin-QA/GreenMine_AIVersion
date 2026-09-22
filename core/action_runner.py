@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional
 
 from core.browser import ElectronDriver
 from core.vision.agent import VisionAgent, VisionAgentException
+from core.bug_reporter import BugReporter
 from utils.artifacts import screenshot_path
 
 logger = logging.getLogger("core.action_runner")
@@ -23,6 +24,7 @@ class ActionRunner:
     def __init__(self, driver: ElectronDriver, vision_agent: VisionAgent):
         self.driver = driver
         self.vision = vision_agent
+        self.bug_reporter = BugReporter(vision_agent=self.vision)
         self._step_counter = 0
 
     def run_yaml_case(self, yaml_path: str, global_ignore_errors: bool = False):
@@ -58,6 +60,18 @@ class ActionRunner:
                 logger.error(f"❌ 步骤 {i} 执行失败！现场已保存: {crash_pic}")
                 logger.error(f"异常详情: {e}")
                 
+                # 记录缺陷
+                run_id = path.stem
+                title = f"[{run_id}] Step {i} 异常崩溃"
+                prompt_text = step.get('prompt', '无操作指令')
+                self.bug_reporter.report_bug(
+                    run_id=run_id,
+                    title=title,
+                    step_prompt=prompt_text,
+                    actual_result=str(e),
+                    crash_image_path=str(crash_pic)
+                )
+                
                 if step.get("ignore_error", should_ignore):
                     logger.warning(f"⚠️ 步骤 {i} 触发了 ignore_error 机制，记录错误并继续往下执行。")
                     errors.append(f"Step {i}: {str(e)}")
@@ -74,12 +88,17 @@ class ActionRunner:
         logger.info(f"✅ 用例执行圆满完成: {case_name}")
         logger.info("=" * 60)
 
-    def _execute_step(self, step: Dict[str, Any], max_retries: int = 1):
+    def _execute_step(self, step: Dict[str, Any], max_retries: int = 2):
         """
-        分发执行单步指令，自带重试机制以应对页面元素加载延迟。
+        分发执行单步指令，带有三层递进式智能补偿机制:
+        - 策略 A (物理等待): 等 3 秒，让前端渲染完成。
+        - 策略 B (物理滚动): 向下滚动一小屏，寻找隐藏元素。
+        - 策略 C (语义自愈): 截图给 AI 看，让它诊断根因并执行一个前置补救动作，再重试原步骤。
         """
         step_type = step.get("type")
         prompt = step.get("prompt", "")
+
+        last_exception = None
 
         for attempt in range(max_retries + 1):
             try:
@@ -106,17 +125,102 @@ class ActionRunner:
                     self.driver.wait(wait_sec)
                 else:
                     logger.warning(f"未知步骤类型: {step_type}，跳过执行。")
-                
-                # 如果没有抛出异常，说明执行成功，跳出重试循环
-                break
-                
+
+                # 执行成功，跳出重试循环
+                return
+
             except VisionAgentException as ve:
+                last_exception = ve
                 if attempt < max_retries:
-                    logger.warning(f"AI 未找到目标或断言失败，等待 3 秒后重试 (第 {attempt+1}/{max_retries} 次重试)... 异常: {ve}")
-                    time.sleep(3.0)
+                    # ====== 物理补偿机制 ======
+                    logger.warning(f"⚠️ AI 寻找目标或断言失败: {ve}")
+                    logger.warning(f"🔧 启动物理补偿 (第 {attempt+1}/{max_retries} 次)...")
+
+                    if attempt == 0:
+                        logger.info("🔧 [策略 A] 纯物理等待 3 秒，让前端有时间渲染...")
+                        time.sleep(3.0)
+                    elif attempt == 1:
+                        logger.info("🔧 [策略 B] 尝试向下滚动一小屏寻找隐藏元素...")
+                        if step_type in ("action", "input"):
+                            self.driver.scroll(delta_y=400)
+                        time.sleep(2.0)
                 else:
-                    logger.error("已达到最大重试次数，任务中断。")
-                    raise
+                    # 物理重试全部耗尽，启动语义自愈
+                    logger.warning("⚠️ 物理补偿已耗尽，升级到 [策略 C] 语义自愈模式...")
+                    healed = self._try_semantic_heal(prompt, str(ve), step_type)
+                    if healed:
+                        # 自愈动作执行完毕，再给原步骤最后一次机会
+                        logger.info("🔁 [策略 C] 补救动作已执行，最后一次尝试原始步骤...")
+                        # 直接执行（不再嵌套重试），如果还是失败则抛出
+                        if step_type == "action":
+                            self._do_action(prompt)
+                        elif step_type == "input":
+                            self._do_input(prompt, str(step.get("text", "")))
+                        elif step_type == "assert":
+                            self._do_assert(prompt)
+                        return  # 自愈后成功执行
+                    else:
+                        logger.error("🚫 [策略 C] AI 无法给出有效补救方案，任务中断。")
+                        raise
+
+
+    def _try_semantic_heal(self, failed_prompt: str, error_msg: str, step_type: str) -> bool:
+        """
+        语义自愈执行器 (Semantic Self-Healer)
+        调用 AI 分析当前截图，获取补救建议，并真实执行补救动作。
+        返回 True 表示补救动作已执行完毕（不代表一定修复成功），False 表示 AI 无法给出方案。
+        """
+        try:
+            b64_img = self.driver.capture_screenshot_base64()
+            viewport = self.driver.get_viewport_info()
+            dom_elements = self.driver.extract_interactive_elements()
+
+            result = self.vision.analyze_failure_and_suggest_fix(
+                failed_prompt=failed_prompt,
+                error_msg=error_msg,
+                base64_image=b64_img
+            )
+
+            can_fix = result.get("can_fix", False)
+            reason = result.get("reason", "未知")
+            fix_action = result.get("fix_action", "")
+            fix_type = result.get("fix_type", "click")
+
+            logger.info(f"🔬 [语义自愈] AI 诊断结果: {reason}")
+
+            if not can_fix or not fix_action:
+                logger.warning("🔬 [语义自愈] AI 判定无法自动修复此问题。")
+                return False
+
+            logger.info(f"💊 [语义自愈] 执行补救动作 [{fix_type}]: {fix_action}")
+
+            if fix_type == "click":
+                x, y = self.vision.find_element(
+                    instruction=fix_action,
+                    base64_image=b64_img,
+                    viewport_width=viewport["width"],
+                    viewport_height=viewport["height"],
+                    dom_elements=dom_elements
+                )
+                self.driver.click(x, y)
+                time.sleep(1.5)  # 等待补救动作生效
+            elif fix_type == "scroll_down":
+                self.driver.scroll(delta_y=500)
+                time.sleep(1.0)
+            elif fix_type == "scroll_up":
+                self.driver.scroll(delta_y=-500)
+                time.sleep(1.0)
+            elif fix_type == "press_escape":
+                self.driver.press_key("Escape")
+                time.sleep(1.0)
+            elif fix_type == "wait":
+                time.sleep(3.0)
+
+            return True
+
+        except Exception as heal_err:
+            logger.warning(f"🔬 [语义自愈] 补救执行本身出现异常: {heal_err}，将放弃自愈。")
+            return False
 
     def _do_action(self, prompt: str):
         """执行视觉动作 (支持自动解析 [HOVER]/[CLICK] 前缀)"""

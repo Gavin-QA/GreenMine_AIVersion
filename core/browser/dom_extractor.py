@@ -47,9 +47,9 @@ class DomExtractorMixin:
                 }
                 
                 // 2. 交互性判断：
-                // a. 原生可交互标签
+                // a. 原生可交互标签 (新增 img 和 svg，因为很多大屏把它们当按钮用但不加 pointer)
                 const tag = el.tagName.toLowerCase();
-                const isNativeInteractive = ['button', 'a', 'input', 'select', 'textarea', 'li'].includes(tag);
+                const isNativeInteractive = ['button', 'a', 'input', 'select', 'textarea', 'li', 'img', 'svg'].includes(tag);
                 // b. 具有可点击角色或属性
                 const hasClickRole = ['button', 'menuitem', 'tab', 'link', 'option', 'listbox', 'treeitem'].includes(el.getAttribute('role'));
                 const hasOnClick = el.hasAttribute('onclick');
@@ -64,15 +64,82 @@ class DomExtractorMixin:
                     let text = el.innerText || el.value || el.placeholder || el.getAttribute('aria-label') || '';
                     text = String(text).trim().replace(/\\n/g, ' ').slice(0, 50);
                     
-                    // 如果本身没有文字，且不是 input，可能是一个纯图标，尽量尝试获取 aria-label
+                    // 如果本身没有文字，且不是 input，可能是一个纯图标，尽量尝试获取 aria-label, title, alt 或 class
                     if (!text && !['input', 'textarea'].includes(tag)) {
-                        text = el.getAttribute('title') || 'icon_or_empty';
+                        let cls = (typeof el.className === 'string' ? el.className : el.getAttribute('class')) || '';
+                        let clsHint = cls.trim() ? 'class_' + cls.trim().split(/\\s+/).join('_') : 'icon_or_empty';
+                        let altText = el.getAttribute('alt');
+                        text = el.getAttribute('title') || (altText && altText.trim() !== '' ? altText : null) || clsHint;
+                        
+                        // 对于 img 标签，如果还是 icon_or_empty，提取它的 src 文件名作为强力线索
+                        if (tag === 'img' && text === 'icon_or_empty' && el.src) {
+                            if (el.src.startsWith('data:')) {
+                                text = 'img_data_uri';
+                            } else {
+                                try {
+                                    let url = new URL(el.src);
+                                    let filename = url.pathname.split('/').pop();
+                                    if (filename) {
+                                        text = 'img_' + decodeURIComponent(filename);
+                                    }
+                                } catch (e) {}
+                            }
+                        }
                     }
                     
+                    // 3. 推断组件类型与语义角色 (Component Awareness)
+                    let isInteractiveCandidate = isPointer || isNativeInteractive || hasClickRole || hasOnClick;
+                    let componentType = isInteractiveCandidate ? 'clickable' : 'text_display';
+                    if (tag === 'input') {
+                        const inputType = (el.getAttribute('type') || 'text').toLowerCase();
+                        if (inputType === 'checkbox') componentType = 'checkbox';
+                        else if (inputType === 'radio') componentType = 'radio';
+                        else componentType = 'input';
+                    } else if (tag === 'textarea') {
+                        componentType = 'input';
+                    } else if (tag === 'select' || el.closest('.el-select, .ant-select, [role="combobox"]')) {
+                        componentType = 'select';
+                    } else if (tag === 'button' || el.getAttribute('role') === 'button') {
+                        componentType = 'button';
+                    } else if (el.getAttribute('role') === 'tab' || (typeof el.className === 'string' && el.className.includes('tabs__item'))) {
+                        componentType = 'tab';
+                    } else if (tag === 'canvas' || tag === 'svg') {
+                        componentType = 'canvas_or_map';
+                    }
+
+                    // 4. 向上推断父容器上下文 (Container Context)
+                    let containerName = null;
+                    let containerType = null;
+
+                    const modalEl = el.closest('.el-dialog, .el-drawer, .ant-modal, .ant-drawer, [role="dialog"], .modal');
+                    if (modalEl) {
+                        containerType = 'modal';
+                        const titleEl = modalEl.querySelector('.el-dialog__title, .ant-modal-title, .modal-title, [class*="header"] [class*="title"], h3, h4');
+                        if (titleEl && titleEl.innerText) {
+                            containerName = titleEl.innerText.trim();
+                        }
+                    } else {
+                        const tableEl = el.closest('table, .el-table, .ant-table, [role="grid"]');
+                        if (tableEl) {
+                            containerType = 'table';
+                            // 尝试找到表格前面的标题或卡片头
+                            const cardEl = tableEl.closest('.el-card, [class*="card"], [class*="panel"], [class*="box"]');
+                            if (cardEl) {
+                                const cardHeader = cardEl.querySelector('[class*="header"], [class*="title"]');
+                                if (cardHeader && cardHeader.innerText) {
+                                    containerName = cardHeader.innerText.trim().slice(0, 30);
+                                }
+                            }
+                        }
+                    }
+
                     results.push({
                         id: index++,
                         tag: tag,
                         text: text,
+                        component_type: componentType,
+                        container_name: containerName,
+                        container_type: containerType,
                         rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
                     });
                 }
@@ -84,6 +151,66 @@ class DomExtractorMixin:
             return self.page.evaluate(js_code)
         except Exception as e:
             logger.warning(f"获取页面可交互元素失败，自动回退到纯视觉模式: {e}")
+            return []
+
+    def detect_visible_modals(self) -> List[Dict[str, Any]]:
+        """
+        检测页面当前是否存在可见的弹窗、模态框或抽屉组件 (Zero-Token DOM 检测)。
+        """
+        self.get_active_page()
+        if not self.page or self.page.is_closed():
+            return []
+
+        js_code = """
+        () => {
+            const selectors = [
+                '.el-dialog:not([style*="display: none"])',
+                '.el-dialog__wrapper:not([style*="display: none"])',
+                '.el-drawer:not([style*="display: none"])',
+                '.ant-modal:not(.ant-modal-hidden)',
+                '.ant-drawer:not(.ant-drawer-hidden)',
+                '[role="dialog"]:not([style*="display: none"])',
+                '.modal.show',
+                '.modal:not([style*="display: none"])'
+            ];
+            
+            const modals = [];
+            for (const selector of selectors) {
+                const elements = document.querySelectorAll(selector);
+                for (const el of elements) {
+                    const rect = el.getBoundingClientRect();
+                    const style = window.getComputedStyle(el);
+                    if (rect.width > 50 && rect.height > 50 && 
+                        style.display !== 'none' && 
+                        style.visibility !== 'hidden' && 
+                        style.opacity !== '0') {
+                        
+                        // 提取标题
+                        const titleEl = el.querySelector('.el-dialog__title, .ant-modal-title, .modal-title, [class*="title"], h3, h4');
+                        let title = titleEl && titleEl.innerText ? titleEl.innerText.trim() : '';
+                        
+                        // 如果没有直接标题，查找第一个有意义的文字
+                        if (!title) {
+                            const headerEl = el.querySelector('.el-dialog__header, .ant-modal-header, [class*="header"]');
+                            if (headerEl && headerEl.innerText) {
+                                title = headerEl.innerText.trim().split('\\n')[0];
+                            }
+                        }
+                        
+                        modals.push({
+                            title: title || '未知弹窗',
+                            rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
+                        });
+                    }
+                }
+            }
+            return modals;
+        }
+        """
+        try:
+            return self.page.evaluate(js_code)
+        except Exception as e:
+            logger.warning(f"检测可见弹窗失败: {e}")
             return []
 
 
