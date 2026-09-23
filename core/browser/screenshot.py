@@ -156,3 +156,67 @@ class ScreenshotMixin:
             logger.error(f"截图压缩失败，降级回传原始截图: {e}")
             return base64.b64encode(png_bytes).decode("utf-8")
 
+    @staticmethod
+    def crop_roi_base64(
+        image_path: str,
+        center_x: int,
+        center_y: int,
+        dpr: float = 1.0,
+        roi_width: int = 700,
+        roi_height: int = 240,
+        save_path: Optional[str] = None
+    ) -> Optional[str]:
+        """
+        从已有全屏截图中截取目标元素局部 ROI (如 Tooltip、卡片浮层) 并返回 Base64 编码。
+        专为 API 双向核验设计，彻底防止大模型受同屏其他卡片文字的注意力串扰。
+        """
+        try:
+            from PIL import Image
+            import io
+
+            img_file = Path(image_path)
+            if not img_file.exists():
+                return None
+
+            im = Image.open(img_file)
+            w, h = im.size
+
+            px = int(center_x * dpr)
+            py = int(center_y * dpr)
+
+            crop_w = int(roi_width * dpr)
+            crop_h = int(roi_height * dpr)
+
+            # 智能偏置：若目标在右半屏，卡片文字通常向右延展；若在左半屏向右延展；居中则居中
+            if px > w * 0.55:
+                x1 = max(0, min(w - crop_w, px - int(60 * dpr)))
+            elif px < w * 0.45:
+                x1 = max(0, min(w - crop_w, px - int(50 * dpr)))
+            else:
+                x1 = max(0, min(w - crop_w, px - crop_w // 2))
+
+            y1 = max(0, min(h - crop_h, py - int(30 * dpr)))
+            x2 = min(w, x1 + crop_w)
+            y2 = min(h, y1 + crop_h)
+
+            cropped = im.crop((x1, y1, x2, y2))
+
+            if save_path:
+                try:
+                    out_p = Path(save_path)
+                    out_p.parent.mkdir(parents=True, exist_ok=True)
+                    cropped.save(out_p)
+                except Exception:
+                    pass
+
+            if cropped.mode in ("RGBA", "P"):
+                cropped = cropped.convert("RGB")
+
+            buffer = io.BytesIO()
+            cropped.save(buffer, format="JPEG", quality=92)
+            return base64.b64encode(buffer.getvalue()).decode("utf-8")
+        except Exception as e:
+            logger.warning(f"ROI 局部裁剪失败，回退使用全屏原图: {e}")
+            return None
+
+

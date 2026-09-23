@@ -376,7 +376,26 @@ class ExplorerAgent:
                     if api_summary and api_summary != "[]":
                         logger.info(f"🔬 [Auto-API] 触发接口数据双向核验: {check_instruction}")
                         try:
+                            # 优先尝试生成局部 ROI 裁剪图（彻底隔离邻近卡片与文字的注意力串扰）
                             check_b64 = hover_b64 if action_type == "hover" and 'hover_b64' in locals() else base64_img
+                            try:
+                                if 'x' in locals() and 'y' in locals() and x is not None and y is not None:
+                                    target_img_path = str(hover_img_path) if action_type == "hover" and 'hover_img_path' in locals() else str(step_img_path)
+                                    dpr_val = info.get("devicePixelRatio", 1.0) if 'info' in locals() and isinstance(info, dict) else 1.0
+                                    roi_save = str(self.explore_dir / f"explore_step_{steps_taken}_roi.png")
+                                    roi_b64 = self.driver.crop_roi_base64(
+                                        image_path=target_img_path,
+                                        center_x=x,
+                                        center_y=y,
+                                        dpr=dpr_val,
+                                        save_path=roi_save
+                                    )
+                                    if roi_b64:
+                                        logger.info(f"🎯 [Auto-API] 启用局部 ROI 聚焦图（已隔离邻居卡片视觉干扰）: {Path(roi_save).name}")
+                                        check_b64 = roi_b64
+                            except Exception as crop_err:
+                                logger.warning(f"⚠️ ROI 局部裁剪过程异常，回退使用全屏原图: {crop_err}")
+
                             passed, reason = self.vision.check_api_assertion(
                                 instruction=check_instruction,
                                 base64_image=check_b64,
