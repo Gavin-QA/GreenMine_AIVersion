@@ -162,14 +162,16 @@ class ExplorerAgent:
                     # 如果决策失败，为了防止死循环，我们强制消耗步数并继续
                     continue
 
-                action_type = decision.get("action", "finish")
-                thought = decision.get("thought", "无思考过程")
-                element_desc = decision.get("element_desc", "未知元素")
-                current_ui_path = decision.get("current_ui_path", [])
-                element_type = decision.get("element_type", "other")
-                container_name = decision.get("container_name")
-                validate_api = decision.get("validate_api", False)
-                api_assert_prompt = decision.get("api_assert_prompt", "")
+                action_type = str(decision.get("action") or "finish").strip().lower()
+                thought = decision.get("thought") or "无思考过程"
+                element_desc = str(decision.get("element_desc") or "").strip()
+                current_ui_path = decision.get("current_ui_path") or []
+                if not isinstance(current_ui_path, list):
+                    current_ui_path = [str(current_ui_path)]
+                element_type = decision.get("element_type") or "other"
+                container_name = str(decision.get("container_name") or "").strip()
+                validate_api = bool(decision.get("validate_api", False))
+                api_assert_prompt = str(decision.get("api_assert_prompt") or "").strip()
                 
                 logger.info(f"💡 [Worker] 思考链: {thought}")
                 logger.info(f"📍 [Worker] 当前推断路径: {current_ui_path} | 类型: {element_type} | 容器: {container_name}")
@@ -186,18 +188,20 @@ class ExplorerAgent:
                     if isinstance(l2_dict, dict):
                         base_l2_all.update(l2_dict.keys())
                 
-                clean_target = element_desc.replace("按钮", "").replace("选项", "").replace("菜单", "").strip("‘’'\"“” ")
+                clean_target = (
+                    element_desc.replace("按钮", "").replace("选项", "").replace("菜单", "").strip("‘’'\"“” ")
+                    if element_desc else ""
+                )
                 
                 # 判定是否属于切换菜单的全局路由动作 (如 hover 顶部导航栏的一级菜单，或 click 下拉菜单项)
                 is_nav_interaction = (
-                    any(k in element_desc for k in nav_noise_keywords) or
-                    any(k in (container_name or "") for k in nav_noise_keywords) or
-                    clean_target in base_l1_names or
-                    clean_target in base_l2_all
+                    (any(k in element_desc for k in nav_noise_keywords) if element_desc else False) or
+                    (any(k in container_name for k in nav_noise_keywords) if container_name else False) or
+                    (bool(clean_target) and (clean_target in base_l1_names or clean_target in base_l2_all))
                 )
                 
                 # 若点击了二级菜单项，作为全局路由跃迁，清空模态调用栈
-                if action_type == "click" and clean_target in base_l2_all:
+                if action_type == "click" and clean_target and clean_target in base_l2_all:
                     for l1, l2_dict in self.page_tree.items():
                         if clean_target in l2_dict:
                             logger.info(f"🧭 [Navigation] 检测到全局路由跃迁: 前往 [{l1} -> {clean_target}]")
@@ -242,7 +246,7 @@ class ExplorerAgent:
                         
                     PageMapBuilder.export_page_map(self.page_tree)
 
-                logger.info(f"🤖 [Worker] 决定: [{action_type.upper()}] -> 目标: {element_desc}")
+                logger.info(f"🤖 [Worker] 决定: [{action_type.upper()}] -> 目标: {element_desc or '(子任务达成/完成)'}")
 
                 action_success = False
 
@@ -454,7 +458,7 @@ class ExplorerAgent:
                             "thought": thought
                         })
                         
-                    if action_type in ("click", "hover") and element_desc not in global_history:
+                    if action_type in ("click", "hover") and element_desc and element_desc not in global_history:
                         global_history.append(element_desc)
                         # 实时持久化长期记忆到本地日志目录
                         history_file = self.log_dir / "global_history.json"

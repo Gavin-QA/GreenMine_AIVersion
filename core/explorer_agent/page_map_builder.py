@@ -35,7 +35,9 @@ class PageMapBuilder:
     @staticmethod
     def format_node_label(name: str, depth: int = 0) -> str:
         """根据节点语义和层级，为节点赋予极度直观的组件 Emoji"""
-        clean_name = name.strip()
+        clean_name = str(name or "").strip()
+        if not clean_name:
+            return ""
         # 如果已经带有常见 Emoji，则直接返回
         if any(clean_name.startswith(em) for em in ["📁", "📄", "📋", "🪟", "🔲", "📝", "🔽", "☑️", "🗺️", "📊", "📦", "⚙️"]):
             return clean_name
