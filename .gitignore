@@ -20,6 +20,7 @@ htmlcov/
 # Reports and Artifacts
 reports/
 logs/
+bugs/
 
 # IDE / Editor
 .vscode/

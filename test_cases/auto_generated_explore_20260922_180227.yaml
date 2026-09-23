@@ -1,0 +1,25 @@
+name: Auto Generated Case - explore_20260922_180227
+description: 由 ExplorerAgent 探索模式自动生成的闭环测试用例。
+steps:
+- type: action
+  prompt: '[HOVER] 顶部一级菜单【生产管理】'
+- type: action
+  prompt: '[CLICK] 采掘计划与统计图表上方的‘日’按钮'
+- type: action
+  prompt: '[CLICK] 采掘计划与统计图表上方的‘月’按钮'
+- type: action
+  prompt: '[CLICK] 采掘计划与统计图表上方的‘年’按钮'
+- type: api_assert
+  prompt: 验证1#矿仓Tooltip中显示的当前料位、存矿量等数据与后台接口原始JSON是否一致
+- type: action
+  prompt: '[HOVER] 1#矿仓标签（显示当前料位4.7m，存矿量908.52t）'
+- type: api_assert
+  prompt: 验证当前悬停浮层展示的3#矿仓当前料位7.5m、存矿量1627.42t与后台接口原始JSON数据是否一致
+- type: action
+  prompt: '[HOVER] 3#矿仓标签（显示当前料位7.5m，存矿量1627.42t）'
+- type: action
+  prompt: '[HOVER] 2#矿仓标签（显示当前料位6.3m，存矿量2190.80t）'
+- type: api_assert
+  prompt: 验证当前悬停浮层/卡片中4#矿仓的料位6.3m与存矿量1303.08t是否与后台接口原始JSON数据一致
+- type: action
+  prompt: '[HOVER] 4#矿仓标签（显示当前料位6.3m，存矿量1303.08t）'

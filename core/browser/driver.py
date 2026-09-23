@@ -83,9 +83,34 @@ class ElectronDriver(NetworkMonitorMixin, DomExtractorMixin, ScreenshotMixin):
         # 启动并建立 CDP 连接
         self.context, self.page = self.launcher.launch()
 
+        # ========================================================
+        # [Startup Probe] 伴生 UE 进程健康探针
+        # ========================================================
+        if settings.ue_process_name:
+            try:
+                self.launcher.wait_for_ue_process(
+                    process_name=settings.ue_process_name,
+                    timeout=settings.startup_timeout
+                )
+            except Exception as e:
+                logger.error(f"❌ 伴生 UE 核心引擎探测失败: {e}")
+                raise
 
-        # 等待并锁定有效页面
-        self.page = self.get_active_page()
+        # ========================================================
+        # [Startup Probe] 页面真实跳转与大屏就绪探针
+        # ========================================================
+        if settings.expected_page_url or settings.expected_page_title:
+            try:
+                self.page = self.launcher.wait_for_page_transition(
+                    expected_url_keyword=settings.expected_page_url,
+                    expected_title_keyword=settings.expected_page_title,
+                    timeout=settings.startup_timeout
+                )
+            except Exception as e:
+                logger.warning(f"⚠️ 页面跳转探测异常: {e}")
+                self.page = self.get_active_page()
+        else:
+            self.page = self.get_active_page()
 
         # 挂载网络接口监听器
         self._setup_network_listeners()
@@ -103,11 +128,11 @@ class ElectronDriver(NetworkMonitorMixin, DomExtractorMixin, ScreenshotMixin):
         # 在启动器底层进行编程式判断，确保前端核心 DOM 已经加载完成
         try:
             logger.info("⏳ 等待应用前端底层加载 (domcontentloaded)...")
-            self.page.wait_for_load_state("domcontentloaded", timeout=15000)
-            logger.info("⏳ 等待应用前端网络空闲 (networkidle)...")
-            self.page.wait_for_load_state("networkidle", timeout=15000)
-        except Exception as e:
-            logger.warning(f"⚠️ 前端底层状态等待超时，可能存在持续的轮询请求，将强制继续... ({e})")
+            self.page.wait_for_load_state("domcontentloaded", timeout=10000)
+            logger.info("⏳ 快速检测前端网络初始缓冲 (networkidle)...")
+            self.page.wait_for_load_state("networkidle", timeout=3000)
+        except Exception:
+            logger.info("⚡ 前端底层已加载完毕，后台轮询接口交由监听池持续捕获。")
 
         # 注册控制台日志与页面错误监听
         self._setup_page_listeners()
@@ -287,7 +312,7 @@ class ElectronDriver(NetworkMonitorMixin, DomExtractorMixin, ScreenshotMixin):
         # 完整的鼠标移动轨迹（MouseMove 事件序列）。如果去掉 steps，Playwright 的鼠标
         # 会“瞬间转移(Teleport)”到目标，导致前端底层无法触发 mouseenter 或 hover 状态，
         # 从而让依靠悬停展示的二级菜单永远无法弹出！请勿随意修改！
-        self.page.mouse.move(x + 1 ,y + 1, steps=10)
+        self.page.mouse.move(x + 1, y + 1, steps=10)
         self.page.mouse.move(x, y)
         
 
@@ -303,7 +328,7 @@ class ElectronDriver(NetworkMonitorMixin, DomExtractorMixin, ScreenshotMixin):
             raise RuntimeError("页面未就绪！")
 
         self.last_mouse_pos = (to_x, to_y)
-        logger.info(f"👉 模拟拖拽: ({from_x}, {from_x}) -> ({to_x}, {to_y})")
+        logger.info(f"👉 模拟拖拽: ({from_x}, {from_y}) -> ({to_x}, {to_y})")
         self.page.mouse.move(from_x, from_y)
         self.page.mouse.down()
         self.page.mouse.move(to_x, to_y, steps=steps)

@@ -1,0 +1,39 @@
+name: Auto Generated Case - explore_20260923_124144
+description: 由 ExplorerAgent 探索模式自动生成的闭环测试用例。
+steps:
+- type: action
+  prompt: '[CLICK] 设备管理一张图'
+- type: action
+  prompt: '[HOVER] 设备管理一级菜单'
+- type: action
+  prompt: '[CLICK] 采掘设备'
+- type: api_assert
+  prompt: 验证当前页面中‘设备运行状态统计卡片’内各项指标（如已维修次数、处理中工单等）的数值是否与后台接口返回的数据一致
+- type: action
+  prompt: '[HOVER] 设备运行状态统计卡片'
+- type: api_assert
+  prompt: 验证当前悬浮框/卡片中各设备证书的名称、编号、有效期等信息与后台接口原始 JSON 是否一致
+- type: action
+  prompt: '[HOVER] 采掘设备证书列表中的第一个设备证书卡片（矿用液压锚杆台车）'
+- type: api_assert
+  prompt: 验证当前悬浮框中‘矿用液压锚杆台车’的设备编号、证书类型、有效期等信息与后台接口原始JSON是否一致
+- type: action
+  prompt: '[HOVER] 采掘设备证书列表中的第一个设备证书卡片（矿用液压锚杆台车）'
+- type: action
+  prompt: '[HOVER] 采掘设备巡检记录区域中的‘累计巡检次数’指标卡片'
+- type: api_assert
+  prompt: 验证设备列表中各设备的名称、编号、状态等字段是否与后台接口返回的数据一致
+- type: action
+  prompt: '[HOVER] 采掘设备总览区域中的设备列表区域'
+- type: action
+  prompt: '[HOVER] 顶部一级菜单‘设备管理’'
+- type: action
+  prompt: '[CLICK] 运输设备'
+- type: api_assert
+  prompt: 验证当前悬停浮层展示的设备利用率数值（89%）与后台接口原始JSON中的设备利用率字段是否一致
+- type: action
+  prompt: '[HOVER] 运输设备统计区域的设备利用率环形图中89%扇区'
+- type: api_assert
+  prompt: 验证当前悬停浮层展示的设备编号ZW00101的证书信息（包括设备名称、证书类型、有效期等）与后台接口原始JSON数据是否一致
+- type: action
+  prompt: '[HOVER] 设备编号为ZW00101的运输设备证书卡片'

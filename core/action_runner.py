@@ -112,7 +112,8 @@ class ActionRunner:
                 elif step_type == "assert":
                     self._do_assert(prompt)
                 elif step_type == "api_assert":
-                    self._do_api_assert(prompt)
+                    target_api = step.get("target_api")
+                    self._do_api_assert(prompt, target_api=target_api)
                 elif step_type == "freeze_check":
                     wait_sec = float(step.get("wait_seconds", 5.0))
                     self._do_freeze_check(prompt, wait_sec)
@@ -282,10 +283,11 @@ class ActionRunner:
         if not passed:
             raise ActionRunnerException(f"视觉断言失败！理由: {reason}")
 
-    def _do_api_assert(self, prompt: str):
-        """执行 API 接口与视觉双重断言"""
+    def _do_api_assert(self, prompt: str, target_api: Optional[str] = None):
+        """执行 API 接口与视觉双重断言（支持基于特征倒排索引的动态聚焦与 target_api 指定过滤）"""
         b64_img = self.driver.capture_screenshot_base64()
-        api_data_json = self.driver.get_api_records_summary()
+        query_text = f"{target_api} {prompt}" if target_api else prompt
+        api_data_json = self.driver.get_focused_api_records_summary(query_text)
         
         passed, reason = self.vision.check_api_assertion(
             instruction=prompt, 

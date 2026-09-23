@@ -1,0 +1,31 @@
+name: Auto Generated Case - explore_20260923_144410
+description: 由 ExplorerAgent 探索模式自动生成的闭环测试用例。
+steps:
+- type: action
+  prompt: '[HOVER] 顶部一级菜单中的‘设备管理’'
+- type: action
+  prompt: '[CLICK] 设备管理一张图'
+- type: action
+  prompt: '[HOVER] 顶部一级菜单‘设备管理’'
+- type: action
+  prompt: '[CLICK] 二级菜单‘采掘设备’'
+- type: action
+  prompt: '[CLICK] 采掘设备点检方案卡片中的‘地球图标’'
+- type: api_assert
+  prompt: 验证当前悬停浮层展示的撬毛台车设备名称、编号、证书类型、有效期等字段是否与后台接口数据一致
+- type: action
+  prompt: '[HOVER] 第二条采掘设备证书（撬毛台车）的证书图标'
+- type: api_assert
+  prompt: 验证当前悬停浮层展示的矿用液压掘进钻车设备名称、编号、证书类型、有效期等字段是否与后台接口原始JSON一致
+- type: action
+  prompt: '[HOVER] 第四条采掘设备证书（矿用液压掘进钻车）的证书图标'
+- type: api_assert
+  prompt: 验证当前悬停浮层展示的‘覆盖设备数’数值与后台接口原始 JSON 是否一致
+- type: action
+  prompt: '[HOVER] 采掘设备点检记录区域的‘覆盖设备数’指标卡片'
+- type: action
+  prompt: '[CLICK] 采掘设备点检记录区域的‘累计巡检次数’指标卡片'
+- type: action
+  prompt: '[CLICK] 第一条采掘设备证书（矿用液压锚杆台车）的证书图标'
+- type: action
+  prompt: '[CLICK] 第三条采掘设备证书（1#给料放矿机）的证书图标'

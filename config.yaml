@@ -1,6 +1,12 @@
 app:
   exe_path: "D:\\LargeScreen\\zhaiwan2\\project\\se-launcher-zhaiwan\\se-launcher-zhaiwan.exe"
   debug_port: 9223
+  ue_process_name: "zhaiwan.exe"       # 伴生 UE 进程镜像名 (若不设或为空则不检测)
+  expected_page_url: "main.html"       # 目标大屏主页面 URL 关键字
+  expected_page_title: "主界面"         # 目标大屏主页面标题关键字
+  startup_timeout: 40.0                # UE 启动与页面跳转最大容忍时间(秒)
+  start_delay: 5.0                     # 页面就绪后的 UI 稳定缓冲时间(秒)
+  no_proxy: "127.0.0.1,localhost,192.168.1.97,221.234.48.197,::1" # 代理白名单
   viewport:
     width: 2560
     height: 1440
@@ -11,6 +17,8 @@ llm:
   api_key: ""        # 请在 .env 文件中配置 LLM_API_KEY，此处留空以防泄露
   base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
   model: "qwen-vl-max"
+  timeout: 60        # 单次大模型调用超时保障(秒)
+  temperature: 0.1   # 模型采样温度 (控制视觉定位稳定性)
 
 reports:
   dir: "reports"

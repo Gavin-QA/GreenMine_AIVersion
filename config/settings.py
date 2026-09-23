@@ -54,6 +54,8 @@ class Settings:
         self.llm_api_key: str = os.getenv("LLM_API_KEY") or llm_cfg.get("api_key", "")
         self.llm_base_url: str = os.getenv("LLM_BASE_URL") or llm_cfg.get("base_url", "https://api.deepseek.com/v1")
         self.llm_model: str = os.getenv("LLM_MODEL") or llm_cfg.get("model", "deepseek-v4-flash-vision-exp")
+        self.llm_timeout: float = float(os.getenv("LLM_TIMEOUT") or llm_cfg.get("timeout", 60.0))
+        self.llm_temperature: float = float(os.getenv("LLM_TEMPERATURE") or llm_cfg.get("temperature", 0.1))
 
         # 4. 测试账号配置
         self.test_username: str = os.getenv("TEST_USERNAME", "")
@@ -64,7 +66,15 @@ class Settings:
         self.headless: bool = os.getenv("HEADLESS", "false").lower() == "true"
         self.launch_args: list = []
 
-        # 6. 日志与报告配置
+        # 6. UE 伴生进程与页面跳转健康探测配置
+        self.ue_process_name: str = os.getenv("UE_PROCESS_NAME") or app_cfg.get("ue_process_name", "zhaiwan.exe")
+        self.expected_page_url: str = os.getenv("EXPECTED_PAGE_URL") or app_cfg.get("expected_page_url", "main.html")
+        self.expected_page_title: str = os.getenv("EXPECTED_PAGE_TITLE") or app_cfg.get("expected_page_title", "主界面")
+        self.startup_timeout: float = float(os.getenv("STARTUP_TIMEOUT") or app_cfg.get("startup_timeout", 40.0))
+        self.start_delay: float = float(os.getenv("START_DELAY") or app_cfg.get("start_delay", 5.0))
+        self.no_proxy: str = os.getenv("NO_PROXY") or app_cfg.get("no_proxy", "127.0.0.1,localhost,192.168.1.97,221.234.48.197,::1")
+
+        # 7. 日志与报告配置
         self.log_level: str = os.getenv("LOG_LEVEL", "INFO")
         self.log_to_console: bool = os.getenv("LOG_TO_CONSOLE", "true").lower() == "true"
         self.log_to_file: bool = os.getenv("LOG_TO_FILE", "true").lower() == "true"

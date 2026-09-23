@@ -369,9 +369,11 @@ class ExplorerAgent:
                 # ========================================================
                 should_check_api = action_success and (validate_api or (action_type == "hover" and element_type in ("chart", "table")))
                 if should_check_api:
-                    api_summary = self.driver.get_api_records_summary()
+                    check_instruction = api_assert_prompt.strip() if api_assert_prompt else f"验证截图中关于 '{element_desc}' 所展示的具体业务数值，是否与接口返回的数据逻辑一致（非 NaN 且非全 0 异常）"
+                    # 构建富语义检索上下文：融合断言意图、交互元素描述及目标名称，驱动底层倒排索引精准过滤
+                    search_context = f"{check_instruction} {element_desc}"
+                    api_summary = self.driver.get_focused_api_records_summary(search_context)
                     if api_summary and api_summary != "[]":
-                        check_instruction = api_assert_prompt.strip() if api_assert_prompt else f"验证截图中关于 '{element_desc}' 所展示的具体业务数值，是否与接口返回的数据逻辑一致（非 NaN 且非全 0 异常）"
                         logger.info(f"🔬 [Auto-API] 触发接口数据双向核验: {check_instruction}")
                         try:
                             check_b64 = hover_b64 if action_type == "hover" and 'hover_b64' in locals() else base64_img

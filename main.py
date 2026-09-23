@@ -11,6 +11,7 @@ from core.vision.agent import VisionAgent
 from core.action_runner import ActionRunner
 from core.explorer_agent import ExplorerAgent
 from utils.logger import LoggerManager
+from config.settings import settings
 
 
 def parse_args():
@@ -23,7 +24,7 @@ def parse_args():
     parser.add_argument("--explore-context", type=str, action="append", help="指定针对探索模式的项目背景知识或交互规则，可多次使用，支持纯文本或文件路径")
     parser.add_argument("--resume-from", type=str, help="指定上一次探索的 log 目录（例如 logs/explore_xxx），以实现断点续传（继承记忆与页面架构树）")
     parser.add_argument("--max-steps", type=int, default=20, help="自主探索的最大步数限制（默认: 20）")
-    parser.add_argument("--start-delay", type=float, default=15.0, help="启动应用后的等待时间(秒)，确保引擎和UI完全加载（默认: 15.0）")
+    parser.add_argument("--start-delay", type=float, default=getattr(settings, "start_delay", 5.0), help="启动应用后的等待时间(秒)，确保引擎和UI完全加载（默认从 config.yaml 读取）")
     parser.add_argument("--wait-ready", type=str, help="【智能视觉等待】指定自然语言条件，持续轮询截屏直到满足条件")
     parser.add_argument("--wait-timeout", type=float, default=60.0, help="智能视觉等待的最大超时时间(秒) (默认: 60.0)")
     return parser.parse_args()
