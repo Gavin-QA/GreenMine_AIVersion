@@ -71,7 +71,7 @@ class Settings:
         self.expected_page_url: str = os.getenv("EXPECTED_PAGE_URL") or app_cfg.get("expected_page_url", "main.html")
         self.expected_page_title: str = os.getenv("EXPECTED_PAGE_TITLE") or app_cfg.get("expected_page_title", "主界面")
         self.startup_timeout: float = float(os.getenv("STARTUP_TIMEOUT") or app_cfg.get("startup_timeout", 40.0))
-        self.start_delay: float = float(os.getenv("START_DELAY") or app_cfg.get("start_delay", 5.0))
+        self.start_delay: float = float(os.getenv("START_DELAY") or app_cfg.get("start_delay", 15.0))
         self.no_proxy: str = os.getenv("NO_PROXY") or app_cfg.get("no_proxy", "127.0.0.1,localhost,192.168.1.97,221.234.48.197,::1")
 
         # 7. 日志与报告配置

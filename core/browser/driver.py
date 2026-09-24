@@ -29,8 +29,9 @@ logger = logging.getLogger("core.browser")
 from .network_monitor import NetworkMonitorMixin
 from .dom_extractor import DomExtractorMixin
 from .screenshot import ScreenshotMixin
+from .chart_probe import ChartProbeMixin
 
-class ElectronDriver(NetworkMonitorMixin, DomExtractorMixin, ScreenshotMixin):
+class ElectronDriver(NetworkMonitorMixin, DomExtractorMixin, ScreenshotMixin, ChartProbeMixin):
     """
     纯视觉驱动框架的底座层封装 (Playwright over CDP)
     

@@ -5,6 +5,7 @@ import os
 import time
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 from core.browser import ElectronDriver
 from core.vision.agent import VisionAgent
@@ -23,8 +24,9 @@ def parse_args():
     parser.add_argument("--explore", type=str, help="开启自主探索模式，并指定宏观探索目标")
     parser.add_argument("--explore-context", type=str, action="append", help="指定针对探索模式的项目背景知识或交互规则，可多次使用，支持纯文本或文件路径")
     parser.add_argument("--resume-from", type=str, help="指定上一次探索的 log 目录（例如 logs/explore_xxx），以实现断点续传（继承记忆与页面架构树）")
+    parser.add_argument("--reexplore", type=str, nargs="?", const="auto", help="强制重新探索指定模块（即使已在架构树中存在）。可指定模块名（如 智能通风），若不带参数则自动从 --explore 提示词中提取")
     parser.add_argument("--max-steps", type=int, default=20, help="自主探索的最大步数限制（默认: 20）")
-    parser.add_argument("--start-delay", type=float, default=getattr(settings, "start_delay", 5.0), help="启动应用后的等待时间(秒)，确保引擎和UI完全加载（默认从 config.yaml 读取）")
+    parser.add_argument("--start-delay", type=float, default=getattr(settings, "start_delay", 15.0), help="启动应用后的等待时间(秒)，确保引擎和UI完全加载（默认从 config.yaml 读取）")
     parser.add_argument("--wait-ready", type=str, help="【智能视觉等待】指定自然语言条件，持续轮询截屏直到满足条件")
     parser.add_argument("--wait-timeout", type=float, default=60.0, help="智能视觉等待的最大超时时间(秒) (默认: 60.0)")
     return parser.parse_args()
@@ -73,9 +75,37 @@ def perform_visual_wait(driver: ElectronDriver, vision_agent: VisionAgent, promp
             logger.info(f"✅ 视觉条件满足，画面已就绪 (耗时: {elapsed:.1f}s)！")
             break
         
-        logger.info(f"🔄 画面尚未就绪，3秒后重试 (第 {attempt} 次检测)...")
-        time.sleep(3.0)
+        logger.info(f"🔄 画面尚未就绪，4秒后重试 (第 {attempt} 次检测)...")
+        time.sleep(4.0)
         attempt += 1
+
+
+def extract_target_module(prompt: str) -> Optional[str]:
+    """从提示词中智能匹配已知的一级或二级业务模块名称"""
+    if not prompt:
+        return None
+    try:
+        from core.explorer_agent.page_map_builder import PageMapBuilder
+        base_tree = PageMapBuilder.parse_base_rules()
+        
+        all_l2 = []
+        all_l1 = list(base_tree.keys())
+        for l2_dict in base_tree.values():
+            all_l2.extend(list(l2_dict.keys()))
+            
+        # 优先匹配二级业务菜单（颗粒度更细，如“智能通风”、“采掘设备”）
+        for l2 in sorted(all_l2, key=len, reverse=True):
+            if l2 in prompt:
+                return l2
+                
+        # 次优匹配一级主模块（如“智控管理”）
+        for l1 in sorted(all_l1, key=len, reverse=True):
+            if l1 in prompt:
+                return l1
+    except Exception as e:
+        logging.getLogger("main").warning(f"从提示词解析目标模块失败: {e}")
+        
+    return None
 
 
 def run_explore_mode(driver: ElectronDriver, vision_agent: VisionAgent, args):
@@ -98,7 +128,27 @@ def run_explore_mode(driver: ElectronDriver, vision_agent: VisionAgent, args):
                 contexts.append(ctx.strip())
         context_str = "\n".join(contexts)
         
-    explorer.start_exploration(objective=args.explore, max_steps=args.max_steps, context=context_str, resume_from=args.resume_from)
+    reexplore_module = None
+    # 1. 显式传入了 --reexplore 参数
+    if getattr(args, "reexplore", None):
+        if args.reexplore != "auto":
+            reexplore_module = args.reexplore.strip()
+        else:
+            reexplore_module = extract_target_module(args.explore)
+    # 2. 虽未传 --reexplore，但 explore 文本中含有重新探索自然语言意图
+    elif args.explore and any(k in args.explore for k in ["重新", "重探", "再次", "重做", "重跑"]):
+        reexplore_module = extract_target_module(args.explore)
+
+    if reexplore_module:
+        logging.getLogger("main").info(f"🎯 [Re-explore] 识别到模块重探需求，锁定目标模块: 【{reexplore_module}】")
+
+    explorer.start_exploration(
+        objective=args.explore,
+        max_steps=args.max_steps,
+        context=context_str,
+        resume_from=args.resume_from,
+        reexplore_module=reexplore_module
+    )
 
 
 def run_yaml_mode(driver: ElectronDriver, vision_agent: VisionAgent, cases_to_run: list, args, logger: logging.Logger):

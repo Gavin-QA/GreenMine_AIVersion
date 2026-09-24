@@ -186,12 +186,14 @@ class PageMapBuilder:
     def sanitize_page_tree(tree: dict, base_rules: dict = None, is_root: bool = True) -> dict:
         """
         清洗架构树，剔除全局导航冗余（如“顶部导航栏”、“下拉菜单”、非法嵌套的一级菜单等），
+        剔除“等待...加载完成”等纯过渡性辅助动作，解包伪浮窗容器，
         确保只有纯粹的业务组件和页面容器被挂载在架构树中。
         """
         if not isinstance(tree, dict):
             return tree
 
         nav_noise_keywords = ["顶部导航栏", "导航栏", "下拉菜单", "菜单栏"]
+        wait_noise_keywords = ["等待", "wait", "加载完成", "完全加载", "完全可见", "渲染完成"]
         base_l1_keys = set(base_rules.keys()) if base_rules else set()
 
         sanitized = {}
@@ -200,26 +202,123 @@ class PageMapBuilder:
             if any(noise in key for noise in nav_noise_keywords):
                 continue
 
-            # 2. 避免一级菜单被错误嵌套在非根层级下（例如“首页”下面错误嵌套了“生产管理”）
+            # 2. 剔除等待/过渡动作辅助描述（如“等待‘胶带监测预警’列表加载完成”）
+            if any(noise in key for noise in wait_noise_keywords):
+                continue
+
+            # 3. 避免一级菜单被错误嵌套在非根层级下（例如“首页”下面错误嵌套了“生产管理”）
             if not is_root and base_rules and key in base_l1_keys:
                 continue
 
-            # 3. 递归清洗子树
+            # 4. 递归清洗子树
             cleaned_subtree = PageMapBuilder.sanitize_page_tree(subtree, base_rules=base_rules, is_root=False)
-            sanitized[key] = cleaned_subtree
+
+            # 5. 解包伪浮窗（例如““智能胶带运输”浮窗”或““底部标签栏中的‘1#中央配电室’标签”浮窗”）
+            # 许多 Tab 切换或按钮点击因 3D 渲染光影变暗被误当成了浮窗，将子节点提升解包到当前层级
+            if ("”浮窗" in key or "”弹窗" in key or "浮窗" in key) and any(k in key for k in ["标签", "tab", "Tab", "按钮", "菜单", "导航", "总览", "运输"]):
+                PageMapBuilder._deep_merge(sanitized, cleaned_subtree)
+                continue
+
+            # 6. 标签名称规范化（去除前缀冗余，使重复标签自动折叠合并）
+            norm_key = key
+            if "底部标签栏中的‘" in norm_key:
+                norm_key = norm_key.replace("底部标签栏中的‘", "").replace("’标签", "标签").replace("’", "")
+            elif "底部标签栏中‘" in norm_key:
+                norm_key = norm_key.replace("底部标签栏中‘", "").replace("’标签", "标签").replace("’", "")
+
+            if norm_key in sanitized and isinstance(sanitized[norm_key], dict) and isinstance(cleaned_subtree, dict):
+                PageMapBuilder._deep_merge(sanitized[norm_key], cleaned_subtree)
+            else:
+                sanitized[norm_key] = cleaned_subtree
 
         return sanitized
+
+    @staticmethod
+    def _deep_merge(target: dict, source: dict):
+        """递归深度合并两棵架构树，自动过滤全局导航与过渡等待噪音"""
+        noise_keywords = ["顶部导航栏", "导航栏", "下拉菜单", "菜单栏", "等待", "wait", "加载完成", "完全加载", "完全可见", "渲染完成"]
+        for k, v in source.items():
+            if any(noise in k for noise in noise_keywords):
+                continue
+            if k in target and isinstance(target[k], dict) and isinstance(v, dict):
+                PageMapBuilder._deep_merge(target[k], v)
+            else:
+                target[k] = v
+
+    @staticmethod
+    def load_global_tree() -> dict:
+        """从 docs/global_page_tree.json 加载累积架构树，若无则从 docs/explore_rules.md 加载基准底座"""
+        base_tree = PageMapBuilder.parse_base_rules()
+        global_file = Path("docs") / "global_page_tree.json"
+        if global_file.exists():
+            try:
+                import json
+                with open(global_file, "r", encoding="utf-8") as f:
+                    history_tree = json.load(f)
+                PageMapBuilder._deep_merge(base_tree, history_tree)
+                logger.info(f"📚 成功继承历史全局架构树: {global_file}")
+            except Exception as e:
+                logger.warning(f"加载全局历史架构树失败: {e}")
+        return base_tree
+
+    @staticmethod
+    def reset_module_subtree(tree: dict, module_name: str) -> bool:
+        """
+        在架构树中查找指定的一级或二级菜单模块，并清空其所有子节点（重置为空分支），
+        同时实时同步清空 docs/global_page_tree.json 中的历史节点，确保全新重探。
+        """
+        clean_target = module_name.strip("【】'\" ")
+        
+        def _clear_in_dict(d: dict) -> bool:
+            cleared = False
+            for l1, l2_dict in d.items():
+                if not isinstance(l2_dict, dict):
+                    continue
+                # 匹配一级主模块 (例如 "智控管理")
+                if l1 == clean_target or (len(clean_target) >= 2 and (clean_target in l1 or l1 in clean_target)):
+                    for l2 in list(l2_dict.keys()):
+                        l2_dict[l2] = {}
+                    logger.info(f"🧹 [PageMapBuilder] 已重置一级主模块【{l1}】下所有二级业务菜单的子节点！")
+                    cleared = True
+                    continue
+                # 匹配二级业务菜单 (例如 "智能通风" 或 "采掘设备")
+                for l2 in list(l2_dict.keys()):
+                    if l2 == clean_target or (len(clean_target) >= 2 and (clean_target in l2 or l2 in clean_target)):
+                        l2_dict[l2] = {}
+                        logger.info(f"🧹 [PageMapBuilder] 已重置架构树中模块【{l1} -> {l2}】的子节点，准备全新重探！")
+                        cleared = True
+            return cleared
+
+        reset_ok = _clear_in_dict(tree)
+
+        # 同时持久化清空 docs/global_page_tree.json 里的该模块历史
+        global_file = Path("docs") / "global_page_tree.json"
+        if global_file.exists():
+            try:
+                import json
+                with open(global_file, "r", encoding="utf-8") as f:
+                    history_tree = json.load(f)
+                if _clear_in_dict(history_tree):
+                    with open(global_file, "w", encoding="utf-8") as f:
+                        json.dump(history_tree, f, ensure_ascii=False, indent=2)
+                    reset_ok = True
+            except Exception as e:
+                logger.warning(f"同步重置 global_page_tree.json 失败: {e}")
+
+        return reset_ok
 
     @staticmethod
     def export_page_map(page_tree: dict):
         """
         统一导出页面架构地图：
         包含【纯 Markdown 结构化组件拓扑大纲】与【Mermaid 辅助图】
+        自动与 docs/global_page_tree.json 持久化合并，永不因清空日志丢失历史记录！
         """
         try:
             docs_dir = Path("docs").resolve()
             docs_dir.mkdir(parents=True, exist_ok=True)
             map_path = docs_dir / "auto_page_map.md"
+            global_file = docs_dir / "global_page_tree.json"
 
             # 1. 加载基准骨架并清洗导航噪音节点
             base_tree = PageMapBuilder.parse_base_rules()
@@ -228,25 +327,33 @@ class PageMapBuilder:
             merged_tree = {}
             for l1, l2_dict in base_tree.items():
                 merged_tree[l1] = dict(l2_dict)
-                
-            # 将探索到的数据合入底座
-            def deep_merge(target, source):
-                for k, v in source.items():
-                    # 过滤导航噪音
-                    if any(noise in k for noise in ["顶部导航栏", "导航栏", "下拉菜单"]):
-                        continue
-                    if k in target and isinstance(target[k], dict) and isinstance(v, dict):
-                        deep_merge(target[k], v)
-                    else:
-                        target[k] = v
 
-            deep_merge(merged_tree, page_tree)
+            # 先合入全局历史持久化树（防止清空日志后丢失以往探索的模块）
+            if global_file.exists():
+                try:
+                    import json
+                    with open(global_file, "r", encoding="utf-8") as f:
+                        history_tree = json.load(f)
+                    PageMapBuilder._deep_merge(merged_tree, history_tree)
+                except Exception:
+                    pass
+                
+            # 将本次探索到的数据合入全局树
+            PageMapBuilder._deep_merge(merged_tree, page_tree)
 
             # 2. 深度清洗与去噪
             clean_tree = PageMapBuilder.sanitize_page_tree(merged_tree, base_rules=base_tree)
 
             # 3. 列表折叠与优化
             optimized_tree = PageMapBuilder.fold_duplicate_list_items(clean_tree)
+
+            # 4. 实时持久化到 docs/global_page_tree.json (独立于 logs 永久保存)
+            try:
+                import json
+                with open(global_file, "w", encoding="utf-8") as f:
+                    json.dump(clean_tree, f, ensure_ascii=False, indent=2)
+            except Exception as e:
+                logger.warning(f"持久化 global_page_tree.json 失败: {e}")
 
             # 4. 渲染纯 Markdown 树
             markdown_tree = PageMapBuilder.render_markdown_tree(optimized_tree)

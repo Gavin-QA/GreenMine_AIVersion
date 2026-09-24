@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+import time
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
@@ -15,6 +16,7 @@ from .prompts import (
     DOM_MATCH_SYSTEM_PROMPT,
     ASSERT_SYSTEM_PROMPT,
     API_ASSERT_SYSTEM_PROMPT,
+    BATCH_CHART_ASSERT_SYSTEM_PROMPT,
     SELF_HEAL_SYSTEM_PROMPT
 )
 
@@ -39,6 +41,7 @@ class VisionAgent:
         self.base_url = settings.llm_base_url.rstrip("/")
         self.model = settings.llm_model
         self.provider = settings.llm_provider
+        self.session = requests.Session()
 
         if not self.api_key:
             logger.warning("未配置 LLM_API_KEY！请在 .env 文件中设置。")
@@ -105,22 +108,42 @@ class VisionAgent:
             "response_format": {"type": "json_object"} if self.provider == "openai" else None
         }
 
-        try:
-            logger.info(f"🧠 [VisionAgent] 请求大模型: {self.model} ...")
-            resp = requests.post(endpoint, json=payload, headers=headers, timeout=60)
-            resp.raise_for_status()
-            
-            data = resp.json()
-            content = data["choices"][0]["message"]["content"]
-            
-            # 解析并清理返回的 JSON
-            clean_content = self._clean_json_response(content)
-            logger.debug(f"[VisionAgent] 原始响应:\n{clean_content}")
-            return json.loads(clean_content)
+        max_retries = 3
+        last_exception = None
 
-        except Exception as e:
-            logger.error(f"🧠 大模型请求过程发生未知异常: {e}")
-            raise VisionAgentException(f"LLM API Unexpected Error: {e}")
+        for attempt in range(1, max_retries + 1):
+            try:
+                if attempt == 1:
+                    logger.info(f"🧠 [VisionAgent] 请求大模型: {self.model} ...")
+                else:
+                    logger.info(f"🧠 [VisionAgent] 请求大模型重试 ({attempt}/{max_retries}): {self.model} ...")
+
+                resp = self.session.post(endpoint, json=payload, headers=headers, timeout=60)
+                resp.raise_for_status()
+                
+                data = resp.json()
+                content = data["choices"][0]["message"]["content"]
+                
+                # 解析并清理返回的 JSON
+                clean_content = self._clean_json_response(content)
+                logger.debug(f"[VisionAgent] 原始响应:\n{clean_content}")
+                return json.loads(clean_content)
+
+            except (requests.exceptions.ProxyError, requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+                last_exception = e
+                logger.warning(f"⚠️ [VisionAgent] 大模型通信异常 ({type(e).__name__}): {e}")
+                # 若遇到本地代理异常 (如 Clash/梯子端口中断或断开)，自动降级切换为直连模式重试
+                if self.session.trust_env:
+                    logger.info("🔄 [VisionAgent] 检测到系统代理可能中断，自动降级为直连模式 (trust_env=False) 重试...")
+                    self.session.trust_env = False
+                if attempt < max_retries:
+                    time.sleep(1.5 * attempt)
+            except Exception as e:
+                logger.error(f"🧠 大模型请求过程发生未知异常: {e}")
+                raise VisionAgentException(f"LLM API Unexpected Error: {e}")
+
+        logger.error(f"🧠 大模型请求重试 {max_retries} 次后仍失败: {last_exception}")
+        raise VisionAgentException(f"LLM API Unexpected Error: {last_exception}")
 
     def check_api_assertion(self, instruction: str, base64_image: str, api_data_json: str) -> Tuple[bool, str]:
         """
@@ -153,6 +176,44 @@ class VisionAgent:
             
         except Exception as e:
             logger.error(f"🧠 大模型执行 API 双重断言发生异常: {e}")
+            raise VisionAgentException(f"LLM API Unexpected Error: {e}")
+
+    def check_batch_chart_assertion(self, chart_name: str, points: list, base64_image: str, api_data_json: str) -> Tuple[bool, str]:
+        """
+        基于图表嗅探到的全量时序/类目数据点与截获的接口 JSON，进行集中批量双向断言
+        返回 (passed, reason)
+        """
+        logger.info(f"📊 [BatchChartAssert] 正在对图表 '{chart_name}' (共 {len(points)} 个数据点) 发起集中接口断言...")
+        
+        points_summary = json.dumps(points, ensure_ascii=False, indent=2)
+        user_prompt = (
+            f"【目标图表名称】: {chart_name}\n\n"
+            f"【探针捕获到的全量图表数据点 (共 {len(points)} 项)】:\n{points_summary}\n\n"
+            f"【最新倒排检索到的 API 接口响应报文】:\n{api_data_json}\n\n"
+            f"请核验上述图表数据是否全部在后台接口中正确存在，数值是否一致，是否存在断流全0或业务异常。"
+        )
+        
+        try:
+            result = self._call_llm(
+                system_prompt=BATCH_CHART_ASSERT_SYSTEM_PROMPT,
+                user_prompt=user_prompt,
+                base64_image=base64_image
+            )
+            
+            thought = result.get("thought", "")
+            passed = result.get("passed", False)
+            reason = result.get("assert_reason", "未提供理由")
+            
+            logger.info(f"💡 [BatchChartAssert] AI 思考链: {thought}")
+            if passed:
+                logger.info(f"✅ [BatchChartAssert] 图表批量断言结果: True | 理由: {reason}")
+            else:
+                logger.warning(f"❌ [BatchChartAssert] 图表批量断言结果: False | 理由: {reason}")
+                
+            return passed, reason
+            
+        except Exception as e:
+            logger.error(f"🧠 大模型执行图表批量断言发生异常: {e}")
             raise VisionAgentException(f"LLM API Unexpected Error: {e}")
 
     def find_element(self, instruction: str, base64_image: str, viewport_width: int, viewport_height: int, dom_elements: Optional[List[Dict[str, Any]]] = None) -> Tuple[int, int]:
@@ -274,12 +335,14 @@ class VisionAgent:
         
         return passed, reason
 
-    def plan_sub_objective(self, macro_objective: str, base64_image: str, global_history: list, context: str = "", current_page_tree: dict = None) -> dict:
+    def plan_sub_objective(self, macro_objective: str, base64_image: str, global_history: list, context: str = "", current_page_tree: dict = None, reexplore_module: str = None) -> dict:
         """
         为探索生成短期子目标 (Planner)
         """
         logger.info(f"🕵️‍♂️ [Planner] 思考宏观目标: '{macro_objective}'")
         user_prompt = f"宏观目标：{macro_objective}\n"
+        if reexplore_module:
+            user_prompt += f"【🎯 强制重新探索模式】当前指令明确要求重新深度探索模块【{reexplore_module}】！请无视该模块的历史状态，将其作为全新对象进行地毯式探索，全面覆盖其内部所有Tab标签、折线图拐点、数据卡片与表格！\n"
         if context:
             user_prompt += f"【背景知识】:\n{context}\n"
         if current_page_tree:
@@ -287,7 +350,11 @@ class VisionAgent:
             mermaid_str = PageMapBuilder.dict_to_mermaid_string(current_page_tree)
             user_prompt += f"【当前已探索的应用架构图 (Mermaid)】:\n```mermaid\n{mermaid_str}\n```\n"
         if global_history:
-            user_prompt += f"【全局已探索过的元素】: {', '.join(global_history)}\n请尽量避开已探索过的区域。\n"
+            defective_items = [h for h in global_history if "熔断跳过" in h or "已发现缺陷" in h]
+            normal_items = [h for h in global_history if h not in defective_items]
+            user_prompt += f"【全局已探索过的元素】: {', '.join(normal_items[-20:])}\n请尽量避开已探索过的区域。\n"
+            if defective_items:
+                user_prompt += f"【已发现缺陷并熔断的目标 (绝对严禁再次规划重试)】: {', '.join(defective_items[-10:])}\n"
 
         user_prompt += "请分析截图，并生成下一个短期子目标及步数预算。"
 
@@ -297,12 +364,14 @@ class VisionAgent:
             base64_image=base64_image
         )
 
-    def execute_sub_objective(self, sub_objective: str, base64_image: str, context: str = "", history: list = None, global_history: list = None, current_page_tree: dict = None) -> dict:
+    def execute_sub_objective(self, sub_objective: str, base64_image: str, context: str = "", history: list = None, global_history: list = None, current_page_tree: dict = None, reexplore_module: str = None) -> dict:
         """
         执行短期子目标的具体动作 (Worker)
         """
         logger.info(f"🤖 [Worker] 执行子目标: '{sub_objective}'")
         user_prompt = f"当前子目标：{sub_objective}\n"
+        if reexplore_module:
+            user_prompt += f"【🎯 提示】：当前处于重探模块【{reexplore_module}】流程中，请深入该模块内各控件进行充分测试与验证。\n"
         if context:
             user_prompt += f"【背景知识】:\n{context}\n"
         if current_page_tree:

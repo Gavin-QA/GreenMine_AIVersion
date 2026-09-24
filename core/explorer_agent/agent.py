@@ -34,17 +34,22 @@ class ExplorerAgent:
         self.explore_dir = self.log_dir / "screenshots"
         self.explore_dir.mkdir(parents=True, exist_ok=True)
         
-        # 初始化动态架构树与容器调用栈
-        self.page_tree = PageMapBuilder.parse_base_rules()
+        # 初始化动态架构树（自动继承历史全局探索树，永不因清空日志丢失）与容器调用栈
+        self.page_tree = PageMapBuilder.load_global_tree()
         self.container_stack = []
+        self.active_tab = None  # 记录当前页面激活的子 Tab / 子设备视图（如 1242回风竖井风机）
+        self.failed_counts = {}  # 记录各目标的失败/报错次数，用于触发熔断保护 (Fault Circuit Breaker)
+        self.chart_data_buffer = {}  # 缓存图表全量节点数据，用于集中断言与跨弹窗数据暂存 (Batch Chart Inspector)
 
-    def start_exploration(self, objective: str, max_steps: int = 20, context: str = "", resume_from: Optional[str] = None):
+
+    def start_exploration(self, objective: str, max_steps: int = 20, context: str = "", resume_from: Optional[str] = None, reexplore_module: Optional[str] = None):
         """
         开启自主探索循环
         :param objective: 宏观探索目标
         :param max_steps: 最大探索步数
         :param context: 注入的项目背景知识或探索规则
         :param resume_from: 续跑目录 (如 'logs/explore_xxx')
+        :param reexplore_module: 指定强制重新探索的二级模块名（清空该模块历史子树，展开全新探索）
         """
         logger.info("=" * 60)
         logger.info(f"🚀 开启自主探索模式 | 目标: {objective}")
@@ -79,6 +84,28 @@ class ExplorerAgent:
                 except Exception as e:
                     logger.error(f"恢复 page_tree 失败: {e}")
 
+            fail_file = resume_path / "failed_counts.json"
+            if fail_file.exists():
+                try:
+                    with open(fail_file, "r", encoding="utf-8") as f:
+                        self.failed_counts = json.load(f)
+                    logger.info(f"✅ 成功恢复 failed_counts，包含 {len(self.failed_counts)} 条记录。")
+                except Exception as e:
+                    logger.error(f"恢复 failed_counts 失败: {e}")
+
+        # 如果指定了强制重新探索的模块，在此刻重置该模块子树并清理历史记忆
+        if reexplore_module:
+            logger.info(f"🔄 [Re-explore Mode] 激活模块强制重探模式: 【{reexplore_module}】（该模块历史子节点已重置为空）")
+            PageMapBuilder.reset_module_subtree(self.page_tree, reexplore_module)
+            # 清洗 global_history，防止模型因为记忆中的历史记录而避开该模块
+            clean_kw = reexplore_module.strip("【】'\" ")
+            old_len = len(global_history)
+            global_history = [h for h in global_history if clean_kw not in h]
+            if len(global_history) < old_len:
+                logger.info(f"🧹 [Re-explore Mode] 已从 global_history 中清除 {old_len - len(global_history)} 条与【{reexplore_module}】相关的历史记忆。")
+            # 导出重置后的架构树，确保 Planner 看到的 Mermaid 中该模块是空白新分支
+            PageMapBuilder.export_page_map(self.page_tree)
+
         while steps_taken < max_steps:
             logger.info(f"\n" + "=" * 40)
             logger.info(f"🧠 [Planner Phase] 开始规划，当前进度: {steps_taken}/{max_steps}")
@@ -94,7 +121,8 @@ class ExplorerAgent:
                     base64_image=base64_img,
                     global_history=global_history,
                     context=context,
-                    current_page_tree=self.page_tree
+                    current_page_tree=self.page_tree,
+                    reexplore_module=reexplore_module
                 )
                 
                 sub_objective = plan.get("sub_objective", "无子目标")
@@ -153,7 +181,8 @@ class ExplorerAgent:
                         context=context,
                         history=action_history,
                         global_history=global_history,
-                        current_page_tree=self.page_tree
+                        current_page_tree=self.page_tree,
+                        reexplore_module=reexplore_module
                     )
                 except Exception as e:
                     logger.error(f"❌ Worker 决策失败: {e}")
@@ -200,21 +229,36 @@ class ExplorerAgent:
                     (bool(clean_target) and (clean_target in base_l1_names or clean_target in base_l2_all))
                 )
                 
-                # 若点击了二级菜单项，作为全局路由跃迁，清空模态调用栈
+                # 若点击了二级菜单项，作为全局路由跃迁，清空模态调用栈与子Tab状态
                 if action_type == "click" and clean_target and clean_target in base_l2_all:
                     for l1, l2_dict in self.page_tree.items():
                         if clean_target in l2_dict:
                             logger.info(f"🧭 [Navigation] 检测到全局路由跃迁: 前往 [{l1} -> {clean_target}]")
                             self.container_stack.clear()
+                            self.active_tab = None
                             break
 
+                # 记录页面内激活的子 Tab 状态 (如点击风机标签切换到对应设备视图)
+                if element_type == "tab" and clean_target and action_type == "click":
+                    self.active_tab = clean_target
+                    logger.info(f"🔖 [Tab Navigation] 激活当前子标签/视图为: {self.active_tab}")
+
                 # 仅当不是全局导航交互时，才将该元素作为业务组件挂载到当前页面分支下
+                curr_node = None
                 if not is_nav_interaction and current_ui_path and isinstance(current_ui_path, list):
                     # 清洗路径，剔除可能混入的导航冗余词或跨模块一级菜单
                     clean_path = [p for p in current_ui_path if not any(k in p for k in nav_noise_keywords)]
                     if len(clean_path) > 1 and clean_path[1] in base_l1_names:
                         # 避免如 ["首页", "生产管理"] 的错误跨级嵌套，纠正为主干模块
                         clean_path = [clean_path[1]] + clean_path[2:]
+
+                    # 若大模型已在 current_ui_path 中指定了第3级子Tab (如 ["智控管理", "智能通风", "1242回风竖井风机"])
+                    if len(clean_path) >= 3:
+                        self.active_tab = clean_path[2]
+                    elif self.active_tab and len(clean_path) >= 2:
+                        # 若当前处于某个具体子 Tab，且当前操作并非点击该 Tab 切换本身，则自动将该 Tab 注入路径层级
+                        if self.active_tab not in clean_path and clean_target != self.active_tab:
+                            clean_path.append(self.active_tab)
                         
                     effective_path = list(clean_path)
                     
@@ -234,7 +278,9 @@ class ExplorerAgent:
                         curr_node = curr_node[path_node]
                         
                     # 将即将操作的元素作为叶子节点挂载 (附带 Emoji)
-                    if element_desc and action_type != "finish":
+                    # 严格排除 wait 动作与过渡性等待描述，避免非业务控件污染至架构树
+                    is_wait_action = (action_type == "wait") or (element_desc and any(k in element_desc for k in ["等待", "wait", "加载完成", "完全加载", "完全可见", "渲染完成"]))
+                    if element_desc and action_type != "finish" and not is_wait_action:
                         leaf_name = PageMapBuilder.format_node_label(element_desc)
                         if leaf_name not in curr_node:
                             curr_node[leaf_name] = {}
@@ -296,69 +342,141 @@ class ExplorerAgent:
                         self.driver.draw_cursor_on_image(str(step_img_path), x, y, dpr)
                     except Exception as e:
                         logger.warning(f"⚠️ 无法在截图 {step_img_path.name} 上绘制准星: {e}")
-                    try:
-                        if action_type == "hover":
-                            self.driver.hover(x, y, delay_after=1.0)
-                            time.sleep(2.0)
-                            # 捕获悬停产生的 Tooltip 悬浮卡片
-                            hover_img_path = self.explore_dir / f"explore_step_{steps_taken}_hover.png"
-                            hover_b64 = self.driver.capture_screenshot_base64(str(hover_img_path))
-                            logger.info(f"📸 捕获悬停状态快照 (含 Tooltip 浮层): {hover_img_path.name}")
-                        else:
-                            self.driver.click(x, y, button="left", delay_after=1.5)
-                            
-                            # ========================================================
-                            # [Post-Click Diff] 捕获点击后状态，探测模态弹窗与路由跳转
-                            # ========================================================
-                            try:
-                                time.sleep(1.0) # 等待可能的动画或弹窗渲染
-                                after_img_path = self.explore_dir / f"explore_step_{steps_taken}_after.png"
-                                self.driver.capture_screenshot_base64(str(after_img_path))
-                                
-                                diff_res = PostClickDetector.detect_transition(
-                                    driver=self.driver,
-                                    before_img_path=str(step_img_path),
-                                    after_img_path=str(after_img_path),
-                                    before_modals=before_modals,
-                                    action_desc=element_desc
-                                )
-                                transition = diff_res.get("transition")
-                                trans_container = diff_res.get("container_name")
-                                
-                                if transition == "modal_open" and trans_container:
-                                    if trans_container not in self.container_stack:
-                                        self.container_stack.append(trans_container)
-                                        logger.info(f"📥 [Container Stack] 模态弹窗入栈: {trans_container} | 当前栈: {self.container_stack}")
-                                        
-                                elif transition == "modal_close":
-                                    if self.container_stack:
-                                        popped = self.container_stack.pop()
-                                        logger.info(f"📤 [Container Stack] 模态弹窗出栈: {popped} | 剩余栈: {self.container_stack}")
-                                        
-                                elif transition == "page_navigate":
-                                    if self.container_stack:
-                                        logger.info(f"🔄 [Container Stack] 检测到路由跳转，清空模态栈: {self.container_stack}")
-                                        self.container_stack.clear()
-                            except Exception as e:
-                                logger.warning(f"⚠️ Post-Click Diff 检测执行异常: {e}")
-                                
-                        action_success = True
-                    except Exception as e:
-                        logger.error(f"❌ 执行失败: {e}")
-                        action_success = False
-                        crash_img_path = str(self.explore_dir / f"crash_step_{steps_taken}_{worker_step}.png")
+                    batch_chart_handled = False
+                    is_chart_target = (element_type == "chart") or any(k in (element_desc or "") for k in ["折线图", "柱状图", "面积图", "数据拐点", "趋势图", "七天风量", "风量数据"])
+
+                    # 1. 优先尝试触发【图表全量节点批量嗅探引擎】(Batch Chart Inspector)
+                    if is_chart_target:
                         try:
-                            self.driver.capture_screenshot(crash_img_path)
-                        except Exception:
-                            crash_img_path = None
-                        path_str = " -> ".join(current_ui_path) if current_ui_path else "未知路径"
-                        self.bug_reporter.report_bug(
-                            run_id=self.run_id,
-                            title=f"[{self.run_id}] 探索动作 '{element_desc}' 执行物理崩溃",
-                            step_prompt=f"[{action_type.upper()}] {element_desc} (当前路径: {path_str})",
-                            actual_result=f"底层驱动执行异常: {e}",
-                            crash_image_path=crash_img_path
-                        )
+                            probe_res = self.driver.probe_chart_all_points(x, y, chart_name=element_desc)
+                            if probe_res.get("success") and probe_res.get("points"):
+                                points = probe_res["points"]
+                                chart_title = probe_res.get("chart_title") or element_desc
+                                logger.info(f"📊 [BatchChart] 成功抓取图表 '{chart_title}' 全部 {len(points)} 个数据节点！准备执行集中接口核验...")
+
+                                # 存入全量图表数据池缓存 (供跨卡片、跨弹窗与集中断言比对)
+                                self.chart_data_buffer[chart_title] = {
+                                    "points": points,
+                                    "method": probe_res.get("method"),
+                                    "path": current_ui_path
+                                }
+
+                                # 检索后台相关接口报文
+                                search_tokens = [chart_title] + [str(p.get("label", "")) for p in points[:6] if p.get("label")]
+                                search_context = " ".join(search_tokens)
+                                api_summary = self.driver.get_focused_api_records_summary(search_context)
+
+                                if api_summary and api_summary != "[]":
+                                    passed, reason = self.vision.check_batch_chart_assertion(
+                                        chart_name=chart_title,
+                                        points=points,
+                                        base64_image=base64_img,
+                                        api_data_json=api_summary
+                                    )
+                                    if not passed:
+                                        logger.error(f"🚨 [BATCH CHART MISMATCH] 图表 '{chart_title}' 全量核验失败: {reason}")
+                                        action_success = False
+                                        chart_bug_img = str(self.explore_dir / f"chart_bug_{steps_taken}_{worker_step}.png")
+                                        try:
+                                            self.driver.capture_screenshot(chart_bug_img)
+                                        except Exception:
+                                            chart_bug_img = None
+                                        path_str = " -> ".join(current_ui_path) if current_ui_path else "未知路径"
+                                        self.bug_reporter.report_bug(
+                                            run_id=self.run_id,
+                                            title=f"[{self.run_id}] 图表全量数据核验异常: '{chart_title}'",
+                                            step_prompt=f"[CHART-PROBE] 批量核验图表: '{chart_title}' ({len(points)}个数据点) (路径: {path_str})",
+                                            actual_result=f"图表批量断言未通过: {reason}",
+                                            crash_image_path=chart_bug_img
+                                        )
+                                    else:
+                                        logger.info(f"🎉 [BatchChart] 图表 '{chart_title}' 全量 {len(points)} 个数据点集中核验 100% 通过！")
+                                        action_success = True
+                                        trajectory.append({
+                                            "type": "api_assert",
+                                            "prompt": f"批量核验图表 '{chart_title}' 全量 {len(points)} 个数据节点业务数据一致性",
+                                            "thought": f"ECharts 双擎嗅探全量点位核验: {reason}"
+                                        })
+                                else:
+                                    logger.info(f"ℹ️ [BatchChart] 未检索到图表 '{chart_title}' 的专属后台接口报文，记录图表已嗅探。")
+                                    action_success = True
+
+                                # 将拓扑树收敛为一个规范的聚合图表节点
+                                if curr_node is not None:
+                                    consolidated_label = f"📊 {chart_title} (全量{len(points)}个数据点已核验)"
+                                    curr_node[consolidated_label] = {}
+                                    PageMapBuilder.export_page_map(self.page_tree)
+
+                                # 标记已处理并指示 Worker 本轮探索已圆满达成
+                                batch_chart_handled = True
+                                worker_finished_early = True
+                        except Exception as e_batch:
+                            logger.warning(f"⚠️ [BatchChart] 图表批量嗅探处理异常 ({e_batch})，继续执行常规交互...")
+
+                    if not batch_chart_handled:
+                        try:
+                            if action_type == "hover":
+                                self.driver.hover(x, y, delay_after=1.0)
+                                time.sleep(2.0)
+                                # 捕获悬停产生的 Tooltip 悬浮卡片
+                                hover_img_path = self.explore_dir / f"explore_step_{steps_taken}_hover.png"
+                                hover_b64 = self.driver.capture_screenshot_base64(str(hover_img_path))
+                                logger.info(f"📸 捕获悬停状态快照 (含 Tooltip 浮层): {hover_img_path.name}")
+                            else:
+                                self.driver.click(x, y, button="left", delay_after=1.5)
+                                
+                                # ========================================================
+                                # [Post-Click Diff] 捕获点击后状态，探测模态弹窗与路由跳转
+                                # ========================================================
+                                try:
+                                    time.sleep(1.0) # 等待可能的动画或弹窗渲染
+                                    after_img_path = self.explore_dir / f"explore_step_{steps_taken}_after.png"
+                                    self.driver.capture_screenshot_base64(str(after_img_path))
+                                    
+                                    diff_res = PostClickDetector.detect_transition(
+                                        driver=self.driver,
+                                        before_img_path=str(step_img_path),
+                                        after_img_path=str(after_img_path),
+                                        before_modals=before_modals,
+                                        action_desc=element_desc
+                                    )
+                                    transition = diff_res.get("transition")
+                                    trans_container = diff_res.get("container_name")
+                                    
+                                    if transition == "modal_open" and trans_container:
+                                        if trans_container not in self.container_stack:
+                                            self.container_stack.append(trans_container)
+                                            logger.info(f"📥 [Container Stack] 模态弹窗入栈: {trans_container} | 当前栈: {self.container_stack}")
+                                            
+                                    elif transition == "modal_close":
+                                        if self.container_stack:
+                                            popped = self.container_stack.pop()
+                                            logger.info(f"📤 [Container Stack] 模态弹窗出栈: {popped} | 剩余栈: {self.container_stack}")
+                                            
+                                    elif transition == "page_navigate":
+                                        if self.container_stack:
+                                            logger.info(f"🔄 [Container Stack] 检测到路由跳转，清空模态栈: {self.container_stack}")
+                                            self.container_stack.clear()
+                                except Exception as e:
+                                    logger.warning(f"⚠️ Post-Click Diff 检测执行异常: {e}")
+                                    
+                            action_success = True
+                        except Exception as e:
+                            logger.error(f"❌ 执行失败: {e}")
+                            action_success = False
+                            crash_img_path = str(self.explore_dir / f"crash_step_{steps_taken}_{worker_step}.png")
+                            try:
+                                self.driver.capture_screenshot(crash_img_path)
+                            except Exception:
+                                crash_img_path = None
+                            path_str = " -> ".join(current_ui_path) if current_ui_path else "未知路径"
+                            self.bug_reporter.report_bug(
+                                run_id=self.run_id,
+                                title=f"[{self.run_id}] 探索动作 '{element_desc}' 执行物理崩溃",
+                                step_prompt=f"[{action_type.upper()}] {element_desc} (当前路径: {path_str})",
+                                actual_result=f"底层驱动执行异常: {e}",
+                                crash_image_path=crash_img_path
+                            )
                 else:
                     logger.warning(f"⚠️ 未知的动作类型: {action_type}，跳过此步。")
                     time.sleep(1.0)
@@ -367,7 +485,7 @@ class ExplorerAgent:
                 # [Auto-API Cross Check] 探索期底层接口数据自动双向核验
                 # 当 Worker 明确标记 validate_api，或悬停在图表/表格上时触发
                 # ========================================================
-                should_check_api = action_success and (validate_api or (action_type == "hover" and element_type in ("chart", "table")))
+                should_check_api = action_success and not batch_chart_handled and (validate_api or (action_type == "hover" and element_type in ("chart", "table")))
                 if should_check_api:
                     check_instruction = api_assert_prompt.strip() if api_assert_prompt else f"验证截图中关于 '{element_desc}' 所展示的具体业务数值，是否与接口返回的数据逻辑一致（非 NaN 且非全 0 异常）"
                     # 构建富语义检索上下文：融合断言意图、交互元素描述及目标名称，驱动底层倒排索引精准过滤
@@ -479,14 +597,51 @@ class ExplorerAgent:
                             "thought": thought
                         })
                         
-                    if action_type in ("click", "hover") and element_desc and element_desc not in global_history:
-                        global_history.append(element_desc)
-                        # 实时持久化长期记忆到本地日志目录
-                        history_file = self.log_dir / "global_history.json"
-                        with open(history_file, "w", encoding="utf-8") as f:
-                            json.dump(global_history, f, ensure_ascii=False, indent=2)
+                    if action_type in ("click", "hover") and element_desc:
+                        # 成功执行，重置该目标的失败计数
+                        if element_desc in self.failed_counts:
+                            self.failed_counts.pop(element_desc, None)
+
+                        if element_desc not in global_history:
+                            global_history.append(element_desc)
+                            # 实时持久化长期记忆到本地日志目录
+                            history_file = self.log_dir / "global_history.json"
+                            with open(history_file, "w", encoding="utf-8") as f:
+                                json.dump(global_history, f, ensure_ascii=False, indent=2)
                 else:
                     logger.warning(f"⚠️ 步骤 [{action_type.upper()}] '{element_desc}' 判定为 NG，已上报 BUG 库，不纳入回归用例库。")
+                    # ========================================================
+                    # [Fault Circuit Breaker] 缺陷节点熔断机制
+                    # 当同一个目标连续失败/报错达到 3 次，自动熔断跳过并录入长期记忆，
+                    # 彻底解决在已报错节点上陷入几十上百步的死循环空转！
+                    # ========================================================
+                    if element_desc:
+                        target_key = element_desc.strip()
+                        self.failed_counts[target_key] = self.failed_counts.get(target_key, 0) + 1
+                        fail_count = self.failed_counts[target_key]
+                        
+                        # 持久化失败计数
+                        try:
+                            fail_file = self.log_dir / "failed_counts.json"
+                            with open(fail_file, "w", encoding="utf-8") as f:
+                                json.dump(self.failed_counts, f, ensure_ascii=False, indent=2)
+                        except Exception:
+                            pass
+
+                        if fail_count >= 3:
+                            skip_desc = f"{target_key} (已发现缺陷，熔断跳过)"
+                            logger.warning(f"🛑 [Circuit Breaker] 目标 '{target_key}' 累计失败 {fail_count} 次，触发熔断保护！已存入长期记忆，由 Planner 在宏观规划层避开该目标，Worker 继续执行后续步骤。")
+                            if target_key not in global_history:
+                                global_history.append(target_key)
+                            if skip_desc not in global_history:
+                                global_history.append(skip_desc)
+                            history_file = self.log_dir / "global_history.json"
+                            with open(history_file, "w", encoding="utf-8") as f:
+                                json.dump(global_history, f, ensure_ascii=False, indent=2)
+
+                if worker_finished_early:
+                    logger.info("✅ [Worker] 图表批量嗅探与集中核验已达成，提前交还控制权给 Planner。")
+                    break
 
             if not worker_finished_early:
                 logger.info(f"✅ [Worker] 已耗尽预算步数 ({budget})，将控制权交还给 Planner。")

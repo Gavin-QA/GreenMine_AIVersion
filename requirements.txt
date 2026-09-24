@@ -1,8 +1,19 @@
-# Electron AI Vision 依赖清单
-colorlog>=6.8.0
-playwright>=1.40.0
-pytest>=7.0.0
-PyYAML>=6.0
-requests>=2.31.0
-python-dotenv>=1.0.0
-PyAutoGUI>=0.9.54
+# ==========================================
+# Electron AI Vision 核心依赖清单
+# ==========================================
+
+# 1. 自动化底座与外设控制
+playwright>=1.40.0          # 核心底座：CDP 连接 Electron、页面渲染、DOM 提取与网络拦截
+PyAutoGUI>=0.9.54           # 桌面级鼠标/键盘物理驱动（机械臂点击与坐标输入）
+
+# 2. 图像处理与视觉分析
+Pillow>=10.0.0              # 核心视觉：截图标注红准星、4K下采样防Payload过大、局部ROI卡片裁剪、前后帧图像差分
+
+# 3. 大模型通信与数据配置
+requests>=2.31.0            # 调用多模态大模型 API (LLM) 与 HTTP 请求
+PyYAML>=6.0                 # 解析 YAML 自动化用例与 config.yaml
+python-dotenv>=1.0.0        # 读取 .env 环境变量（API Key / Base URL 等）
+
+# 4. 测试套件与日志输出
+pytest>=7.0.0               # 自动化测试驱动框架
+colorlog>=6.8.0             # 彩色控制台终端日志

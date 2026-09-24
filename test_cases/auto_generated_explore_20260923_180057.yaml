@@ -1,0 +1,9 @@
+name: Auto Generated Case - explore_20260923_180057
+description: 由 ExplorerAgent 探索模式自动生成的闭环测试用例。
+steps:
+- type: action
+  prompt: '[HOVER] 智控管理一级菜单'
+- type: action
+  prompt: '[CLICK] 智能通风按钮'
+- type: action
+  prompt: '[CLICK] 980南回风斜井风机标签'

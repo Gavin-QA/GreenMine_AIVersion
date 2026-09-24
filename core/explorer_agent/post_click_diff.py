@@ -125,9 +125,12 @@ class PostClickDetector:
                 }
 
             # 场景 E: 遮罩压暗出现 (视觉判定模态框打开)
-            # 背景变暗幅度超过 12 且产生局部对比
-            if brightness_drop > 12.0 and 0.05 <= change_ratio <= 0.60:
-                suggested_name = f"“{action_desc}”浮窗" if action_desc else "未知浮窗"
+            # 背景变暗幅度超过 14 且产生局部对比，同时排除正常的 Tab 切换与 3D 光影变化
+            nav_tab_keywords = ["标签", "tab", "菜单", "导航", "视角", "切换", "总览"]
+            is_tab_or_nav = any(k in action_desc.lower() for k in nav_tab_keywords) if action_desc else False
+            
+            if not is_tab_or_nav and brightness_drop > 15.0 and 0.05 <= change_ratio <= 0.60:
+                suggested_name = f"“{action_desc}”弹窗" if action_desc else "业务弹窗"
                 logger.info(f"🪟 [Post-Click Diff] 视觉检测到背景遮罩变暗 ({brightness_drop:.1f}) -> 判定为浮层打开: {suggested_name}")
                 return {
                     "transition": "modal_open",

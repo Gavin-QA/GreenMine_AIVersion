@@ -10,6 +10,52 @@ from playwright.sync_api import BrowserContext, Page
 logger = logging.getLogger("core.browser")
 
 class NetworkMonitorMixin:
+    @staticmethod
+    def is_benign_noise(msg_text: str = "", url: str = "", status: int = 0) -> bool:
+        """
+        判断捕获到的控制台/页面/网络异常是否属于已知的非阻塞性良性背景噪音
+        返回 True 表示忽略过滤，False 表示确属真实异常
+        """
+        lower_msg = (msg_text or "").lower()
+        lower_url = (url or "").lower()
+        
+        # 1. 静态资源与媒体文件缺失 (404/403)
+        static_exts = ('.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.woff', '.woff2', '.ttf', '.eot', '.mp4', '.webm')
+        if any(lower_url.endswith(ext) or (ext + '?') in lower_url for ext in static_exts):
+            return True
+        if "failed to load resource" in lower_msg and any(ext in lower_msg for ext in static_exts):
+            return True
+
+        # 2. 视频监控 / 摄像头离线推流报错 (flv/rtmp/live2/504)
+        video_keywords = ("live2", "flv", "stream=", "stream", "hls", "m3u8", "1935", "loader error", "transmuxingcontroller", "iocontroller")
+        if any(k in lower_url for k in video_keywords) or any(k in lower_msg for k in video_keywords):
+            return True
+
+        # 3. 外部第三方地图/SDK Token 鉴权失败 (如 Cesium Ion 401)
+        if "cesium" in lower_url or "cesium" in lower_msg or "access_token" in lower_url:
+            return True
+
+        # 4. 本地 WebSocket 心跳重连
+        if "wsconverter" in lower_url or "wsconverter" in lower_msg or "websocket" in lower_msg:
+            return True
+
+        # 5. 前端混淆代码中的自发性背景轮询定时器异常 (与用户交互无关)
+        noise_err_patterns = [
+            "httputils_error bo",
+            "cannot set properties of undefined (setting 'config')",
+            "failed to load resource: the server responded with a status of 401",
+            "failed to load resource: the server responded with a status of 504"
+        ]
+        if any(p in lower_msg for p in noise_err_patterns):
+            return True
+            
+        # 单独的混淆小词 (如 'Bo', 'iR', 'Uq', 'Event')
+        clean_msg = (msg_text or "").strip()
+        if clean_msg in ("Bo", "iR", "Uq", "Event", "[object Event]"):
+            return True
+
+        return False
+
     def _setup_page_listeners(self):
         """挂载控制台日志与异常捕获"""
         if not self.page or self.page.is_closed():
@@ -17,14 +63,21 @@ class NetworkMonitorMixin:
             
         def on_console(msg):
             if msg.type == "error":
-                logger.debug(f"[Electron Console Error] {msg.text}")
+                if NetworkMonitorMixin.is_benign_noise(msg_text=msg.text):
+                    logger.debug(f"[Electron Console Filtered (Noise)] {msg.text}")
+                    return
+                logger.warning(f"[Electron Console Error] {msg.text}")
                 self.caught_bugs.append({"type": "console_error", "msg": msg.text})
             else:
                 logger.debug(f"[Electron Console][{msg.type}] {msg.text}")
 
         def on_pageerror(err):
-            logger.warning(f"[Electron PageError] {err}")
-            self.caught_bugs.append({"type": "page_error", "msg": str(err)})
+            err_str = str(err)
+            if NetworkMonitorMixin.is_benign_noise(msg_text=err_str):
+                logger.debug(f"[Electron PageError Filtered (Noise)] {err_str}")
+                return
+            logger.warning(f"[Electron PageError] {err_str}")
+            self.caught_bugs.append({"type": "page_error", "msg": err_str})
 
         try:
             self.page.on("console", on_console)
@@ -42,6 +95,9 @@ class NetworkMonitorMixin:
                 return
                 
             if response.status >= 400:
+                if NetworkMonitorMixin.is_benign_noise(url=response.url, status=response.status):
+                    return
+                # 记录真正的业务接口异常 (HTTP 4xx/5xx)
                 self.caught_bugs.append({"type": "network_error", "url": response.url, "status": response.status})
                 return
                 

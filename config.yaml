@@ -5,7 +5,7 @@ app:
   expected_page_url: "main.html"       # 目标大屏主页面 URL 关键字
   expected_page_title: "主界面"         # 目标大屏主页面标题关键字
   startup_timeout: 40.0                # UE 启动与页面跳转最大容忍时间(秒)
-  start_delay: 5.0                     # 页面就绪后的 UI 稳定缓冲时间(秒)
+  start_delay: 15.0                    # 页面就绪后的 UI 稳定缓冲时间(秒)
   no_proxy: "127.0.0.1,localhost,192.168.1.97,221.234.48.197,::1" # 代理白名单
   viewport:
     width: 2560
