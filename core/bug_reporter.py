@@ -7,17 +7,30 @@ from datetime import datetime
 from pathlib import Path
 
 from core.vision.agent import VisionAgent
+from utils.artifacts import GLOBAL_BUGS_DIR, get_run_bugs_dir
 
 logger = logging.getLogger("core.bug_reporter")
 
 
 class BugReporter:
     def __init__(self, vision_agent=None):
-        self.bugs_dir = Path("bugs")
-        self.bugs_dir.mkdir(exist_ok=True)
-        self.global_json = self.bugs_dir / "global_bugs.json"
-        self.global_md = self.bugs_dir / "global_bugs.md"
-        self.global_csv = self.bugs_dir / "global_bugs.csv"
+        # 全局持久资产目录: artifacts/bugs/
+        self.global_bugs_dir = GLOBAL_BUGS_DIR
+        self.global_bugs_dir.mkdir(parents=True, exist_ok=True)
+        self.global_json = self.global_bugs_dir / "global_bugs.json"
+        self.global_md = self.global_bugs_dir / "global_bugs.md"
+        self.global_csv = self.global_bugs_dir / "global_bugs.csv"
+        
+        # 兼容性回退：若 artifacts 尚无文件但 legacy bugs/ 存在，执行自动迁移
+        legacy_json = Path("bugs") / "global_bugs.json"
+        if not self.global_json.exists() and legacy_json.exists():
+            try:
+                for f_name in ["global_bugs.json", "global_bugs.md", "global_bugs.csv"]:
+                    src = Path("bugs") / f_name
+                    if src.exists():
+                        shutil.copy2(src, self.global_bugs_dir / f_name)
+            except Exception as e:
+                logger.warning(f"兼容迁移 legacy bugs 失败: {e}")
         
         # 允许外部传入已有的 VisionAgent，若没有则自己实例化一个用于 LLM 推理
         self.vision = vision_agent if vision_agent else VisionAgent()
@@ -39,8 +52,8 @@ class BugReporter:
         # 1. 智能查重
         dup_id = self._check_duplicate(step_prompt, actual_result)
         
-        run_dir = self.bugs_dir / run_id
-        run_dir.mkdir(exist_ok=True)
+        # 单次运行现场统一收敛至 reports/runs/<run_id>/bugs/
+        run_dir = get_run_bugs_dir(run_id)
         
         now_date = datetime.now().strftime("%Y-%m-%d")
         

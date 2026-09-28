@@ -1,18 +1,21 @@
 import logging
 from pathlib import Path
+from typing import Optional
+
+from utils.artifacts import get_run_generated_cases_dir
 
 logger = logging.getLogger("explorer_agent.trajectory")
 
 class TrajectoryExporter:
     @staticmethod
-    def export_yaml_case(run_id: str, trajectory: list):
-        """将探索轨迹导出为符合要求的 YAML 测试脚本，带有降噪与抽象优化"""
+    def export_yaml_case(run_id: str, trajectory: list, output_dir: Optional[Path] = None) -> Optional[Path]:
+        """将探索轨迹导出为符合要求的 YAML 测试脚本，默认存放在本次运行的专属 generated_cases 目录下，避免污染正式用例库"""
         try:
             import yaml
             
-            yaml_dir = Path("test_cases").resolve()
-            yaml_dir.mkdir(parents=True, exist_ok=True)
-            yaml_path = yaml_dir / f"auto_generated_{run_id}.yaml"
+            target_dir = Path(output_dir).resolve() if output_dir else get_run_generated_cases_dir(run_id)
+            target_dir.mkdir(parents=True, exist_ok=True)
+            yaml_path = target_dir / f"auto_generated_{run_id}.yaml"
             
             case_data = {
                 "name": f"Auto Generated Case - {run_id}",
@@ -60,5 +63,7 @@ class TrajectoryExporter:
                 yaml.dump(case_data, f, allow_unicode=True, sort_keys=False)
                 
             logger.info(f"📄 已自动生成（优化后）闭环测试用例 YAML: {yaml_path}")
+            return yaml_path
         except Exception as e:
             logger.error(f"❌ 自动生成 YAML 用例失败: {e}")
+            return None

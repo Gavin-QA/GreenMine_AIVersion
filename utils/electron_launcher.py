@@ -3,21 +3,23 @@ import subprocess
 import time
 import requests
 import logging
-from playwright.sync_api import sync_playwright
+from typing import Optional, List, Dict, Any, Tuple
+from playwright.sync_api import sync_playwright, Page, BrowserContext
 
 logger = logging.getLogger("electron_launcher")
 
 class ElectronLauncher:
-    def __init__(self, exe_path: str, port: int, launch_args: list = None):
+    def __init__(self, exe_path: str, port: int, launch_args: Optional[List[str]] = None):
         self.exe_path = exe_path
         self.port = port
         self.cdp_url = f"http://127.0.0.1:{self.port}"
-        self.process = None
+        self.process: Optional[subprocess.Popen] = None
         self.playwright = None
         self.browser = None
         self.launch_args = launch_args or []
         self.was_already_running = False
         self._session = requests.Session()
+        self._session.trust_env = False  # 彻底禁止 requests 读取环境变量代理，保障 CDP 直连
         self._session.proxies = {"http": None, "https": None}
 
     def is_cdp_alive(self) -> bool:
@@ -38,10 +40,13 @@ class ElectronLauncher:
             self.was_already_running = True
             return
 
+        if not self.exe_path or not os.path.exists(self.exe_path):
+            raise FileNotFoundError(f"❌ 找不到 Electron 可执行文件: '{self.exe_path}'，请检查 config.yaml 配置！")
+
         logger.info(f"正在启动 Electron 客户端: {self.exe_path} on port {self.port}...")
 
         # 设置工作目录为 exe 所在的根路径，确保 Electron/UE 引擎能正确读取相对路径下的前端资源
-        cwd = os.path.dirname(self.exe_path) if self.exe_path and os.path.exists(self.exe_path) else None
+        cwd = os.path.dirname(self.exe_path)
 
         # 彻底清空从 Python 继承的系统代理环境变量，防止 Electron 内置 Node/NATS/WebRTC 走代理
         env = os.environ.copy()
@@ -69,7 +74,7 @@ class ElectronLauncher:
 
         self._wait_for_port()
 
-    def launch(self):
+    def launch(self) -> Tuple[BrowserContext, Page]:
         """启动并建立 CDP 连接，返回上下文与页面对象"""
         if not self.browser:
             if self.is_cdp_alive():
@@ -77,9 +82,10 @@ class ElectronLauncher:
             else:
                 self.start_app()
             page = self.connect_playwright()
-            return self.browser.contexts[0], page
+            context = self.browser.contexts[0] if self.browser.contexts else self.browser.new_context()
+            return context, page
         
-        context = self.browser.contexts[0]
+        context = self.browser.contexts[0] if self.browser.contexts else self.browser.new_context()
         pages = [p for p in context.pages if not p.is_closed()]
         page = pages[0] if pages else context.new_page()
         return context, page
@@ -91,11 +97,18 @@ class ElectronLauncher:
             if self.is_cdp_alive():
                 logger.info("CDP 调试端口已就绪。")
                 return
+            
+            # 进程意外崩溃快速失败，避免无效等待
+            if self.process and self.process.poll() is not None:
+                exit_code = self.process.poll()
+                raise RuntimeError(
+                    f"❌ Electron 客户端在启动后异常退出 (Exit Code: {exit_code})，无法建立 CDP 调试连接！请检查应用依赖或启动参数。"
+                )
             time.sleep(1)
 
         raise TimeoutError(f"在 {timeout} 秒内无法连接到 CDP 端口 {self.port}")
 
-    def connect_playwright(self):
+    def connect_playwright(self) -> Page:
         """使用 Playwright 连接到已启动的 Electron CDP 端口"""
         if not self.playwright:
             self.playwright = sync_playwright().start()
@@ -104,7 +117,7 @@ class ElectronLauncher:
         self.browser = self.playwright.chromium.connect_over_cdp(self.cdp_url)
 
         # 获取 Electron 的默认上下文和所有窗口
-        context = self.browser.contexts[0]
+        context = self.browser.contexts[0] if self.browser.contexts else self.browser.new_context()
         pages = context.pages
         logger.info(f"CDP 已成功连接，当前监测到 {len(pages)} 个 Page/Window Target:")
         for idx, p in enumerate(pages):
@@ -123,27 +136,41 @@ class ElectronLauncher:
         if not main_page:
             main_page = pages[0] if pages else context.new_page()
 
-        logger.info(f"已选定主页面 Target: URL='{main_page.url}', Title='{main_page.title()}'")
+        try:
+            target_title = main_page.title()
+        except Exception:
+            target_title = "<unknown>"
+        logger.info(f"已选定主页面 Target: URL='{main_page.url}', Title='{target_title}'")
         return main_page
 
     @staticmethod
-    def get_process_info(process_name: str):
-        """使用 Windows 原生 tasklist 获取进程的运行信息"""
+    def get_process_info(process_name: str) -> Optional[dict]:
+        """使用 Windows 原生 tasklist 获取进程的运行信息 (若有多个匹配进程，返回主进程/物理内存最大的进程)"""
         import csv
         import io
         cmd = ["tasklist", "/fo", "csv", "/nh", "/fi", f"imagename eq {process_name}"]
         try:
             r = subprocess.run(cmd, capture_output=True, text=True, encoding="gbk", errors="ignore", timeout=5)
             reader = csv.reader(io.StringIO(r.stdout.strip()))
+            candidates = []
             for row in reader:
                 if len(row) >= 5 and row[0].lower() == process_name.lower():
-                    return {
+                    mem_str = row[4].strip()
+                    try:
+                        mem_kb = float(mem_str.lower().replace("k", "").replace(",", "").strip())
+                    except Exception:
+                        mem_kb = 0.0
+                    candidates.append({
                         "name": row[0],
                         "pid": int(row[1]),
                         "session": row[2],
                         "session_num": row[3],
-                        "mem_str": row[4].strip(),
-                    }
+                        "mem_str": mem_str,
+                        "mem_kb": mem_kb,
+                    })
+            if candidates:
+                candidates.sort(key=lambda x: x["mem_kb"], reverse=True)
+                return candidates[0]
         except Exception as e:
             logger.debug(f"检查进程 {process_name} 异常: {e}")
         return None
@@ -167,24 +194,31 @@ class ElectronLauncher:
     def wait_for_ue_process(self, process_name: str = "zhaiwan.exe", timeout: float = 40.0, min_memory_mb: float = 100.0) -> dict:
         """
         等待伴生 UE 进程启动并进入正常运行状态。
-        若超时未拉起或发生卡死，则抛出明确异常实现快速失败。
+        若超时未拉起或发生持续卡死，则抛出明确异常实现快速失败。
         """
         logger.info(f"⏳ [UE Process Probe] 正在监听伴生 UE 进程 ({process_name}) 运行状态 (超时: {timeout}s)...")
         start_t = time.time()
+        consecutive_hung = 0
         while time.time() - start_t < timeout:
             proc = self.get_process_info(process_name)
             if proc:
                 if self.is_process_hung(process_name):
-                    raise RuntimeError(f"❌ [UE Process Probe] 检测到 UE 进程 ({process_name}, PID: {proc['pid']}) 处于未响应卡死状态 (Not Responding)！")
+                    consecutive_hung += 1
+                    if consecutive_hung >= 3:
+                        raise RuntimeError(f"❌ [UE Process Probe] 检测到 UE 进程 ({process_name}, PID: {proc['pid']}) 持续处于未响应卡死状态 (Not Responding)！")
+                    logger.warning(f"⚠️ [UE Process Probe] 检测到 UE 进程瞬时未响应 (第 {consecutive_hung}/3 次)，等待重试...")
+                else:
+                    consecutive_hung = 0
                 
                 # 解析工作集内存 (例如 "922,688 K" -> 901 MB)
-                mem_str = proc.get("mem_str", "")
-                mem_mb = 0.0
-                try:
-                    clean_kb = float(mem_str.lower().replace("k", "").replace(",", "").strip())
-                    mem_mb = clean_kb / 1024.0
-                except Exception:
-                    pass
+                mem_mb = proc.get("mem_kb", 0.0) / 1024.0
+                if mem_mb == 0.0:
+                    mem_str = proc.get("mem_str", "")
+                    try:
+                        clean_kb = float(mem_str.lower().replace("k", "").replace(",", "").strip())
+                        mem_mb = clean_kb / 1024.0
+                    except Exception:
+                        pass
 
                 # 若内存过小，说明进程刚拉起、尚未真正装载 3D 资产，继续缓冲一下
                 if min_memory_mb > 0 and 0 < mem_mb < min_memory_mb:
@@ -230,7 +264,8 @@ class ElectronLauncher:
                     url_ok = (expected_url_keyword in curr_url) if expected_url_keyword else True
                     title_ok = (expected_title_keyword in curr_title) if expected_title_keyword else True
                     
-                    if url_ok or title_ok:
+                    # 只有当指定的过滤条件全部满足时（两者均指定需同时满足，单项指定满足单项），才判定跃迁完成
+                    if url_ok and title_ok:
                         logger.info(f"✅ [Page Transition Probe] 页面跃迁成功！已锁定大屏主界面: URL='{curr_url}', Title='{curr_title}'")
                         return p
                 except Exception:
@@ -257,12 +292,14 @@ class ElectronLauncher:
                 self.browser.close()
             except Exception:
                 pass
+            self.browser = None
 
         if self.playwright:
             try:
                 self.playwright.stop()
             except Exception:
                 pass
+            self.playwright = None
 
         if self.process and not self.was_already_running:
             logger.info("等待 Electron 进程自然退出 (已取消强杀以防蓝屏)...")
@@ -278,4 +315,6 @@ class ElectronLauncher:
             # 启动器关闭时，UE 引擎 (zhaiwan.exe) 会随之正常退出，不需要再用 taskkill 暴力强杀，避免导致显卡驱动蓝屏 (BSOD)。
 
             time.sleep(1.5)  # 物理等待 1.5s 确保 Windows 回收 9222 端口，防止连抽用例时端口死锁
+
+        self.process = None
 

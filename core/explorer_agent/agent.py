@@ -8,7 +8,15 @@ from typing import Optional
 from core.browser import ElectronDriver
 from core.vision.agent import VisionAgent
 from core.bug_reporter import BugReporter
-from utils.artifacts import report_run_id, LOGS_DIR
+from utils.artifacts import (
+    report_run_id,
+    get_run_dir,
+    get_run_screenshots_dir,
+    get_run_checkpoint_dir,
+    get_run_bugs_dir,
+    get_run_generated_cases_dir,
+    RUNS_DIR,
+)
 from .page_map_builder import PageMapBuilder
 from .trajectory_exporter import TrajectoryExporter
 from .post_click_diff import PostClickDetector
@@ -26,18 +34,21 @@ class ExplorerAgent:
         self.bug_reporter = BugReporter(vision_agent=self.vision)
         self.run_id = report_run_id()
         
-        # 记录探索日志的目录
-        self.log_dir = LOGS_DIR / self.run_id
-        self.log_dir.mkdir(parents=True, exist_ok=True)
+        # 统一归档：单次运行专属根目录 reports/runs/<run_id>/
+        self.run_dir = get_run_dir(self.run_id)
+        self.log_dir = self.run_dir  # 保持向下兼容
         
-        # 统一归档：截图存放在 logs/<run_id>/screenshots 目录下
-        self.explore_dir = self.log_dir / "screenshots"
-        self.explore_dir.mkdir(parents=True, exist_ok=True)
+        # 运行细分工作区
+        self.checkpoint_dir = get_run_checkpoint_dir(self.run_id)
+        self.explore_dir = get_run_screenshots_dir(self.run_id)
+        self.bugs_dir = get_run_bugs_dir(self.run_id)
+        self.generated_cases_dir = get_run_generated_cases_dir(self.run_id)
         
         # 初始化动态架构树（自动继承历史全局探索树，永不因清空日志丢失）与容器调用栈
         self.page_tree = PageMapBuilder.load_global_tree()
         self.container_stack = []
         self.active_tab = None  # 记录当前页面激活的子 Tab / 子设备视图（如 1242回风竖井风机）
+        self.last_l2_route = None  # 记录当前所处的二级路由元组 (L1, L2)，用于严格判定跨页跃迁并重置状态
         self.failed_counts = {}  # 记录各目标的失败/报错次数，用于触发熔断保护 (Fault Circuit Breaker)
         self.chart_data_buffer = {}  # 缓存图表全量节点数据，用于集中断言与跨弹窗数据暂存 (Batch Chart Inspector)
 
@@ -64,9 +75,20 @@ class ExplorerAgent:
         
         if resume_from:
             resume_path = Path(resume_from)
+            if not resume_path.exists():
+                candidate = RUNS_DIR / resume_from
+                if candidate.exists():
+                    resume_path = candidate
+                else:
+                    legacy_candidate = Path("logs") / resume_from
+                    if legacy_candidate.exists():
+                        resume_path = legacy_candidate
+
             logger.info(f"♻️ 正在从 {resume_path} 恢复历史记忆...")
             
-            history_file = resume_path / "global_history.json"
+            # 优先从 checkpoint 结构化子目录恢复，同时向下兼容直接存放在根目录的旧格式
+            chk = resume_path / "checkpoint"
+            history_file = (chk / "global_history.json") if (chk / "global_history.json").exists() else (resume_path / "global_history.json")
             if history_file.exists():
                 try:
                     with open(history_file, "r", encoding="utf-8") as f:
@@ -75,7 +97,7 @@ class ExplorerAgent:
                 except Exception as e:
                     logger.error(f"恢复 global_history 失败: {e}")
                     
-            tree_file = resume_path / "page_tree.json"
+            tree_file = (chk / "page_tree.json") if (chk / "page_tree.json").exists() else (resume_path / "page_tree.json")
             if tree_file.exists():
                 try:
                     with open(tree_file, "r", encoding="utf-8") as f:
@@ -84,7 +106,7 @@ class ExplorerAgent:
                 except Exception as e:
                     logger.error(f"恢复 page_tree 失败: {e}")
 
-            fail_file = resume_path / "failed_counts.json"
+            fail_file = (chk / "failed_counts.json") if (chk / "failed_counts.json").exists() else (resume_path / "failed_counts.json")
             if fail_file.exists():
                 try:
                     with open(fail_file, "r", encoding="utf-8") as f:
@@ -204,6 +226,17 @@ class ExplorerAgent:
                 
                 logger.info(f"💡 [Worker] 思考链: {thought}")
                 logger.info(f"📍 [Worker] 当前推断路径: {current_ui_path} | 类型: {element_type} | 容器: {container_name}")
+                # 二级路由跨页跃迁检测与状态隔离
+                if current_ui_path and isinstance(current_ui_path, list) and len(current_ui_path) >= 2:
+                    current_l2 = (str(current_ui_path[0]), str(current_ui_path[1]))
+                    if self.last_l2_route is not None and current_l2 != self.last_l2_route:
+                        logger.info(f"🧭 [Navigation] 跨二级页面路由跃迁: {self.last_l2_route} -> {current_l2}，强行重置 active_tab 与容器栈！")
+                        self.container_stack.clear()
+                        self.active_tab = None
+                    self.last_l2_route = current_l2
+                    self.driver.set_page_scope(f"{current_ui_path[0]} -> {current_ui_path[1]}")
+                elif current_ui_path and isinstance(current_ui_path, list) and len(current_ui_path) == 1:
+                    self.driver.set_page_scope(current_ui_path[0])
                 if validate_api:
                     logger.info(f"🔍 [Worker] 标记了接口核验需求: {api_assert_prompt}")
                 
@@ -236,6 +269,7 @@ class ExplorerAgent:
                             logger.info(f"🧭 [Navigation] 检测到全局路由跃迁: 前往 [{l1} -> {clean_target}]")
                             self.container_stack.clear()
                             self.active_tab = None
+                            self.last_l2_route = (l1, clean_target)
                             break
 
                 # 记录页面内激活的子 Tab 状态 (如点击风机标签切换到对应设备视图)
@@ -255,20 +289,35 @@ class ExplorerAgent:
                     # 若大模型已在 current_ui_path 中指定了第3级子Tab (如 ["智控管理", "智能通风", "1242回风竖井风机"])
                     if len(clean_path) >= 3:
                         self.active_tab = clean_path[2]
-                    elif self.active_tab and len(clean_path) >= 2:
-                        # 若当前处于某个具体子 Tab，且当前操作并非点击该 Tab 切换本身，则自动将该 Tab 注入路径层级
-                        if self.active_tab not in clean_path and clean_target != self.active_tab:
+                    elif self.active_tab and len(clean_path) == 2:
+                        # 仅当当前元素非独立弹窗/媒体组件时，才自动将子Tab注入路径层级
+                        is_standalone = any(k in (element_desc or "") for k in ["播放器", "弹窗", "浮窗", "抽屉", "对话框"])
+                        if not is_standalone and self.active_tab not in clean_path and clean_target != self.active_tab:
                             clean_path.append(self.active_tab)
                         
                     effective_path = list(clean_path)
                     
-                    # 补充局部容器上下文 (排除导航噪音)
-                    if container_name and not any(k in container_name for k in nav_noise_keywords) and container_name not in effective_path and container_name not in self.container_stack:
-                        effective_path.append(container_name)
+                    # 辅助函数：判断容器是否与当前路径末尾语义冗余（如“资源储量数据卡片” vs “资源储量”）
+                    def _is_redundant_container(c_name: str, p_list: list) -> bool:
+                        if not p_list:
+                            return False
+                        last_p = p_list[-1]
+                        import re
+                        c_core = re.sub(r'(?:数据卡片|卡片区域|卡片|模块|区域|容器|列表|表格|图表)$', '', c_name).strip()
+                        p_core = re.sub(r'(?:数据卡片|卡片区域|卡片|模块|区域|容器|列表|表格|图表)$', '', last_p).strip()
+                        if c_core and p_core and (c_core == p_core or c_core in p_core or p_core in c_core):
+                            return True
+                        return False
+
+                    # 补充局部容器上下文 (排除导航噪音与语义套娃重复)
+                    if container_name and not any(k in container_name for k in nav_noise_keywords):
+                        if container_name not in effective_path and container_name not in self.container_stack:
+                            if not _is_redundant_container(container_name, effective_path):
+                                effective_path.append(container_name)
                         
                     # 补充当前活跃的模态弹窗调用栈
                     for modal in self.container_stack:
-                        if modal not in effective_path:
+                        if modal not in effective_path and not _is_redundant_container(modal, effective_path):
                             effective_path.append(modal)
                             
                     curr_node = self.page_tree
@@ -361,10 +410,20 @@ class ExplorerAgent:
                                     "path": current_ui_path
                                 }
 
-                                # 检索后台相关接口报文
-                                search_tokens = [chart_title] + [str(p.get("label", "")) for p in points[:6] if p.get("label")]
+                                # 检索后台相关接口报文（融合图表名、序列名与具体数值，驱动两级智能寻索）
+                                search_tokens = [chart_title]
+                                for p in points[:6]:
+                                    if isinstance(p, dict):
+                                        for k, v in p.items():
+                                            if k and str(k).strip() not in ("style", "itemStyle"):
+                                                search_tokens.append(str(k).strip())
+                                            if v is not None and str(v).strip():
+                                                search_tokens.append(str(v).strip())
+                                    else:
+                                        search_tokens.append(str(p))
                                 search_context = " ".join(search_tokens)
-                                api_summary = self.driver.get_focused_api_records_summary(search_context)
+                                current_scope_str = " -> ".join([str(p) for p in current_ui_path[:2]]) if current_ui_path and len(current_ui_path) >= 2 else (str(current_ui_path[0]) if current_ui_path else None)
+                                api_summary = self.driver.get_focused_api_records_summary(search_context, page_scope=current_scope_str)
 
                                 if api_summary and api_summary != "[]":
                                     passed, reason = self.vision.check_batch_chart_assertion(
@@ -490,7 +549,8 @@ class ExplorerAgent:
                     check_instruction = api_assert_prompt.strip() if api_assert_prompt else f"验证截图中关于 '{element_desc}' 所展示的具体业务数值，是否与接口返回的数据逻辑一致（非 NaN 且非全 0 异常）"
                     # 构建富语义检索上下文：融合断言意图、交互元素描述及目标名称，驱动底层倒排索引精准过滤
                     search_context = f"{check_instruction} {element_desc}"
-                    api_summary = self.driver.get_focused_api_records_summary(search_context)
+                    current_scope_str = " -> ".join([str(p) for p in current_ui_path[:2]]) if current_ui_path and len(current_ui_path) >= 2 else (str(current_ui_path[0]) if current_ui_path else None)
+                    api_summary = self.driver.get_focused_api_records_summary(search_context, page_scope=current_scope_str)
                     if api_summary and api_summary != "[]":
                         logger.info(f"🔬 [Auto-API] 触发接口数据双向核验: {check_instruction}")
                         try:
@@ -519,6 +579,7 @@ class ExplorerAgent:
                                 base64_image=check_b64,
                                 api_data_json=api_summary
                             )
+                            is_unrelated = ("非同源" in reason or "跳过" in reason or "UNRELATED" in reason)
                             if not passed:
                                 logger.error(f"🚨 [API MISMATCH] 接口数据核验未通过: {reason}")
                                 action_success = False
@@ -535,9 +596,11 @@ class ExplorerAgent:
                                     actual_result=f"数据断言失败: {reason}",
                                     crash_image_path=data_bug_img
                                 )
+                            elif is_unrelated:
+                                logger.info(f"ℹ️ [Auto-API] 候选接口非当前被测组件数据源，跳过数据断言（不纳入用例，不上报Bug）。")
                             else:
                                 logger.info(f"🎉 [Auto-API] 接口数据核验通过！UI 渲染与后端 JSON 完全一致。")
-                                # 沉淀到回归用例轨迹中
+                                # 仅在真实核验一致时，沉淀到回归用例轨迹中
                                 trajectory.append({
                                     "type": "api_assert",
                                     "prompt": check_instruction,
@@ -604,10 +667,13 @@ class ExplorerAgent:
 
                         if element_desc not in global_history:
                             global_history.append(element_desc)
-                            # 实时持久化长期记忆到本地日志目录
-                            history_file = self.log_dir / "global_history.json"
-                            with open(history_file, "w", encoding="utf-8") as f:
-                                json.dump(global_history, f, ensure_ascii=False, indent=2)
+                            # 实时持久化长期记忆到 checkpoint 目录 (轻量级纯文本，永久安全留存)
+                            for h_file in [self.checkpoint_dir / "global_history.json", self.log_dir / "global_history.json"]:
+                                try:
+                                    with open(h_file, "w", encoding="utf-8") as f:
+                                        json.dump(global_history, f, ensure_ascii=False, indent=2)
+                                except Exception:
+                                    pass
                 else:
                     logger.warning(f"⚠️ 步骤 [{action_type.upper()}] '{element_desc}' 判定为 NG，已上报 BUG 库，不纳入回归用例库。")
                     # ========================================================
@@ -620,13 +686,13 @@ class ExplorerAgent:
                         self.failed_counts[target_key] = self.failed_counts.get(target_key, 0) + 1
                         fail_count = self.failed_counts[target_key]
                         
-                        # 持久化失败计数
-                        try:
-                            fail_file = self.log_dir / "failed_counts.json"
-                            with open(fail_file, "w", encoding="utf-8") as f:
-                                json.dump(self.failed_counts, f, ensure_ascii=False, indent=2)
-                        except Exception:
-                            pass
+                        # 持久化失败计数到 checkpoint 目录
+                        for f_file in [self.checkpoint_dir / "failed_counts.json", self.log_dir / "failed_counts.json"]:
+                            try:
+                                with open(f_file, "w", encoding="utf-8") as f:
+                                    json.dump(self.failed_counts, f, ensure_ascii=False, indent=2)
+                            except Exception:
+                                pass
 
                         if fail_count >= 3:
                             skip_desc = f"{target_key} (已发现缺陷，熔断跳过)"
@@ -635,9 +701,12 @@ class ExplorerAgent:
                                 global_history.append(target_key)
                             if skip_desc not in global_history:
                                 global_history.append(skip_desc)
-                            history_file = self.log_dir / "global_history.json"
-                            with open(history_file, "w", encoding="utf-8") as f:
-                                json.dump(global_history, f, ensure_ascii=False, indent=2)
+                            for h_file in [self.checkpoint_dir / "global_history.json", self.log_dir / "global_history.json"]:
+                                try:
+                                    with open(h_file, "w", encoding="utf-8") as f:
+                                        json.dump(global_history, f, ensure_ascii=False, indent=2)
+                                except Exception:
+                                    pass
 
                 if worker_finished_early:
                     logger.info("✅ [Worker] 图表批量嗅探与集中核验已达成，提前交还控制权给 Planner。")
@@ -646,16 +715,207 @@ class ExplorerAgent:
             if not worker_finished_early:
                 logger.info(f"✅ [Worker] 已耗尽预算步数 ({budget})，将控制权交还给 Planner。")
 
-        # 自动生成 YAML 用例
+        # 固化本次运行的页面架构记忆 (用于续跑)
+        for t_file in [self.checkpoint_dir / "page_tree.json", self.log_dir / "page_tree.json"]:
+            try:
+                with open(t_file, "w", encoding="utf-8") as f:
+                    json.dump(self.page_tree, f, ensure_ascii=False, indent=2)
+            except Exception:
+                pass
+
+        # 自动生成 YAML 用例 (存入本次运行专属 generated_cases/，避免污染正式用例库)
         if trajectory:
-            TrajectoryExporter.export_yaml_case(self.run_id, trajectory)
+            yaml_path = TrajectoryExporter.export_yaml_case(self.run_id, trajectory, output_dir=self.generated_cases_dir)
+            if yaml_path:
+                logger.info(f"💡 [Case Isolated] 自动生成闭环用例已保存至本次运行专属目录: {yaml_path}")
+                logger.info(f"   (如需纳入正式回归测试，可人工确认后复制/提升至 test_cases/ 目录下)")
             
         # 自动生成全景架构图与纯 Markdown 组件拓扑树
         PageMapBuilder.export_page_map(self.page_tree)
 
+        # 自动固化全局接口大盘供人工查阅与诊断
+        try:
+            api_file = self.explore_dir / "api_registry.json"
+            self.driver.dump_api_registry(str(api_file))
+        except Exception as api_err:
+            logger.warning(f"⚠️ 导出接口大盘异常: {api_err}")
+
         logger.info("=" * 60)
         logger.info("🏁 探索任务结束！")
-        logger.info(f"📂 探索产生的截图和日志已保存至: {self.explore_dir}")
+        logger.info(f"📂 探索产物已完整归档至: {self.run_dir}")
+        logger.info(f"   ├── 运行检查点与记忆: {self.checkpoint_dir}")
+        logger.info(f"   ├── 自动生成测试用例: {self.generated_cases_dir}")
+        logger.info(f"   └── 探索截图与凭据图: {self.explore_dir}")
         logger.info("=" * 60)
+
+    def start_smoke_tour(self, context: str = ""):
+        """
+        全量 33 个二级菜单冒烟巡检模式 (Full Menu Smoke Tour):
+        单次启动 Electron 进程，按顺序遍历 6 个一级模块下的全部 33 个二级菜单：
+        1. 验证两级菜单跳转：悬停对应一级菜单展开下拉框 -> 点击二级菜单进入目标页面；
+        2. 页面就绪后，由 Planner 进行 1 步宏观规划，Worker 执行 1 步页面内业务操作；
+        3. 纯日志记录，不生成/修改 Mermaid 架构图（仅作为一条全量冒烟测试用例），单次启动零重启完成全屏巡检。
+        """
+        logger.info("=" * 60)
+        logger.info(f"🚀 启动【33个二级菜单全量冒烟巡检模式】(Smoke Tour) | Run ID: {self.run_id}")
+        logger.info("=" * 60)
+
+        base_tree = PageMapBuilder.parse_base_rules()
+        menu_list = []
+        for l1, l2_dict in base_tree.items():
+            if isinstance(l2_dict, dict):
+                for l2 in l2_dict.keys():
+                    menu_list.append((l1, l2))
+
+        total_menus = len(menu_list)
+        if total_menus == 0:
+            logger.error("❌ 未从 docs/explore_rules.md 中解析到任何二级菜单，冒烟巡检中止！")
+            return
+
+        logger.info(f"📋 已加载全部 {total_menus} 个待测二级菜单清单。准备开始单会话流水巡检...")
+        start_time = time.time()
+        results = []
+        jump_success_count = 0
+        plan_success_count = 0
+
+        for idx, (l1, l2) in enumerate(menu_list, 1):
+            logger.info("\n" + "=" * 60)
+            logger.info(f"🎯 [Smoke Tour ({idx}/{total_menus})] 正在巡检模块: 【{l1} -> {l2}】")
+            logger.info("=" * 60)
+
+            jump_ok = False
+            plan_ok = False
+            jump_err_msg = ""
+            plan_err_msg = ""
+            sub_objective = ""
+
+            # -----------------------------------------------------------------
+            # 阶段一：二级菜单两级智能跳转 (Two-Tier Jump: Hover L1 -> Click L2)
+            # -----------------------------------------------------------------
+            if idx == 1 and l1 == "首页" and l2 == "矿山简介":
+                logger.info(f"ℹ️ [Smoke Jump] 系统初始启动默认处于【首页 -> 矿山简介】，跳过菜单跳转。")
+                self.driver.set_page_scope(f"{l1} -> {l2}")
+                self.last_l2_route = (l1, l2)
+                jump_ok = True
+                jump_success_count += 1
+            else:
+                try:
+                    info = self.driver.get_viewport_info()
+                    width, height = info.get("width", 2560), info.get("height", 1440)
+
+                    # 1. 悬停一级菜单展开下拉浮层
+                    logger.info(f"👉 [Smoke Jump 1/2] 正在寻索并悬停顶部一级菜单【{l1}】...")
+                    hover_img_path = self.explore_dir / f"smoke_jump_{idx}_hover.png"
+                    b64_hover = self.driver.capture_screenshot_base64(str(hover_img_path))
+                    dom_hover = self.driver.extract_interactive_elements()
+
+                    hx, hy = self.vision.find_element(
+                        instruction=f"顶部一级菜单【{l1}】",
+                        base64_image=b64_hover,
+                        viewport_width=width,
+                        viewport_height=height,
+                        dom_elements=dom_hover
+                    )
+                    self.driver.hover(hx, hy, delay_after=1.5)
+
+                    # 2. 点击下拉菜单中的二级菜单项
+                    logger.info(f"👉 [Smoke Jump 2/2] 正在寻索并点击下拉菜单项【{l2}】...")
+                    click_img_path = self.explore_dir / f"smoke_jump_{idx}_click.png"
+                    b64_click = self.driver.capture_screenshot_base64(str(click_img_path))
+                    dom_click = self.driver.extract_interactive_elements()
+
+                    cx, cy = self.vision.find_element(
+                        instruction=f"下拉菜单中的【{l2}】选项",
+                        base64_image=b64_click,
+                        viewport_width=width,
+                        viewport_height=height,
+                        dom_elements=dom_click
+                    )
+                    self.driver.click(cx, cy, delay_after=1.5)
+
+                    # 状态重置与页面作用域切换
+                    self.driver.set_page_scope(f"{l1} -> {l2}")
+                    self.last_l2_route = (l1, l2)
+                    self.container_stack.clear()
+                    self.active_tab = None
+                    jump_ok = True
+                    jump_success_count += 1
+                    logger.info(f"✅ [Smoke Jump] 成功跳转进入业务页面: 【{l1} -> {l2}】！")
+
+                except Exception as j_err:
+                    jump_err_msg = str(j_err)
+                    logger.error(f"❌ [Smoke Jump] 跳转至【{l1} -> {l2}】失败: {jump_err_msg}")
+                    self.bug_reporter.report_bug(
+                        run_id=self.run_id,
+                        title=f"[{self.run_id}] 冒烟巡检菜单跳转失败: 【{l1} -> {l2}】",
+                        step_prompt=f"[SMOKE-JUMP] 悬停【{l1}】并点击【{l2}】",
+                        actual_result=jump_err_msg
+                    )
+
+            # -----------------------------------------------------------------
+            # 阶段二：当前页面 Planner 宏观视觉体检与核心业务规划 (Page Health & Inspection)
+            # -----------------------------------------------------------------
+            if jump_ok:
+                try:
+                    time.sleep(1.0)
+
+                    logger.info(f"🧠 [Smoke Planner] 正在对当前【{l1} -> {l2}】页面进行视觉体检与核心业务识别...")
+                    plan_img_path = self.explore_dir / f"smoke_page_{idx}_plan.png"
+                    b64_plan = self.driver.capture_screenshot_base64(str(plan_img_path), dim_background=True)
+
+                    plan = self.vision.plan_sub_objective(
+                        macro_objective=f"对当前【{l1} -> {l2}】页面进行冒烟体检与视觉健康度评估，识别页面内核心展示组件、指标卡片或数据图表",
+                        base64_image=b64_plan,
+                        global_history=[f"【{l1} -> {l2}】"],
+                        context=context,
+                        current_page_tree={},  # 传空字典，防止冒烟步骤污染正式架构树
+                        reexplore_module=l2
+                    )
+                    sub_objective = plan.get("sub_objective", f"测试【{l2}】核心业务组件")
+                    p_thought = plan.get("thought", "")
+                    logger.info(f"💡 [Smoke Planner] 页面诊断与思考: {p_thought}")
+                    logger.info(f"🎯 [Smoke Planner] 识别核心业务模块: '{sub_objective}'")
+
+                    # 检查页面是否有被捕获的后台静默报错
+                    bugs = self.driver.get_and_clear_bugs()
+                    if bugs:
+                        logger.warning(f"⚠️ [Smoke Planner] 页面加载触发了 {len(bugs)} 个控制台/网络错误: {bugs[0]}")
+
+                    plan_ok = True
+                    plan_success_count += 1
+                    logger.info(f"🎉 [Smoke Tour ({idx}/{total_menus})] 【{l1} -> {l2}】冒烟巡检 PASS！")
+
+                except Exception as p_err:
+                    plan_err_msg = str(p_err)
+                    logger.warning(f"⚠️ [Smoke Planner] 页面体检执行异常: {plan_err_msg}")
+
+            results.append({
+                "index": idx,
+                "module": f"{l1} -> {l2}",
+                "jump": "PASS" if jump_ok else f"FAIL ({jump_err_msg[:40]})",
+                "plan": "PASS" if plan_ok else ("SKIPPED" if not jump_ok else f"FAIL ({plan_err_msg[:40]})"),
+                "core_component": sub_objective if plan_ok else "-"
+            })
+
+        # -----------------------------------------------------------------
+        # 冒烟巡检大盘汇总报告 (纯日志展示，不生成/改写 Mermaid 地图)
+        # -----------------------------------------------------------------
+        elapsed = time.time() - start_time
+        logger.info("\n" + "=" * 70)
+        logger.info("🏁 【33 个二级菜单全量冒烟巡检完成报告】")
+        logger.info("=" * 70)
+        logger.info(f"⏱️ 巡检总耗时: {elapsed:.1f} 秒 ({elapsed/60:.1f} 分钟)")
+        logger.info(f"📊 二级菜单跳转覆盖率: {jump_success_count}/{total_menus} ({(jump_success_count/total_menus)*100:.1f}%)")
+        logger.info(f"📊 页面体检规划成功率: {plan_success_count}/{total_menus} ({(plan_success_count/total_menus)*100:.1f}%)")
+        logger.info("-" * 70)
+        logger.info(f"{'序号':<6}{'二级业务菜单':<28}{'菜单跳转':<12}{'页面体检':<12}{'识别核心业务组件'}")
+        logger.info("-" * 70)
+        for r in results:
+            logger.info(f"{r['index']:<6}{r['module']:<28}{r['jump']:<12}{r['plan']:<12}{r['core_component']}")
+        logger.info("=" * 70)
+        logger.info(f"📂 冒烟截图与详细日志保存在: {self.explore_dir}")
+        logger.info("ℹ️ 说明: 本次运行为纯冒烟测试模式，未修改或导出 Mermaid 架构地图文件。")
+        logger.info("=" * 70)
+
 
 

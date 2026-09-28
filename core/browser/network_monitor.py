@@ -85,10 +85,39 @@ class NetworkMonitorMixin:
         except Exception:
             pass
 
+    def set_page_scope(self, scope_name: Optional[str] = None):
+        """
+        设置当前页面/路由的作用域（如 '首页 -> 证照管理'、'智控管理 -> 智能通风'）。
+        后续拦截到的非全局接口将优先关联至该页面作用域，彻底杜绝跨页面历史旧接口串扰。
+        """
+        if not scope_name:
+            self.current_page_scope = "_global_shared"
+        else:
+            self.current_page_scope = str(scope_name).strip()
+
+        if not hasattr(self, "page_scoped_registry") or self.page_scoped_registry is None:
+            self.page_scoped_registry = {"_global_shared": {}}
+
+        if self.current_page_scope not in self.page_scoped_registry:
+            self.page_scoped_registry[self.current_page_scope] = {}
+
+        logger.debug(f"🌐 [Auto-API Scope] 当前接口作用域已切换至: '{self.current_page_scope}'")
+
+    def get_page_scope(self) -> str:
+        """获取当前激活的页面作用域"""
+        return getattr(self, "current_page_scope", "_global_shared")
+
     def _setup_network_listeners(self):
-        """挂载底层 HTTP API 拦截器"""
+        """挂载底层 HTTP API 拦截器（维护多页面作用域隔离的 API 注册表与防暴洪时序流水）"""
         if not self.page or self.page.is_closed():
             return
+
+        if not hasattr(self, "api_registry") or self.api_registry is None:
+            self.api_registry = {}
+        if not hasattr(self, "page_scoped_registry") or self.page_scoped_registry is None:
+            self.page_scoped_registry = {"_global_shared": {}}
+        if not hasattr(self, "current_page_scope"):
+            self.current_page_scope = "_global_shared"
             
         def handle_response(response):
             if response.request.method == "OPTIONS":
@@ -103,24 +132,123 @@ class NetworkMonitorMixin:
                 
             if response.status == 200 and "application/json" in response.headers.get("content-type", ""):
                 try:
+                    lower_url = response.url.lower()
+                    # 过滤 GIS / 瓦片 / 地图等静态配置 JSON，避免挤占业务接口打分与候选席位
+                    gis_keywords = (
+                        "approximateterrainheights", "layer.json", "tileset.json",
+                        "/cesium/", "/terrain/", "/geoserver/", "defaultlayers.json"
+                    )
+                    if any(k in lower_url for k in gis_keywords):
+                        return
+
                     data = response.json()
                     # 避免拦截巨大的无用报文或非业务接口
                     if data:
-                        url_path = response.url.split("?")[0].split("/")[-1]
-                        if len(url_path) < 2:
-                            url_path = response.url.split("?")[0]
-                        self.api_records.append({
-                            "url": url_path,
-                            "data": data
-                        })
+                        url_clean = response.url.split("?")[0]
+                        endpoint_name = url_clean.split("/")[-1]
+                        if len(endpoint_name) < 2:
+                            endpoint_name = url_clean
+
+                        active_scope = getattr(self, "current_page_scope", "_global_shared")
+
+                        record = {
+                            "url": endpoint_name,
+                            "full_url": url_clean,
+                            "data": data,
+                            "timestamp": time.time(),
+                            "scope": active_scope,
+                            "hit_count": self.api_registry.get(endpoint_name, {}).get("hit_count", 0) + 1
+                        }
+
+                        # 1. 全局扁平注册表（便于跨页面全局查找与快速定位）
+                        self.api_registry[endpoint_name] = record
+
+                        # 2. 页面作用域隔离注册表（严格按二级页面隔离，彻底杜绝跨页面历史旧接口串扰）
+                        if not hasattr(self, "page_scoped_registry") or self.page_scoped_registry is None:
+                            self.page_scoped_registry = {"_global_shared": {}}
+                        if active_scope not in self.page_scoped_registry:
+                            self.page_scoped_registry[active_scope] = {}
+                        self.page_scoped_registry[active_scope][endpoint_name] = record
+
+                        # 3. 时序流水记录（带防高频轮询暴洪：若与上一条是相同接口，则就地更新）
+                        if self.api_records and self.api_records[-1].get("url") == endpoint_name:
+                            self.api_records[-1] = record
+                        else:
+                            self.api_records.append(record)
+                            if len(self.api_records) > 200:
+                                self.api_records = self.api_records[-200:]
                 except Exception:
                     pass
         
         self.page.on("response", handle_response)
         
     def clear_api_records(self):
-        """清空缓存的网络接口记录，开始新的生命周期抓取"""
+        """清空缓存的网络接口记录与全局/页面作用域注册表，开始新的生命周期抓取"""
         self.api_records = []
+        self.api_registry = {}
+        self.page_scoped_registry = {"_global_shared": {}}
+        self.current_page_scope = "_global_shared"
+
+    def get_all_registered_endpoints(self) -> List[str]:
+        """获取当前生命周期内捕获到的所有唯一业务接口名称列表"""
+        if not hasattr(self, "api_registry") or not self.api_registry:
+            return []
+        return sorted(list(self.api_registry.keys()))
+
+    def get_api_by_name(self, api_name: str) -> Optional[dict]:
+        """按接口名称精准获取最新报文数据（支持大小写模糊容错）"""
+        if not hasattr(self, "api_registry") or not self.api_registry:
+            return None
+        if api_name in self.api_registry:
+            return self.api_registry[api_name]
+        lower_name = api_name.lower()
+        for k, v in self.api_registry.items():
+            if k.lower() == lower_name:
+                return v
+        return None
+
+    def dump_api_registry(self, save_path: Optional[str] = None) -> str:
+        """
+        将当前捕获到的全部业务接口最新快照导出为结构化 JSON 文件（含按二级页面隔离的结构树），供人类查阅与断言诊断。
+        返回导出文件的绝对路径。
+        """
+        import json
+        if not hasattr(self, "api_registry") or not self.api_registry:
+            self.api_registry = {}
+        if not hasattr(self, "page_scoped_registry") or not self.page_scoped_registry:
+            self.page_scoped_registry = {"_global_shared": {}}
+
+        if not save_path:
+            save_path = os.path.abspath("api_registry.json")
+        save_file = Path(save_path).resolve()
+        save_file.parent.mkdir(parents=True, exist_ok=True)
+
+        dump_data = {
+            "summary": {
+                "total_unique_endpoints": len(self.api_registry),
+                "total_page_scopes": len(self.page_scoped_registry),
+                "current_scope": getattr(self, "current_page_scope", "_global_shared"),
+                "endpoints": self.get_all_registered_endpoints(),
+                "exported_at": time.strftime("%Y-%m-%d %H:%M:%S")
+            },
+            "page_scopes": {
+                scope: {
+                    ep: {
+                        "url": ep,
+                        "full_url": r.get("full_url"),
+                        "timestamp": r.get("timestamp"),
+                        "hit_count": r.get("hit_count", 1),
+                        "data": r.get("data")
+                    } for ep, r in eps.items()
+                } for scope, eps in self.page_scoped_registry.items()
+            },
+            "global_flat_apis": self.api_registry
+        }
+
+        with open(save_file, "w", encoding="utf-8") as f:
+            json.dump(dump_data, f, ensure_ascii=False, indent=2)
+        logger.info(f"💾 [Auto-API] 页面作用域接口大盘已固化至: {save_file} (共 {len(self.api_registry)} 个独立接口，分布于 {len(self.page_scoped_registry)} 个页面作用域)")
+        return str(save_file)
 
     @staticmethod
     def extract_search_tokens(query_text: str) -> List[str]:
@@ -134,46 +262,65 @@ class NetworkMonitorMixin:
             "一致", "信息", "包括", "列表", "区域", "卡片", "点击", "悬停", "核验", "指令",
             "如图", "截图中", "中的", "一个", "展示", "用户", "系统", "与", "和", "或", "等",
             "进行", "对应", "数值", "详情", "内容", "状态", "类型", "名称", "编号", "json", "null", "true", "false",
-            "弹出", "浮层", "悬浮框", "框中", "测试", "检查", "页面", "右侧", "左侧", "顶部", "底部"
+            "弹出", "浮层", "悬浮框", "框中", "测试", "检查", "页面", "右侧", "左侧", "顶部", "底部",
+            "主卡片", "所有字段", "所有", "字段", "上的", "在", "主卡", "主"
         }
 
-        # 1. 括号/引号内的强实体 (如 ‘矿用液压锚杆台车’, 【采掘设备】, "G230324004")
-        quoted = re.findall(r'[\'\"‘“【（\(]([^\'\"’”】）\)]+)[\'\"’”】）\)]', query_text)
+        # 0. 规范化数值：合并千分位逗号 (如 "42,024.35" -> "42024.35", "14,200t" -> "14200t")
+        normalized_query = re.sub(r'(\d)[,，](\d)', r'\1\2', query_text)
+
+        # 1. 完整日期特征 (如 2026-09-24, 2026/09/24)
+        dates = re.findall(r'\d{4}[-/]\d{1,2}[-/]\d{1,2}', normalized_query)
+        for d in dates:
+            tokens.add(d)
+
+        # 2. 括号/引号内的强实体 (如 ‘矿用液压锚杆台车’, 【采掘设备】, "G230324004")
+        quoted = re.findall(r'[\'\"‘“【（\(]([^\'\"’”】）\)]+)[\'\"’”】）\)]', normalized_query)
         for q in quoted:
             q_clean = q.strip()
-            if len(q_clean) >= 2 and q_clean not in stop_phrases:
+            if len(q_clean) >= 2 and q_clean.lower() not in stop_phrases:
                 tokens.add(q_clean)
 
-        # 2. 字母数字混合编码与业务ID (如 G230324004, ZW00101, FCB-1.5, KCG240201, 鄂PZZR02)
-        plate_or_codes = re.findall(r'[\u4e00-\u9fa5]?[A-Za-z0-9_\-\.]{3,}', query_text)
+        # 3. 字母数字混合编码与业务ID (如 G230324004, ZW00101, FCB-1.5, KCG240201, 鄂PZZR02)
+        plate_or_codes = re.findall(r'[\u4e00-\u9fa5]?[A-Za-z0-9_\-\.]{3,}', normalized_query)
         for c in plate_or_codes:
-            if c.lower() not in stop_phrases and any(ch.isdigit() for ch in c):
+            if c.lower() not in stop_phrases and any(ch.isdigit() for ch in c) and not re.match(r'^\d{4}[-/]\d{1,2}[-/]\d{1,2}$', c):
                 tokens.add(c)
 
-        # 3. 数值与百分比指标 (如 89%, 59.5%, 1450)
-        metrics = re.findall(r'\d+(?:\.\d+)?%?', query_text)
+        # 4. 数值与百分比指标 (如 89%, 59.5%, 42024.35, 14200)
+        metrics = re.findall(r'\d+(?:\.\d+)?%?', normalized_query)
         for m in metrics:
             if len(m) > 1 or (m.isdigit() and int(m) > 0):
                 tokens.add(m)
+                # 若包含小数且整数部分 >= 3位，提取整数前缀 (如 42024.35 -> 42024，解决后端以整数或基础单位存储问题)
+                if '.' in m:
+                    int_part = m.split('.')[0]
+                    if len(int_part) >= 3:
+                        tokens.add(int_part)
 
-        # 4. 按标点符号切分出的业务短语
-        clauses = re.split(r'[,，。！？、\s（）()“”"\'‘【】\[\]\-_：:‘’’“”]+', query_text)
+        # 5. 按标点符号切分出的业务短语 (支持多层连续剥离前后停用词)
+        clauses = re.split(r'[,，。！？、\s（）()“”"\'‘【】\[\]\-_：:‘’’“”]+', normalized_query)
+        sorted_stops = sorted(stop_phrases, key=len, reverse=True)
         for clause in clauses:
-            clause = clause.strip()
-            if len(clause) < 2:
+            cleaned = clause.strip()
+            if len(cleaned) < 2:
                 continue
-            cleaned = clause
-            for sp in stop_phrases:
-                if cleaned.startswith(sp):
-                    cleaned = cleaned[len(sp):].strip()
-                if cleaned.endswith(sp):
-                    cleaned = cleaned[:-len(sp)].strip()
-            if len(cleaned) >= 2 and cleaned not in stop_phrases:
+            changed = True
+            while changed and len(cleaned) >= 2:
+                changed = False
+                for sp in sorted_stops:
+                    if cleaned.lower().startswith(sp):
+                        cleaned = cleaned[len(sp):].strip()
+                        changed = True
+                    if cleaned.lower().endswith(sp):
+                        cleaned = cleaned[:-len(sp)].strip()
+                        changed = True
+            if len(cleaned) >= 2 and cleaned.lower() not in stop_phrases:
                 tokens.add(cleaned)
 
         filtered = []
         for t in sorted(list(tokens), key=len, reverse=True):
-            if t not in stop_phrases:
+            if t.lower() not in stop_phrases:
                 filtered.append(t)
         return filtered
 
@@ -187,25 +334,35 @@ class NetworkMonitorMixin:
         score = 0.0
         matched = []
 
+        date_years = {"2022", "2023", "2024", "2025", "2026", "2027", "2028", "2029", "2030"}
+
         for token in tokens:
             token_matched = False
             is_code = bool(re.search(r'[A-Za-z]', token) and re.search(r'\d', token))
             is_metric = bool(re.search(r'\d', token) and not re.search(r'[A-Za-z]', token))
+            is_generic_date_part = token in date_years or (token.isdigit() and len(token) <= 2 and int(token) <= 31)
 
             if token in data_str:
                 token_matched = True
                 if is_code:
                     score += 60.0
+                elif is_generic_date_part:
+                    # 通用年份或月日纯数字，赋予较低基础分，防止冲高霸榜
+                    score += 6.0
                 elif is_metric:
-                    score += 25.0
+                    score += 35.0
                 else:
                     score += 30.0
             elif is_metric and token.endswith("%") and token[:-1] in data_str:
                 token_matched = True
-                score += 20.0
+                score += 25.0
 
-            if token.lower() in url_str:
-                score += 15.0
+            if token.lower() == url_str:
+                # 显式指定或全量命中接口名称，赋予极高权重
+                score += 100.0
+                token_matched = True
+            elif len(token) >= 3 and token.lower() in url_str:
+                score += 20.0
                 token_matched = True
 
             if token_matched:
@@ -258,40 +415,117 @@ class NetworkMonitorMixin:
         else:
             return data
 
-    def get_focused_api_records_summary(self, query_text: str = "", max_records: int = 3, max_total_chars: int = 14000) -> str:
+    def get_focused_api_records_summary(self, query_text: str = "", max_records: int = 3, max_total_chars: int = 18000, page_scope: Optional[str] = None) -> str:
         """
-        通用两阶段接口检索：通过倒排索引与结构自适应压缩，精准返回与测试目标最相关的核心接口报文。
-        彻底杜绝张冠李戴与全局暴力截断。
+        通用两级智能接口寻索机制 (Two-Tier Intelligent API Retrieval)：
+        - 【第一级：页面作用域优先定向检索 (Tier 1)】
+          1. 优先在【当前页面作用域池】及【关联过渡态作用域】中定向匹配，彻底杜绝跨页面历史旧接口串扰；
+          2. 智能聚合页面切换瞬时发出的过渡请求（如 '首页 -> 资源管理' 与 '资源管理 -> 资源储量'）；
+        - 【第二级：全量注册表智能穿透与兜底 (Tier 2)】
+          若作用域池未命中核心业务特征，自动穿透检索全量会话注册表 (api_registry)。一旦命中高置信度业务数据源，自动补齐至当前页面池并消除误报！
+        - 严格按 URL 去重选取 Top 核心接口（杜绝同一个轮询接口占满全部候选席位）；
+        - 结构自适应智能脱敏压缩，保证输出合法的压缩 JSON。
         """
-        if not self.api_records:
-            return "[]"
+        if not hasattr(self, "api_registry") or self.api_registry is None:
+            self.api_registry = {}
+        if not hasattr(self, "page_scoped_registry") or self.page_scoped_registry is None:
+            self.page_scoped_registry = {"_global_shared": {}}
 
-        import json
+        active_scope = page_scope or getattr(self, "current_page_scope", "_global_shared")
+
+        # =========================================================================
+        # 【第一级：页面作用域优先定向检索 (Tier 1: Page-Scoped Direct Search)】
+        # 1. 汇聚当前页面作用域池与全局常驻池，并智能关联跳转过渡态作用域
+        # =========================================================================
+        scoped_map = {}
+        if "_global_shared" in self.page_scoped_registry:
+            scoped_map.update(self.page_scoped_registry["_global_shared"])
+        if active_scope in self.page_scoped_registry:
+            scoped_map.update(self.page_scoped_registry[active_scope])
+
+        # 关联过渡态作用域：如果 active_scope 为 "A -> B"，智能汇聚包含 A 或 B 的过渡注册表（解决页面跳转瞬时接口归属时差）
+        scope_parts = [p.strip() for p in active_scope.split("->") if p.strip()]
+        if scope_parts:
+            for reg_scope, eps in self.page_scoped_registry.items():
+                if reg_scope in ("_global_shared", active_scope):
+                    continue
+                if any(part in reg_scope for part in scope_parts):
+                    for ep_name, record in eps.items():
+                        if ep_name not in scoped_map:
+                            scoped_map[ep_name] = record
+
         tokens = self.extract_search_tokens(query_text) if query_text else []
-        recent_records = self.api_records[-30:]
 
-        scored_records = []
-        for r in recent_records:
+        tier1_scored = []
+        for r in scoped_map.values():
             score, matched = self.score_record(r, tokens)
-            scored_records.append((score, matched, r))
+            tier1_scored.append((score, matched, r))
+        tier1_scored.sort(key=lambda x: x[0], reverse=True)
 
-        scored_records.sort(key=lambda x: x[0], reverse=True)
+        date_set = {"2022", "2023", "2024", "2025", "2026", "2027", "2028", "2029", "2030"}
+        def is_business_confident_hit(scored_list: List[tuple]) -> bool:
+            if not scored_list or scored_list[0][0] <= 0:
+                return False
+            best_score, best_matched, _ = scored_list[0]
+            non_date_hits = [m for m in best_matched if m not in date_set and not (m.isdigit() and len(m) <= 2)]
+            return bool(non_date_hits or best_score >= 40.0)
 
         selected_candidates = []
+        seen_urls = set()
         direct_hit = False
 
-        if scored_records and scored_records[0][0] > 0:
-            direct_hit = True
-            for score, matched, r in scored_records:
-                if score > 0 and len(selected_candidates) < max_records:
-                    selected_candidates.append((score, matched, r))
-            hit_info = ", ".join([f"'{r['url']}'(得分:{s}, 命中:{m})" for s, m, r in selected_candidates])
-            logger.info(f"🎯 [Auto-API Inverted Index] 倒排索引命中核心候选接口: {hit_info}")
-        else:
-            # 未直接命中特征 Token 时，回退选取最近的核心业务接口
-            logger.info(f"ℹ️ [Auto-API Inverted Index] 未直接命中特征Token，回退加载最近 {max_records} 个业务接口供全量核验。")
-            for r in recent_records[-max_records:]:
-                selected_candidates.append((0.0, [], r))
+        tier1_confident = is_business_confident_hit(tier1_scored)
+
+        # =========================================================================
+        # 【第二级：全量注册表智能穿透与兜底 (Tier 2: Global Penetration & Fallback)】
+        # 当且仅当 Tier 1 未命中核心业务特征，或全量注册表中存在压倒性的高分接口时触发穿透
+        # =========================================================================
+        if not tier1_confident and self.api_registry:
+            tier2_scored = []
+            for r in self.api_registry.values():
+                score, matched = self.score_record(r, tokens)
+                if score > 0:
+                    tier2_scored.append((score, matched, r))
+            tier2_scored.sort(key=lambda x: x[0], reverse=True)
+
+            if is_business_confident_hit(tier2_scored):
+                best_g_score, best_g_matched, best_g_record = tier2_scored[0]
+                t1_score = tier1_scored[0][0] if tier1_scored else 0.0
+                if best_g_score > t1_score or not tier1_confident:
+                    logger.info(f"✨ [Auto-API Two-Tier] 作用域池未命中专属业务数据，触发二级全局穿透！命中全量注册表核心接口: '{best_g_record['url']}'(得分:{best_g_score}, 命中:{best_g_matched})！跨页面补齐数据源。")
+                    # 动态将该接口补齐挂载到当前页面作用域池 (Dynamic Scope Healing)
+                    if active_scope not in self.page_scoped_registry:
+                        self.page_scoped_registry[active_scope] = {}
+                    self.page_scoped_registry[active_scope][best_g_record["url"]] = best_g_record
+
+                    for g_score, g_matched, g_r in tier2_scored:
+                        if is_business_confident_hit([(g_score, g_matched, g_r)]) and g_r.get("url") not in seen_urls:
+                            selected_candidates.append((g_score, g_matched, g_r))
+                            seen_urls.add(g_r.get("url"))
+                            if len(selected_candidates) >= max_records:
+                                break
+                    direct_hit = True
+
+        # 若二级穿透未触发，按常规 Tier 1 结果选取
+        if not selected_candidates:
+            if tier1_scored and tier1_scored[0][0] > 0:
+                direct_hit = True
+                for score, matched, r in tier1_scored:
+                    u = r.get("url")
+                    if score > 0 and u not in seen_urls and len(selected_candidates) < max_records:
+                        selected_candidates.append((score, matched, r))
+                        seen_urls.add(u)
+                hit_info = ", ".join([f"'{r['url']}'(得分:{s}, 命中:{m})" for s, m, r in selected_candidates])
+                logger.info(f"🎯 [Auto-API Inverted Index][作用域: {active_scope}] 倒排索引命中核心候选接口: {hit_info}")
+            else:
+                logger.info(f"ℹ️ [Auto-API Inverted Index][作用域: {active_scope}] 未直接命中特征Token，回退选取最近活跃的 {max_records} 个独立业务接口供全量核验。")
+                fallback_pool = list(scoped_map.values()) if scoped_map else list(self.api_registry.values())
+                sorted_by_time = sorted(fallback_pool, key=lambda x: x.get("timestamp", 0), reverse=True)
+                for r in sorted_by_time:
+                    u = r.get("url")
+                    if u not in seen_urls and len(selected_candidates) < max_records:
+                        selected_candidates.append((0.0, [], r))
+                        seen_urls.add(u)
 
         # 压缩报文
         compressed_apis = []
@@ -306,6 +540,7 @@ class NetworkMonitorMixin:
         output_struct = {
             "_retrieval_meta": {
                 "query": query_text,
+                "page_scope": active_scope,
                 "extracted_tokens": tokens,
                 "direct_hit": direct_hit,
                 "candidate_urls": [c["url"] for c in compressed_apis]
@@ -315,7 +550,13 @@ class NetworkMonitorMixin:
 
         summary = json.dumps(output_struct, ensure_ascii=False, indent=2)
         if len(summary) > max_total_chars:
-            summary = summary[:max_total_chars] + "\n...[Truncated, JSON exceeded character limit]"
+            # 安全压缩避免非法截断 JSON
+            for c in output_struct["candidate_apis"]:
+                if isinstance(c.get("data"), dict):
+                    for k in list(c["data"].keys()):
+                        if isinstance(c["data"][k], list) and len(c["data"][k]) > 2:
+                            c["data"][k] = c["data"][k][:2] + [{"_further_compressed": True}]
+            summary = json.dumps(output_struct, ensure_ascii=False, indent=2)
         return summary
 
     def get_api_records_summary(self, query_text: str = "") -> str:

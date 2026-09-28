@@ -22,8 +22,9 @@ def parse_args():
     parser.add_argument("--all", action="store_true", help="运行 test_cases 目录下的所有用例")
     parser.add_argument("--ignore-errors", action="store_true", help="全局忽略步骤报错，继续执行后续步骤")
     parser.add_argument("--explore", type=str, help="开启自主探索模式，并指定宏观探索目标")
+    parser.add_argument("--tour", "--smoke", dest="tour", action="store_true", help="33个二级菜单全量冒烟巡检模式：单次启动依次遍历所有二级菜单，验证两级跳转与页面轻量交互（纯日志，不生成Mermaid架构图）")
     parser.add_argument("--explore-context", type=str, action="append", help="指定针对探索模式的项目背景知识或交互规则，可多次使用，支持纯文本或文件路径")
-    parser.add_argument("--resume-from", type=str, help="指定上一次探索的 log 目录（例如 logs/explore_xxx），以实现断点续传（继承记忆与页面架构树）")
+    parser.add_argument("--resume-from", type=str, help="指定上一次探索的运行目录（如 reports/runs/explore_xxx 或旧 logs/xxx），以实现断点续传（继承记忆与页面架构树）")
     parser.add_argument("--reexplore", type=str, nargs="?", const="auto", help="强制重新探索指定模块（即使已在架构树中存在）。可指定模块名（如 智能通风），若不带参数则自动从 --explore 提示词中提取")
     parser.add_argument("--max-steps", type=int, default=20, help="自主探索的最大步数限制（默认: 20）")
     parser.add_argument("--start-delay", type=float, default=getattr(settings, "start_delay", 15.0), help="启动应用后的等待时间(秒)，确保引擎和UI完全加载（默认从 config.yaml 读取）")
@@ -34,7 +35,7 @@ def parse_args():
 
 def collect_yaml_cases(args, logger: logging.Logger) -> list:
     """收集并去重待执行的 YAML 用例"""
-    if args.explore:
+    if args.explore or getattr(args, "tour", False):
         return []
 
     if not args.case and not args.all:
@@ -151,6 +152,36 @@ def run_explore_mode(driver: ElectronDriver, vision_agent: VisionAgent, args):
     )
 
 
+def run_smoke_tour_mode(driver: ElectronDriver, vision_agent: VisionAgent, args):
+    """运行 33 个二级菜单全量冒烟巡检模式"""
+    LoggerManager().switch_file_handler("smoke_tour")
+    explorer = ExplorerAgent(driver, vision_agent)
+    
+    # 自动加载先验规则（优先使用命令行指定的 context，默认自动加载 docs/explore_rules.md）
+    context_str = ""
+    if args.explore_context:
+        contexts = []
+        for ctx in args.explore_context:
+            ctx_path = Path(ctx)
+            if ctx_path.is_file():
+                try:
+                    contexts.append(ctx_path.read_text(encoding="utf-8").strip())
+                except Exception as e:
+                    logging.getLogger("main").error(f"读取 context 文件失败: {ctx} ({e})")
+            else:
+                contexts.append(ctx.strip())
+        context_str = "\n".join(contexts)
+    else:
+        default_rules = Path("docs") / "explore_rules.md"
+        if default_rules.exists():
+            try:
+                context_str = default_rules.read_text(encoding="utf-8").strip()
+            except Exception:
+                pass
+            
+    explorer.start_smoke_tour(context=context_str)
+
+
 def run_yaml_mode(driver: ElectronDriver, vision_agent: VisionAgent, cases_to_run: list, args, logger: logging.Logger):
     """运行确定性用例模式"""
     runner = ActionRunner(driver, vision_agent)
@@ -179,8 +210,10 @@ def run_yaml_mode(driver: ElectronDriver, vision_agent: VisionAgent, cases_to_ru
 def main():
     args = parse_args()
 
-    # 隔离探索模式的运行日志目录
-    if args.explore:
+    # 隔离探索与冒烟模式的运行日志目录
+    if getattr(args, "tour", False):
+        os.environ["REPORT_RUN_ID"] = "smoke_" + datetime.now().strftime("%Y%m%d_%H%M%S")
+    elif args.explore:
         os.environ["REPORT_RUN_ID"] = "explore_" + datetime.now().strftime("%Y%m%d_%H%M%S")
 
     # 初始化全局日志
@@ -190,11 +223,16 @@ def main():
     logger.name = "main"
 
     cases_to_run = collect_yaml_cases(args, logger)
-    if not cases_to_run and not args.explore:
-        logger.warning("没有找到可执行的用例文件。")
+    if not cases_to_run and not args.explore and not getattr(args, "tour", False):
+        logger.warning("没有找到可执行的用例文件。查看 --help 获取帮助。")
         sys.exit(0)
 
-    mode_name = "自主探索" if args.explore else f"YAML 用例 (共 {len(cases_to_run)} 个)"
+    if getattr(args, "tour", False):
+        mode_name = "33个二级菜单全量冒烟巡检 (Smoke Tour)"
+    elif args.explore:
+        mode_name = "自主探索"
+    else:
+        mode_name = f"YAML 用例 (共 {len(cases_to_run)} 个)"
     logger.info(f"🚀 初始化 Electron 视觉巡检引擎 | 模式: {mode_name}")
     
     vision_agent = VisionAgent()
@@ -209,7 +247,9 @@ def main():
             perform_visual_wait(driver, vision_agent, args.wait_ready, args.wait_timeout, logger)
 
         # 路由到对应的执行引擎
-        if args.explore:
+        if getattr(args, "tour", False):
+            run_smoke_tour_mode(driver, vision_agent, args)
+        elif args.explore:
             run_explore_mode(driver, vision_agent, args)
         else:
             run_yaml_mode(driver, vision_agent, cases_to_run, args, logger)

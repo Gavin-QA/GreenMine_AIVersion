@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 from core.browser import ElectronDriver
 from core.vision.agent import VisionAgent, VisionAgentException
 from core.bug_reporter import BugReporter
-from utils.artifacts import screenshot_path
+from utils.artifacts import screenshot_path, report_run_id
 
 logger = logging.getLogger("core.action_runner")
 
@@ -54,18 +54,18 @@ class ActionRunner:
             try:
                 self._execute_step(step)
             except Exception as e:
-                # 出现异常时，立刻留存案发现场截图
-                crash_pic = screenshot_path(f"{path.stem}_CRASH_step_{i}")
+                # 出现异常时，立刻留存案发现场截图至当前运行的专属截图目录
+                curr_run_id = report_run_id()
+                crash_pic = screenshot_path(f"{path.stem}_CRASH_step_{i}", run_id=curr_run_id)
                 self.driver.capture_screenshot(str(crash_pic))
                 logger.error(f"❌ 步骤 {i} 执行失败！现场已保存: {crash_pic}")
                 logger.error(f"异常详情: {e}")
                 
-                # 记录缺陷
-                run_id = path.stem
-                title = f"[{run_id}] Step {i} 异常崩溃"
+                # 记录缺陷并收敛至单次运行目录与全局资产库
+                title = f"[{path.stem}] Step {i} 异常崩溃"
                 prompt_text = step.get('prompt', '无操作指令')
                 self.bug_reporter.report_bug(
-                    run_id=run_id,
+                    run_id=curr_run_id,
                     title=title,
                     step_prompt=prompt_text,
                     actual_result=str(e),
@@ -205,6 +205,16 @@ class ActionRunner:
                 )
                 self.driver.click(x, y)
                 time.sleep(1.5)  # 等待补救动作生效
+            elif fix_type == "hover":
+                x, y = self.vision.find_element(
+                    instruction=fix_action,
+                    base64_image=b64_img,
+                    viewport_width=viewport["width"],
+                    viewport_height=viewport["height"],
+                    dom_elements=dom_elements
+                )
+                self.driver.hover(x, y)
+                time.sleep(2.0)  # 等待悬浮下拉菜单完全展开渲染
             elif fix_type == "scroll_down":
                 self.driver.scroll(delta_y=500)
                 time.sleep(1.0)

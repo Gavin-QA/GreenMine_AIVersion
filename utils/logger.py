@@ -1,7 +1,7 @@
 """
-寨湾 UI 自动化测试框架的日志模块。
+Electron AI Vision 视觉自动化巡检框架的日志模块。
 提供集中的日志配置，支持控制台和文件双向输出。
-支持彩色控制台输出及可配置的日志级别。
+支持彩色控制台输出、编码安全防护及按用例隔离的动态文件日志切换。
 """
 
 import logging
@@ -26,17 +26,19 @@ class SafeUnicodeStreamHandler(logging.StreamHandler):
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
-            super().emit(record)
-        except UnicodeEncodeError:
+            msg = self.format(record)
+            stream = self.stream
             try:
-                msg = self.format(record)
-                stream = self.stream
+                stream.write(msg + self.terminator)
+            except UnicodeEncodeError:
                 encoding = getattr(stream, "encoding", None) or "utf-8"
                 safe_msg = msg.encode(encoding, errors="replace").decode(encoding, errors="replace")
                 stream.write(safe_msg + self.terminator)
-                self.flush()
-            except Exception:
-                self.handleError(record)
+            self.flush()
+        except RecursionError:
+            raise
+        except Exception:
+            self.handleError(record)
 
 
 # 尝试导入 colorlog 用于控制台彩色日志输出
@@ -49,16 +51,18 @@ except ImportError:
 
 class LoggerManager:
     """
-    用于管理日志记录器实例的单例类。
+    用于管理全局日志系统的单例管理器。
     
     提供集中的日志配置，支持：
     - 彩色控制台输出（如果 colorlog 可用）
-    - 带时间戳的文件日志输出
-    - 多种日志级别
+    - Windows Unicode 编码安全容错
+    - 针对测试用例的动态隔离文件日志输出 (switch_file_handler)
+    - 可配置的全局日志级别
     """
 
     _instance: Optional["LoggerManager"] = None
     _logger: Optional[logging.Logger] = None
+    _initialized: bool = False
 
     def __new__(cls) -> "LoggerManager":
         """确保单例实例。"""
@@ -67,36 +71,31 @@ class LoggerManager:
         return cls._instance
 
     def __init__(self) -> None:
-        """初始化日志管理器。"""
-        if self._logger is None:
+        """初始化日志管理器（确保仅配置一次）。"""
+        if not LoggerManager._initialized:
             self._setup_logger()
+            LoggerManager._initialized = True
 
     def _setup_logger(self) -> None:
-        """使用 Handler 和 Formatter 配置日志记录器。"""
-        # 获取根日志记录器，拦截所有模块的日志
+        """使用 Handler 和 Formatter 配置根日志记录器。"""
+        # 获取根日志记录器，拦截并管理所有子模块的日志
         self._logger = logging.getLogger()
         self._logger.setLevel(getattr(logging, getattr(settings, 'log_level', 'INFO').upper(), logging.INFO))
 
-        # 避免重复添加 Handler
-        if self._logger.handlers:
-            return
+        # 清除外部库或 basicConfig 预注入的旧 Handler，确保接管为统一受控的 Handler
+        for handler in self._logger.handlers[:]:
+            self._logger.removeHandler(handler)
+            try:
+                handler.close()
+            except Exception:
+                pass
 
-        # 清除任何已存在的 Handler
-        self._logger.handlers.clear()
-
-        # 必要时创建日志目录
-        log_file = Path(getattr(settings, 'log_file_path', 'logs/pytest_execution.log'))
-        log_file.parent.mkdir(parents=True, exist_ok=True)
-
-        # 控制台 Handler
+        # 控制台 Handler (带 Unicode 编码安全与彩色格式化)
         if getattr(settings, 'log_to_console', True):
             console_handler = self._create_console_handler()
             self._logger.addHandler(console_handler)
 
         # 文件 Handler 会通过显式调用 switch_file_handler 进行挂载，不再默认创建
-        # 控制台 Handler 继续保留
-
-        self._logger.propagate = False
 
     def _create_console_handler(self) -> logging.Handler:
         """创建带合适格式化器的控制台 Handler。"""
@@ -186,17 +185,16 @@ def get_logger(name: str) -> logging.Logger:
     获取指定名称的日志记录器实例。
     
     参数:
-        name: 日志记录器名称（通常为模块的 __name__）。
+        name: 日志记录器名称（通常为模块名或 __name__）。
         
     返回:
         logging.Logger: 指定名称的日志记录器实例。
     """
-    # 确保日志配置已初始化
-    if LoggerManager()._logger is None:
+    # 确保全局日志配置已初始化
+    if not LoggerManager._initialized:
         setup_logging()
 
-    # 创建指定名称的子日志记录器
-    return logging.getLogger(f"zhaiwan2UI.{name}")
+    return logging.getLogger(name)
 
 
 # 模块导入时初始化日志系统

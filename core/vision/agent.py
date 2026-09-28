@@ -162,15 +162,22 @@ class VisionAgent:
             )
             
             thought = result.get("thought", "")
+            match_status = str(result.get("match_status", "")).upper().strip()
             passed = result.get("passed", False)
             reason = result.get("assert_reason", "未提供理由")
             
             logger.info(f"💡 AI 思考链: {thought}")
-            
-            if passed:
-                logger.info(f"✅ API 断言结果: True | 理由: {reason}")
+
+            # 通用三态拆分：如果候选接口与当前组件非同源业务，属于跳过非Bug，严禁误报
+            if match_status == "UNRELATED" or "非同源" in reason or "跳过数据校验" in reason:
+                passed = True
+                logger.info(f"ℹ️ API 状态: UNRELATED (接口非当前组件数据源，跳过比对，非Bug) | 理由: {reason}")
+            elif passed or match_status == "MATCHED":
+                passed = True
+                logger.info(f"✅ API 断言结果: True (MATCHED 同源且数据一致) | 理由: {reason}")
             else:
-                logger.info(f"❌ API 断言结果: False | 理由: {reason}")
+                passed = False
+                logger.info(f"❌ API 断言结果: False (MISMATCH 同源真实数据冲突) | 理由: {reason}")
                 
             return passed, reason
             
@@ -226,8 +233,18 @@ class VisionAgent:
         
         if dom_elements and len(dom_elements) > 0:
             logger.info("⚡ 启用 Hybrid DOM 匹配模式")
-            # 将元素列表精简以节约 Token
-            simplified_elements = [{"id": el["id"], "tag": el["tag"], "text": el["text"]} for el in dom_elements]
+            # 将元素列表精简以节约 Token，同时附带空间位置 pos: [x, y] 协助大模型区分同名元素（如顶部下拉菜单项 vs 内容区卡片）
+            simplified_elements = []
+            for el in dom_elements:
+                item = {
+                    "id": el["id"],
+                    "tag": el["tag"],
+                    "text": el["text"],
+                    "pos": [int(el["rect"]["x"]), int(el["rect"]["y"])]
+                }
+                if el.get("container_name"):
+                    item["container"] = el["container_name"]
+                simplified_elements.append(item)
             elements_json = json.dumps(simplified_elements, ensure_ascii=False, indent=2)
             
             user_prompt = f"当前页面截图如附图所示。指令：{instruction}\n\n候选元素列表：\n{elements_json}"

@@ -78,7 +78,7 @@ class Settings:
         self.log_level: str = os.getenv("LOG_LEVEL", "INFO")
         self.log_to_console: bool = os.getenv("LOG_TO_CONSOLE", "true").lower() == "true"
         self.log_to_file: bool = os.getenv("LOG_TO_FILE", "true").lower() == "true"
-        self.log_file_path: str = os.getenv("LOG_FILE_PATH", "logs/pytest_execution.log")
+        self.log_file_path: str = os.getenv("LOG_FILE_PATH", "reports/runs/pytest_execution.log")
         self.screenshot_on_failure: bool = os.getenv("SCREENSHOT_ON_FAILURE", "true").lower() == "true"
 
 

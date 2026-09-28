@@ -1,7 +1,12 @@
 import logging
 import re
+import json
+import shutil
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, List
+
+from utils.artifacts import TOPOLOGY_DIR, TOPOLOGY_SNAPSHOTS_DIR, DOCS_DIR
 
 logger = logging.getLogger("explorer_agent.page_map")
 
@@ -219,17 +224,72 @@ class PageMapBuilder:
                 PageMapBuilder._deep_merge(sanitized, cleaned_subtree)
                 continue
 
-            # 6. 标签名称规范化（去除前缀冗余，使重复标签自动折叠合并）
+            # 6. 跨模块子Tab泄漏伪容器智能解包（如“证照管理”下误挂包含证照卡片的“资源储量”；或“矿山简介”下误挂包含简介内容的“采矿许可证”）
+            cert_keywords = ["许可证", "执照", "证号", "证照"]
+            if "证照管理" in sanitized or any(k in key for k in ["证照", "资质"]):
+                pass
+            if "资源储量" in key and any(any(kw in item for kw in cert_keywords) for item in cleaned_subtree.keys()):
+                logger.info(f"🧹 [Sanitize] 识别并解包跨页泄漏的伪容器: [{key}]，将其中的证照组件提升至上一级")
+                PageMapBuilder._deep_merge(sanitized, cleaned_subtree)
+                continue
+
+            if "采矿许可证" in key and any(item in cleaned_subtree for item in ["矿山简介卡片", "资源储量", "矿石品位图表"]):
+                logger.info(f"🧹 [Sanitize] 识别并解包矿山简介内误挂的采矿许可证伪节点: [{key}]")
+                PageMapBuilder._deep_merge(sanitized, cleaned_subtree)
+                continue
+
+            # 7. 解包在数据卡片内部误吞的独立媒体播放器（如“资源储量”内部误吞了“企业简介视频播放器”）
+            if any(card in key for card in ["资源储量", "数据卡片", "统计", "品位"]) and "企业简介视频播放器" in cleaned_subtree:
+                player_node = cleaned_subtree.pop("企业简介视频播放器")
+                if "企业简介视频播放器" not in sanitized:
+                    sanitized["企业简介视频播放器"] = player_node
+                else:
+                    PageMapBuilder._deep_merge(sanitized["企业简介视频播放器"], player_node)
+
+            # 8. 标签名称规范化（去除前缀冗余，使重复标签自动折叠合并）
             norm_key = key
             if "底部标签栏中的‘" in norm_key:
                 norm_key = norm_key.replace("底部标签栏中的‘", "").replace("’标签", "标签").replace("’", "")
             elif "底部标签栏中‘" in norm_key:
                 norm_key = norm_key.replace("底部标签栏中‘", "").replace("’标签", "标签").replace("’", "")
 
-            if norm_key in sanitized and isinstance(sanitized[norm_key], dict) and isinstance(cleaned_subtree, dict):
-                PageMapBuilder._deep_merge(sanitized[norm_key], cleaned_subtree)
-            else:
-                sanitized[norm_key] = cleaned_subtree
+            # 9. 同名/同义套娃容器自动解包（如“资源储量”同级存在“资源储量数据卡片”，或内部包含同名卡片）
+            clean_norm = re.sub(r'^[📁📄📋🪟🔲📝🔽☑️🗺️📊📦⚙️\s]+', '', norm_key).strip()
+            suffix_pattern = r'(?:数据卡片|卡片区域|卡片|模块|区域|容器|列表|表格|图表)$'
+            core_norm = re.sub(suffix_pattern, '', clean_norm).strip()
+
+            # 检查 sanitized 中是否已有核心词一致的容器，若有则直接合并
+            merged_into_existing = False
+            if core_norm:
+                for existing_k in list(sanitized.keys()):
+                    clean_ex = re.sub(r'^[📁📄📋🪟🔲📝🔽☑️🗺️📊📦⚙️\s]+', '', existing_k).strip()
+                    core_ex = re.sub(suffix_pattern, '', clean_ex).strip()
+                    if core_ex and (core_norm == core_ex or (len(core_norm) >= 3 and core_norm in core_ex) or (len(core_ex) >= 3 and core_ex in core_norm)):
+                        # 合并入现存的较精炼名称的节点
+                        PageMapBuilder._deep_merge(sanitized[existing_k], cleaned_subtree)
+                        merged_into_existing = True
+                        break
+
+            if not merged_into_existing:
+                if norm_key in sanitized and isinstance(sanitized[norm_key], dict) and isinstance(cleaned_subtree, dict):
+                    PageMapBuilder._deep_merge(sanitized[norm_key], cleaned_subtree)
+                else:
+                    sanitized[norm_key] = cleaned_subtree
+
+        # 10. 检查当前层级内部各子树，解包其内部与自身同义的套娃子容器
+        for parent_k, parent_subtree in list(sanitized.items()):
+            if isinstance(parent_subtree, dict):
+                clean_pk = re.sub(r'^[📁📄📋🪟🔲📝🔽☑️🗺️📊📦⚙️\s]+', '', parent_k).strip()
+                core_pk = re.sub(suffix_pattern, '', clean_pk).strip()
+                if core_pk:
+                    for child_k in list(parent_subtree.keys()):
+                        clean_ck = re.sub(r'^[📁📄📋🪟🔲📝🔽☑️🗺️📊📦⚙️\s]+', '', child_k).strip()
+                        core_ck = re.sub(suffix_pattern, '', clean_ck).strip()
+                        if core_ck and (core_pk == core_ck or (len(core_pk) >= 3 and core_pk in core_ck)):
+                            # 解包该子节点
+                            child_sub = parent_subtree.pop(child_k)
+                            if isinstance(child_sub, dict):
+                                PageMapBuilder._deep_merge(parent_subtree, child_sub)
 
         return sanitized
 
@@ -247,12 +307,18 @@ class PageMapBuilder:
 
     @staticmethod
     def load_global_tree() -> dict:
-        """从 docs/global_page_tree.json 加载累积架构树，若无则从 docs/explore_rules.md 加载基准底座"""
+        """从 artifacts/topology/global_page_tree.json 加载累积架构树，若无则从 docs/explore_rules.md 加载基准底座"""
         base_tree = PageMapBuilder.parse_base_rules()
-        global_file = Path("docs") / "global_page_tree.json"
+        global_file = TOPOLOGY_DIR / "global_page_tree.json"
+        
+        # 兼容性回退检查：若新路径不存在则尝试读取 docs/ 下的历史数据
+        if not global_file.exists():
+            legacy_file = DOCS_DIR / "global_page_tree.json"
+            if legacy_file.exists():
+                global_file = legacy_file
+                
         if global_file.exists():
             try:
-                import json
                 with open(global_file, "r", encoding="utf-8") as f:
                     history_tree = json.load(f)
                 PageMapBuilder._deep_merge(base_tree, history_tree)
@@ -265,7 +331,7 @@ class PageMapBuilder:
     def reset_module_subtree(tree: dict, module_name: str) -> bool:
         """
         在架构树中查找指定的一级或二级菜单模块，并清空其所有子节点（重置为空分支），
-        同时实时同步清空 docs/global_page_tree.json 中的历史节点，确保全新重探。
+        同时实时同步清空持久化文件中的历史节点，确保全新重探。
         """
         clean_target = module_name.strip("【】'\" ")
         
@@ -291,34 +357,59 @@ class PageMapBuilder:
 
         reset_ok = _clear_in_dict(tree)
 
-        # 同时持久化清空 docs/global_page_tree.json 里的该模块历史
-        global_file = Path("docs") / "global_page_tree.json"
-        if global_file.exists():
-            try:
-                import json
-                with open(global_file, "r", encoding="utf-8") as f:
-                    history_tree = json.load(f)
-                if _clear_in_dict(history_tree):
-                    with open(global_file, "w", encoding="utf-8") as f:
-                        json.dump(history_tree, f, ensure_ascii=False, indent=2)
-                    reset_ok = True
-            except Exception as e:
-                logger.warning(f"同步重置 global_page_tree.json 失败: {e}")
+        # 同步清空持久化文件
+        for target_file in [TOPOLOGY_DIR / "global_page_tree.json", DOCS_DIR / "global_page_tree.json"]:
+            if target_file.exists():
+                try:
+                    with open(target_file, "r", encoding="utf-8") as f:
+                        history_tree = json.load(f)
+                    if _clear_in_dict(history_tree):
+                        with open(target_file, "w", encoding="utf-8") as f:
+                            json.dump(history_tree, f, ensure_ascii=False, indent=2)
+                        reset_ok = True
+                except Exception as e:
+                    logger.warning(f"同步重置 {target_file.name} 失败: {e}")
 
         return reset_ok
+
+    @staticmethod
+    def _create_topology_snapshot(source_file: Path) -> None:
+        """自动为全局架构树创建带时间戳的版本快照，防止模型幻觉或脏数据覆盖历史基线"""
+        try:
+            if not source_file.exists() or source_file.stat().st_size == 0:
+                return
+            TOPOLOGY_SNAPSHOTS_DIR.mkdir(parents=True, exist_ok=True)
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            snapshot_file = TOPOLOGY_SNAPSHOTS_DIR / f"page_tree_{ts}.json"
+            shutil.copy2(source_file, snapshot_file)
+            
+            # 限制历史快照数量（最多保留 20 份），滚动清理旧快照
+            snapshots = sorted(TOPOLOGY_SNAPSHOTS_DIR.glob("page_tree_*.json"), key=lambda p: p.stat().st_mtime)
+            if len(snapshots) > 20:
+                for old_snap in snapshots[:-20]:
+                    try:
+                        old_snap.unlink()
+                    except Exception:
+                        pass
+        except Exception as e:
+            logger.warning(f"创建拓扑快照备份失败 (非致命): {e}")
 
     @staticmethod
     def export_page_map(page_tree: dict):
         """
         统一导出页面架构地图：
         包含【纯 Markdown 结构化组件拓扑大纲】与【Mermaid 辅助图】
-        自动与 docs/global_page_tree.json 持久化合并，永不因清空日志丢失历史记录！
+        自动与 artifacts/topology/global_page_tree.json 持久化合并，并自动留存历史快照，永不因清空日志丢失历史记录！
+        同时镜像同步至 docs/auto_page_map.md 保证 IDE 即时预览。
         """
         try:
-            docs_dir = Path("docs").resolve()
-            docs_dir.mkdir(parents=True, exist_ok=True)
-            map_path = docs_dir / "auto_page_map.md"
-            global_file = docs_dir / "global_page_tree.json"
+            TOPOLOGY_DIR.mkdir(parents=True, exist_ok=True)
+            DOCS_DIR.mkdir(parents=True, exist_ok=True)
+            
+            artifacts_map_path = TOPOLOGY_DIR / "auto_page_map.md"
+            artifacts_global_file = TOPOLOGY_DIR / "global_page_tree.json"
+            docs_map_path = DOCS_DIR / "auto_page_map.md"
+            docs_global_file = DOCS_DIR / "global_page_tree.json"
 
             # 1. 加载基准骨架并清洗导航噪音节点
             base_tree = PageMapBuilder.parse_base_rules()
@@ -329,10 +420,10 @@ class PageMapBuilder:
                 merged_tree[l1] = dict(l2_dict)
 
             # 先合入全局历史持久化树（防止清空日志后丢失以往探索的模块）
-            if global_file.exists():
+            read_history_file = artifacts_global_file if artifacts_global_file.exists() else docs_global_file
+            if read_history_file.exists():
                 try:
-                    import json
-                    with open(global_file, "r", encoding="utf-8") as f:
+                    with open(read_history_file, "r", encoding="utf-8") as f:
                         history_tree = json.load(f)
                     PageMapBuilder._deep_merge(merged_tree, history_tree)
                 except Exception:
@@ -347,18 +438,19 @@ class PageMapBuilder:
             # 3. 列表折叠与优化
             optimized_tree = PageMapBuilder.fold_duplicate_list_items(clean_tree)
 
-            # 4. 实时持久化到 docs/global_page_tree.json (独立于 logs 永久保存)
+            # 4. 自动创建版本快照 (防坏账备份)
+            PageMapBuilder._create_topology_snapshot(artifacts_global_file)
+
+            # 5. 实时持久化 global_page_tree.json (主存 artifacts/topology/，镜像 docs/)
             try:
-                import json
-                with open(global_file, "w", encoding="utf-8") as f:
-                    json.dump(clean_tree, f, ensure_ascii=False, indent=2)
+                for target_json in [artifacts_global_file, docs_global_file]:
+                    with open(target_json, "w", encoding="utf-8") as f:
+                        json.dump(clean_tree, f, ensure_ascii=False, indent=2)
             except Exception as e:
                 logger.warning(f"持久化 global_page_tree.json 失败: {e}")
 
-            # 4. 渲染纯 Markdown 树
+            # 6. 渲染纯 Markdown 树与 Mermaid
             markdown_tree = PageMapBuilder.render_markdown_tree(optimized_tree)
-
-            # 5. 渲染 Mermaid
             mermaid_str = PageMapBuilder.dict_to_mermaid_string(optimized_tree)
 
             lines = [
@@ -373,11 +465,15 @@ class PageMapBuilder:
                 mermaid_str,
                 "```\n"
             ]
+            content = "\n".join(lines)
 
-            with open(map_path, "w", encoding="utf-8") as f:
-                f.write("\n".join(lines))
+            # 双写写入 artifacts/topology/ 与 docs/
+            with open(artifacts_map_path, "w", encoding="utf-8") as f:
+                f.write(content)
+            with open(docs_map_path, "w", encoding="utf-8") as f:
+                f.write(content)
 
-            logger.info(f"🗺️ 已成功渲染动态 UI 架构树 (Markdown + Mermaid): {map_path}")
+            logger.info(f"🗺️ 已成功渲染动态 UI 架构树 (Markdown + Mermaid): {artifacts_map_path}")
         except Exception as e:
             logger.error(f"❌ 渲染架构图失败: {e}")
 

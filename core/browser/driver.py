@@ -62,6 +62,13 @@ class ElectronDriver(NetworkMonitorMixin, DomExtractorMixin, ScreenshotMixin, Ch
         # 接口数据捕获池 (Rolling buffer of recent JSON responses)
         self.api_records = []
         
+        # 全局唯一接口注册表 (永久驻留，URL -> 最新规范报文，彻底解决轮询冲刷覆盖问题)
+        self.api_registry: Dict[str, dict] = {}
+        
+        # 页面专属作用域注册表 (严格隔离各二级页面的网络包，彻底杜绝历史旧接口串扰)
+        self.current_page_scope: str = "_global_shared"
+        self.page_scoped_registry: Dict[str, Dict[str, dict]] = {"_global_shared": {}}
+        
         # 后台静默报错捕获池 (Console Errors, Network Errors)
         self.caught_bugs = []
         
