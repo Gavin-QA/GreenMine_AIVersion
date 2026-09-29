@@ -24,24 +24,13 @@ class TrajectoryExporter:
             }
             
             # --- 降噪逻辑 (Noise Reduction) ---
-            optimized_steps = []
+            # 步骤 1：基础规范化与连续单步去重
+            raw_steps = []
             for step in trajectory:
-                step_type = step["type"]
+                step_type = step.get("type", "action")
                 action_type = step.get("action_type", "").upper()
                 prompt = step.get("prompt", "")
                 
-                # 过滤连续的 WAIT：如果上一步已经是 wait，或者没操作，合并
-                if step_type == "wait":
-                    if not optimized_steps or optimized_steps[-1]["type"] == "wait":
-                        continue  # 忽略多余的 wait
-                        
-                # 过滤连续重复的动作（例如因为没点中导致连续生成多个相同的点击）
-                if step_type == "action" and optimized_steps:
-                    last_step = optimized_steps[-1]
-                    if last_step.get("type") == "action" and last_step.get("prompt") == f"[{action_type}] {prompt}":
-                        continue
-                        
-                # 构建优化后的步
                 step_dict = {"type": step_type}
                 if step_type == "action":
                     step_dict["prompt"] = f"[{action_type}] {prompt}"
@@ -50,14 +39,64 @@ class TrajectoryExporter:
                 elif step_type in ("api_assert", "assert", "wait_for"):
                     step_dict["prompt"] = prompt
                 
-                optimized_steps.append(step_dict)
-            
-            # --- 抽象与整理 (Abstraction) ---
-            # 如果最后一个操作是 wait，可以剔除，没意义
-            if optimized_steps and optimized_steps[-1]["type"] == "wait":
-                optimized_steps.pop()
-                
-            case_data["steps"] = optimized_steps
+                # 过滤连续的 WAIT：如果上一步已经是 wait，跳过
+                if step_type == "wait" and raw_steps and raw_steps[-1].get("type") == "wait":
+                    continue
+                # 过滤连续相同单步
+                if raw_steps and raw_steps[-1] == step_dict:
+                    continue
+                raw_steps.append(step_dict)
+
+            # 步骤 2：周期性循环动作折叠去重 (周期 2 与周期 3)
+            # 例如 [HOVER A, CLICK B, HOVER A, CLICK B, ...] 自动折叠为单个 [HOVER A, CLICK B]
+            changed = True
+            while changed:
+                changed = False
+                i = 0
+                collapsed = []
+                while i < len(raw_steps):
+                    # 检查周期 2: raw_steps[i:i+2] == raw_steps[i+2:i+4]
+                    if i + 3 < len(raw_steps) and raw_steps[i] == raw_steps[i+2] and raw_steps[i+1] == raw_steps[i+3]:
+                        pattern = [raw_steps[i], raw_steps[i+1]]
+                        collapsed.extend(pattern)
+                        i += 4
+                        while i + 1 < len(raw_steps) and raw_steps[i] == pattern[0] and raw_steps[i+1] == pattern[1]:
+                            i += 2
+                        changed = True
+                    # 检查周期 3: raw_steps[i:i+3] == raw_steps[i+3:i+6]
+                    elif i + 5 < len(raw_steps) and raw_steps[i] == raw_steps[i+3] and raw_steps[i+1] == raw_steps[i+4] and raw_steps[i+2] == raw_steps[i+5]:
+                        pattern = [raw_steps[i], raw_steps[i+1], raw_steps[i+2]]
+                        collapsed.extend(pattern)
+                        i += 6
+                        while i + 2 < len(raw_steps) and raw_steps[i] == pattern[0] and raw_steps[i+1] == pattern[1] and raw_steps[i+2] == pattern[2]:
+                            i += 3
+                        changed = True
+                    else:
+                        collapsed.append(raw_steps[i])
+                        i += 1
+                raw_steps = collapsed
+
+            # 步骤 3：剔除连续孤立 HOVER (例如 HOVER A 紧跟着 HOVER B，则 HOVER A 是无意义悬停)
+            pruned_steps = []
+            for i in range(len(raw_steps)):
+                curr = raw_steps[i]
+                curr_prompt = curr.get("prompt", "")
+                if curr.get("type") == "action" and curr_prompt.startswith("[HOVER]"):
+                    if i + 1 < len(raw_steps):
+                        next_step = raw_steps[i+1]
+                        if next_step.get("type") == "action" and next_step.get("prompt", "").startswith("[HOVER]"):
+                            continue
+                pruned_steps.append(curr)
+
+            # 步骤 4：剔除末尾无意义的 wait 或 hover
+            while pruned_steps:
+                last = pruned_steps[-1]
+                if last.get("type") == "wait" or (last.get("type") == "action" and last.get("prompt", "").startswith("[HOVER]")):
+                    pruned_steps.pop()
+                else:
+                    break
+
+            case_data["steps"] = pruned_steps
             
             with open(yaml_path, "w", encoding="utf-8") as f:
                 yaml.dump(case_data, f, allow_unicode=True, sort_keys=False)

@@ -279,6 +279,120 @@ class ElectronLauncher:
                 return p
         return context.pages[0] if context.pages else context.new_page()
 
+    def get_electron_pid(self) -> Optional[int]:
+        """获取当前管理的 Electron 主进程 PID"""
+        if self.process and self.process.poll() is None:
+            return self.process.pid
+        if self.exe_path:
+            exe_name = os.path.basename(self.exe_path)
+            proc = self.get_process_info(exe_name)
+            if proc:
+                return proc.get("pid")
+        return None
+
+    @staticmethod
+    def get_hwnds_by_pid(pid: int) -> List[int]:
+        """查找指定 PID 的所有顶级可见窗口句柄 (HWND)"""
+        try:
+            import ctypes
+            user32 = ctypes.windll.user32
+            hwnds = []
+
+            def enum_windows_callback(hwnd, extra):
+                if user32.IsWindowVisible(hwnd):
+                    w_pid = ctypes.c_ulong()
+                    user32.GetWindowThreadProcessId(hwnd, ctypes.byref(w_pid))
+                    if w_pid.value == pid:
+                        hwnds.append(hwnd)
+                return True
+
+            EnumWindowsProc = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_int, ctypes.c_int)
+            user32.EnumWindows(EnumWindowsProc(enum_windows_callback), 0)
+            return hwnds
+        except Exception as e:
+            logger.debug(f"获取 HWND 失败: {e}")
+            return []
+
+    def bring_to_foreground(self) -> bool:
+        """
+        RPA 工业级窗口置顶与焦点夺回技术：
+        突破微信、钉钉等第三方置顶弹窗的焦点抢占，
+        结合 AttachThreadInput 绕过 Windows 系统限制，强行将 Electron 窗口置顶并激活为前台焦点。
+        """
+        pid = self.get_electron_pid()
+        if not pid:
+            return False
+
+        hwnds = self.get_hwnds_by_pid(pid)
+        if not hwnds:
+            return False
+
+        try:
+            import ctypes
+            user32 = ctypes.windll.user32
+            kernel32 = ctypes.windll.kernel32
+
+            current_thread_id = kernel32.GetCurrentThreadId()
+            success = False
+
+            for hwnd in hwnds:
+                # 1. 若窗口最小化，先还原 (SW_RESTORE = 9, SW_SHOW = 5)
+                if user32.IsIconic(hwnd):
+                    user32.ShowWindow(hwnd, 9)
+                else:
+                    user32.ShowWindow(hwnd, 5)
+
+                # 2. 获取当前前台窗口及线程
+                fg_hwnd = user32.GetForegroundWindow()
+                if fg_hwnd == hwnd:
+                    success = True
+                    break
+
+                fg_thread_id = user32.GetWindowThreadProcessId(fg_hwnd, None) if fg_hwnd else 0
+
+                # 3. 挂接线程输入 (AttachThreadInput) 突破 Windows 焦点限制锁
+                attached = False
+                if fg_thread_id != 0 and fg_thread_id != current_thread_id:
+                    attached = bool(user32.AttachThreadInput(current_thread_id, fg_thread_id, True))
+
+                try:
+                    user32.BringWindowToTop(hwnd)
+                    user32.SetForegroundWindow(hwnd)
+                finally:
+                    if attached:
+                        user32.AttachThreadInput(current_thread_id, fg_thread_id, False)
+
+                time.sleep(0.2)
+                if user32.GetForegroundWindow() == hwnd:
+                    success = True
+                    logger.info(f"🎯 [RPA Focus] 成功夺回前台焦点并将 Electron 窗口 (HWND: {hwnd}, PID: {pid}) 置顶！")
+                    break
+
+            return success
+        except Exception as e:
+            logger.debug(f"RPA 焦点夺回异常: {e}")
+            return False
+
+    def send_wm_close(self) -> bool:
+        """向 Electron 窗口投递 Win32 原生 WM_CLOSE 消息 (等同于手动点击右上角 X，纯正优雅退出)"""
+        pid = self.get_electron_pid()
+        if not pid:
+            return False
+        hwnds = self.get_hwnds_by_pid(pid)
+        if not hwnds:
+            return False
+        try:
+            import ctypes
+            user32 = ctypes.windll.user32
+            WM_CLOSE = 0x0010
+            for hwnd in hwnds:
+                user32.PostMessageW(hwnd, WM_CLOSE, 0, 0)
+            logger.info(f"📨 [Win32] 已向 Electron 窗口 (PID: {pid}) 投递标准 WM_CLOSE 优雅退出信号。")
+            return True
+        except Exception as e:
+            logger.debug(f"投递 WM_CLOSE 异常: {e}")
+            return False
+
     def close(self):
         """清理资源，关闭浏览器连接和进程"""
         if hasattr(self, "_session") and self._session:
@@ -302,13 +416,20 @@ class ElectronLauncher:
             self.playwright = None
 
         if self.process and not self.was_already_running:
-            logger.info("等待 Electron 进程自然退出 (已取消强杀以防蓝屏)...")
+            logger.info("等待 Electron 进程自然退出 (坚决不使用强杀，防白屏与显卡异常)...")
             try:
                 # 等待应用在前台收到关闭指令后自行退出
                 self.process.wait(timeout=5)
                 logger.info("Electron 进程已自然退出。")
             except subprocess.TimeoutExpired:
-                logger.warning("Electron 进程未能按时退出，已放弃强杀以保护系统稳定。")
+                logger.warning("⚠️ Electron 进程未能在 5 秒内自然退出，正在通过 RPA 夺回焦点并重发 WM_CLOSE 优雅退出信号...")
+                self.bring_to_foreground()
+                self.send_wm_close()
+                try:
+                    self.process.wait(timeout=5)
+                    logger.info("✅ Electron 进程在重试优雅退出后已成功退出。")
+                except subprocess.TimeoutExpired:
+                    logger.warning("⚠️ Electron 进程仍未响应，坚决不执行暴力强杀以保护 WEB 端缓存与端口干净，请稍后人工确认。")
             except Exception as e:
                 logger.warning(f"等待进程退出时发生异常: {e}")
             

@@ -401,6 +401,13 @@ class ElectronDriver(NetworkMonitorMixin, DomExtractorMixin, ScreenshotMixin, Ch
         if self.page and not self.page.is_closed():
             try:
                 logger.info("尝试模拟手动点击右上角并发送 Alt+F4，以优雅关闭应用...")
+                # RPA 方案 2：在发点击与按键前，强行将 Electron 窗口置顶并夺回前台焦点，防微信/弹窗抢焦
+                if self.launcher and hasattr(self.launcher, "bring_to_foreground"):
+                    try:
+                        self.launcher.bring_to_foreground()
+                    except Exception as e:
+                        logger.debug(f"尝试前台激活 Electron 窗口: {e}")
+
                 viewport = self.get_viewport_info()
                 width = viewport.get("width", self.default_width)
                 

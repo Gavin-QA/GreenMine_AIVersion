@@ -352,7 +352,7 @@ class VisionAgent:
         
         return passed, reason
 
-    def plan_sub_objective(self, macro_objective: str, base64_image: str, global_history: list, context: str = "", current_page_tree: dict = None, reexplore_module: str = None) -> dict:
+    def plan_sub_objective(self, macro_objective: str, base64_image: str, global_history: list, context: str = "", current_page_tree: dict = None, reexplore_module: str = None, recent_sub_objectives: list = None, container_stack: list = None) -> dict:
         """
         为探索生成短期子目标 (Planner)
         """
@@ -362,6 +362,10 @@ class VisionAgent:
             user_prompt += f"【🎯 强制重新探索模式】当前指令明确要求重新深度探索模块【{reexplore_module}】！请无视该模块的历史状态，将其作为全新对象进行地毯式探索，全面覆盖其内部所有Tab标签、折线图拐点、数据卡片与表格！\n"
         if context:
             user_prompt += f"【背景知识】:\n{context}\n"
+        if container_stack:
+            user_prompt += f"【当前打开的模态弹窗/浮层栈】: {container_stack}\n⚠️ 极度重要：当前有模态弹窗/文件预览窗口处于打开状态！本系统绝对不支持键盘 ESC 键，必须物理点击右上角的【❌】关闭按钮！如果你打算前往其他主模块或结束当前页面测试，必须优先规划：sub_objective: '点击弹窗右上角关闭按钮【❌】以关闭当前窗口'！严禁在未关闭弹窗时直接操作顶部导航栏！\n"
+        if recent_sub_objectives:
+            user_prompt += f"【最近已执行过的子目标历史】:\n" + "\n".join([f"- {obj}" for obj in recent_sub_objectives[-5:]]) + "\n⚠️ 铁律：严禁重复派发最近已执行过的相同子目标！如果该目标已尝试过，请推进到下一步或切换目标！\n"
         if current_page_tree:
             from core.explorer_agent.page_map_builder import PageMapBuilder
             mermaid_str = PageMapBuilder.dict_to_mermaid_string(current_page_tree)
@@ -381,7 +385,7 @@ class VisionAgent:
             base64_image=base64_image
         )
 
-    def execute_sub_objective(self, sub_objective: str, base64_image: str, context: str = "", history: list = None, global_history: list = None, current_page_tree: dict = None, reexplore_module: str = None) -> dict:
+    def execute_sub_objective(self, sub_objective: str, base64_image: str, context: str = "", history: list = None, global_history: list = None, current_page_tree: dict = None, reexplore_module: str = None, container_stack: list = None) -> dict:
         """
         执行短期子目标的具体动作 (Worker)
         """
@@ -391,6 +395,8 @@ class VisionAgent:
             user_prompt += f"【🎯 提示】：当前处于重探模块【{reexplore_module}】流程中，请深入该模块内各控件进行充分测试与验证。\n"
         if context:
             user_prompt += f"【背景知识】:\n{context}\n"
+        if container_stack:
+            user_prompt += f"【当前活跃模态弹窗栈】: {container_stack}\n"
         if current_page_tree:
             from core.explorer_agent.page_map_builder import PageMapBuilder
             mermaid_str = PageMapBuilder.dict_to_mermaid_string(current_page_tree)

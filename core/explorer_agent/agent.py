@@ -128,6 +128,8 @@ class ExplorerAgent:
             # 导出重置后的架构树，确保 Planner 看到的 Mermaid 中该模块是空白新分支
             PageMapBuilder.export_page_map(self.page_tree)
 
+        recent_sub_objectives = []
+
         while steps_taken < max_steps:
             logger.info(f"\n" + "=" * 40)
             logger.info(f"🧠 [Planner Phase] 开始规划，当前进度: {steps_taken}/{max_steps}")
@@ -144,7 +146,9 @@ class ExplorerAgent:
                     global_history=global_history,
                     context=context,
                     current_page_tree=self.page_tree,
-                    reexplore_module=reexplore_module
+                    reexplore_module=reexplore_module,
+                    recent_sub_objectives=recent_sub_objectives,
+                    container_stack=self.container_stack
                 )
                 
                 sub_objective = plan.get("sub_objective", "无子目标")
@@ -152,6 +156,11 @@ class ExplorerAgent:
                 budget = int(plan.get("allocated_steps", 8))
                 focus_region = plan.get("focus_region")
                 
+                if sub_objective:
+                    recent_sub_objectives.append(sub_objective)
+                    if len(recent_sub_objectives) > 10:
+                        recent_sub_objectives.pop(0)
+
                 info = self.driver.get_viewport_info()
                 width = info.get("width", 2560)
                 height = info.get("height", 1440)
@@ -204,7 +213,8 @@ class ExplorerAgent:
                         history=action_history,
                         global_history=global_history,
                         current_page_tree=self.page_tree,
-                        reexplore_module=reexplore_module
+                        reexplore_module=reexplore_module,
+                        container_stack=self.container_stack
                     )
                 except Exception as e:
                     logger.error(f"❌ Worker 决策失败: {e}")
@@ -347,6 +357,13 @@ class ExplorerAgent:
 
                 # 4. 执行决策
                 if action_type == "finish":
+                    # 防早退卫兵：如果子目标要求进入某个具体的二级菜单，且前一步仅仅是 hover 了一级菜单，
+                    # 则说明下拉菜单刚被展开，此时绝不能直接 finish，而应强制继续让 Worker 在下一步执行点击子菜单！
+                    is_menu_jump_objective = any(kw in sub_objective for kw in ["二级菜单", "下拉菜单", "进入【", "跳转到", "二级业务"])
+                    just_hovered_l1 = action_history and any("HOVER" in h and "一级菜单" in h for h in action_history[-1:])
+                    if is_menu_jump_objective and just_hovered_l1 and worker_step < budget:
+                        logger.info("🛡️ [Worker Guard] 检测到刚完成一级菜单悬停展开，当前子目标尚未完成对目标二级菜单的点击，阻止过早 finish，继续执行下一步！")
+                        continue
                     logger.info("✅ [Worker] 判断当前子任务已完成，或无更多可探索内容，提前汇报给 Planner。")
                     worker_finished_early = True
                     break
@@ -355,8 +372,29 @@ class ExplorerAgent:
                     logger.info("⏳ [Worker] 决定停留观察 3 秒...")
                     time.sleep(3.0)
                     action_success = True
-                    
+
                 elif action_type in ("click", "hover"):
+                    # 模态逃逸防御：如果当前处于模态弹窗中，但试图与顶部导航栏交互，自动定位并物理点击右上角关闭按钮解除遮罩阻断
+                    if is_nav_interaction and self.container_stack:
+                        logger.warning(f"🛡️ [Modal Escape] 检测到页面仍有模态遮罩/查看器未关闭 ({self.container_stack})，将阻断顶部导航栏交互！自动定位并物理点击右上角关闭按钮【❌】...")
+                        try:
+                            dom_elements = self.driver.extract_interactive_elements()
+                            cx, cy = self.vision.find_element(
+                                instruction="当前弹窗或查看器右上角的关闭按钮(❌图标或关闭按钮)",
+                                base64_image=base64_img,
+                                viewport_width=width,
+                                viewport_height=height,
+                                dom_elements=dom_elements
+                            )
+                            self.driver.click(cx, cy, delay_after=1.5)
+                            popped = self.container_stack.pop()
+                            logger.info(f"📤 [Container Stack] 成功点击关闭按钮，模态弹窗已出栈: {popped} | 剩余栈: {self.container_stack}")
+                            # 重新捕获快照
+                            step_img_path = self.explore_dir / f"explore_step_{steps_taken}.png"
+                            base64_img = self.driver.capture_screenshot_base64(str(step_img_path))
+                        except Exception as esc_err:
+                            logger.warning(f"⚠️ 自动点击关闭按钮逃逸异常: {esc_err}")
+
                     # 记录动作前可见的模态层 (用于 Post-Click Diff)
                     before_modals = PostClickDetector.get_current_modals(self.driver)
 
@@ -816,6 +854,11 @@ class ExplorerAgent:
                         viewport_height=height,
                         dom_elements=dom_hover
                     )
+                    try:
+                        dpr = info.get("devicePixelRatio", 1.0)
+                        self.driver.draw_cursor_on_image(str(hover_img_path), hx, hy, dpr)
+                    except Exception as e:
+                        logger.warning(f"⚠️ 无法在截图 {hover_img_path.name} 上绘制准星: {e}")
                     self.driver.hover(hx, hy, delay_after=1.5)
 
                     # 2. 点击下拉菜单中的二级菜单项
@@ -831,6 +874,11 @@ class ExplorerAgent:
                         viewport_height=height,
                         dom_elements=dom_click
                     )
+                    try:
+                        dpr = info.get("devicePixelRatio", 1.0)
+                        self.driver.draw_cursor_on_image(str(click_img_path), cx, cy, dpr)
+                    except Exception as e:
+                        logger.warning(f"⚠️ 无法在截图 {click_img_path.name} 上绘制准星: {e}")
                     self.driver.click(cx, cy, delay_after=1.5)
 
                     # 状态重置与页面作用域切换
