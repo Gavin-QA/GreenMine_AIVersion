@@ -700,13 +700,6 @@ class ExplorerAgent:
                         elif b_type == "console_error":
                             loc_suffix = f" (代码位置: {b_loc})" if b_loc else ""
                             error_lines.append(f"[console_error{loc_suffix}] {b_msg}")
-                            if b_related:
-                                error_lines.append(f"  ↳ 自动关联接口: {b_related}")
-                                if b.get("api_response"):
-                                    resp_preview = json.dumps(b["api_response"], ensure_ascii=False)
-                                    if len(resp_preview) > 300:
-                                        resp_preview = resp_preview[:300] + "..."
-                                    error_lines.append(f"  ↳ 接口响应报文: {resp_preview}")
                         else:
                             error_lines.append(f"[{b_type}] {b_msg}")
                     actual_err_str = "\n".join(error_lines)
