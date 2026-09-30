@@ -13,7 +13,6 @@
     python utils/cleaner.py --retain-days 7        # 清理 7 天前的过程截图（保留 Bug 现场与记忆）
     python utils/cleaner.py --retain-days 0        # 清理所有历史运行的临时过程截图（仅留 Bug 和记忆）
     python utils/cleaner.py --dry-run              # 仅演练，计算可释放空间，不实际删除
-    python utils/cleaner.py --clean-legacy         # 清理根目录旧版的 logs/ 历史残余
 """
 
 import os
@@ -107,17 +106,6 @@ def print_disk_usage_info():
     print(f"   ├── 🧠 检查点记忆 (永久留存): {format_size(mem_size)}")
     print(f"   └── 📄 控制台日志: {format_size(log_size)}")
 
-    # 3. 旧版残留
-    legacy_logs_size, legacy_logs_count = get_dir_size_and_count(PROJECT_ROOT / "logs")
-    legacy_bugs_size, legacy_bugs_count = get_dir_size_and_count(PROJECT_ROOT / "bugs")
-    if legacy_logs_size > 0 or legacy_bugs_size > 0:
-        print(f"\n⚠️ 旧版并列目录残余:")
-        if legacy_logs_size > 0:
-            print(f"   ├── 旧版 logs/: {format_size(legacy_logs_size)} ({legacy_logs_count} 文件)")
-        if legacy_bugs_size > 0:
-            print(f"   └── 旧版 bugs/: {format_size(legacy_bugs_size)} ({legacy_bugs_count} 文件)")
-        print(f"   (注：以上历史运行已被合并至 reports/runs/，可使用 --clean-legacy 安全清理)")
-
     print("=" * 65 + "\n")
 
 
@@ -162,55 +150,18 @@ def clean_temp_screenshots(retain_days: int = 7, dry_run: bool = False):
     print("🔒 安全保障已生效：所有 Bug 崩溃现场截图、检查点记忆(checkpoint)及日志均已 100% 完整保留！\n")
 
 
-def clean_legacy_dirs(dry_run: bool = False):
-    """清理已被完全收敛的根目录下旧版 logs/ 和旧版 bugs/ 中的单次运行文件夹"""
-    print("\n🧹 开始清理旧版残余目录...")
-    legacy_logs = PROJECT_ROOT / "logs"
-    legacy_bugs = PROJECT_ROOT / "bugs"
-
-    freed_bytes = 0
-    # 清理 logs
-    if legacy_logs.exists():
-        sz, cnt = get_dir_size_and_count(legacy_logs)
-        freed_bytes += sz
-        if not dry_run:
-            shutil.rmtree(legacy_logs)
-            print(f"✅ 已清理旧版 logs/ 目录: 释放 {format_size(sz)}")
-        else:
-            print(f"🔍 [Dry-Run] 预演清理旧版 logs/: 可释放 {format_size(sz)}")
-
-    # 清理 bugs 下的单次运行文件夹（保留 global_bugs.*）
-    if legacy_bugs.exists():
-        for item in list(legacy_bugs.iterdir()):
-            if item.is_dir():
-                sz, _ = get_dir_size_and_count(item)
-                freed_bytes += sz
-                if not dry_run:
-                    shutil.rmtree(item)
-                    print(f"✅ 已清理旧版 bugs/{item.name} 运行文件夹: 释放 {format_size(sz)}")
-                else:
-                    print(f"🔍 [Dry-Run] 预演清理旧版 bugs/{item.name}: 可释放 {format_size(sz)}")
-
-    print(f"🎉 旧版清理完毕，共{'预计' if dry_run else ''}释放: {format_size(freed_bytes)}\n")
-
-
 def main():
     parser = argparse.ArgumentParser(description="Electron AI Vision 产物安全瘦身与磁盘维护工具")
     parser.add_argument("--info", action="store_true", help="查看当前产物磁盘占用分布大盘")
     parser.add_argument("--retain-days", type=int, default=None, help="保留最近 N 天的过程截图，更早的临时截图将被安全清理（默认不清理，推荐 7）")
     parser.add_argument("--dry-run", action="store_true", help="演练模式，仅计算可释放空间，不执行实际删除")
-    parser.add_argument("--clean-legacy", action="store_true", help="清理根目录下旧版 logs/ 与 bugs/ 中的历史单次运行残余")
     args = parser.parse_args()
 
-    if args.info or (args.retain_days is None and not args.clean_legacy):
+    if args.info or args.retain_days is None:
         print_disk_usage_info()
-        if args.retain_days is None and not args.clean_legacy:
-            print("💡 提示: 可通过 'python utils/cleaner.py --retain-days 7' 安全清理 7 天前的临时过程截图。")
-            print("        可通过 'python utils/cleaner.py --clean-legacy' 清理旧版 logs/ 残留。\n")
-            return
-
-    if args.clean_legacy:
-        clean_legacy_dirs(dry_run=args.dry_run)
+        if args.retain_days is None:
+            print("💡 提示: 可通过 'python utils/cleaner.py --retain-days 7' 安全清理 7 天前的临时过程截图。\n")
+        return
 
     if args.retain_days is not None:
         clean_temp_screenshots(retain_days=args.retain_days, dry_run=args.dry_run)

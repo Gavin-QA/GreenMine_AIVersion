@@ -21,17 +21,6 @@ class BugReporter:
         self.global_md = self.global_bugs_dir / "global_bugs.md"
         self.global_csv = self.global_bugs_dir / "global_bugs.csv"
         
-        # 兼容性回退：若 artifacts 尚无文件但 legacy bugs/ 存在，执行自动迁移
-        legacy_json = Path("bugs") / "global_bugs.json"
-        if not self.global_json.exists() and legacy_json.exists():
-            try:
-                for f_name in ["global_bugs.json", "global_bugs.md", "global_bugs.csv"]:
-                    src = Path("bugs") / f_name
-                    if src.exists():
-                        shutil.copy2(src, self.global_bugs_dir / f_name)
-            except Exception as e:
-                logger.warning(f"兼容迁移 legacy bugs 失败: {e}")
-        
         # 允许外部传入已有的 VisionAgent，若没有则自己实例化一个用于 LLM 推理
         self.vision = vision_agent if vision_agent else VisionAgent()
         
