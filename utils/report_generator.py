@@ -27,8 +27,8 @@ from typing import Any, Dict, List, Optional
 # Windows GBK 终端 UTF-8 保护
 if sys.platform == "win32":
     try:
-        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
     except Exception:
         pass
 
@@ -1454,6 +1454,14 @@ class ReportGenerator:
 """
         out.write_text(html_content, encoding="utf-8")
         logger.info(f"🎉 高颜值离线交互式报告已生成: {out}")
+
+        # 自动同步刷新全局门户首页 reports/runs/index.html
+        try:
+            from utils.report_hub import ReportHub
+            ReportHub().build_index_html()
+        except Exception as e:
+            logger.debug(f"更新全局门户 index.html 失败: {e}")
+
         return out
 
 
