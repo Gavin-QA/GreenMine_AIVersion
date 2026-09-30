@@ -682,8 +682,33 @@ class ExplorerAgent:
                     error_lines = []
                     for b in bugs:
                         b_type = b.get("type", "unknown")
-                        b_msg = b.get("msg") or f"{b.get('url')} (Status: {b.get('status')})"
-                        error_lines.append(f"[{b_type}] {b_msg}")
+                        b_url = b.get("url")
+                        b_loc = b.get("location")
+                        b_related = b.get("related_api")
+                        b_msg = b.get("msg") or ""
+
+                        if b_type == "api_biz_error":
+                            error_lines.append(f"[api_biz_error] 接口业务报错: {b.get('endpoint')} -> {b_msg}")
+                            error_lines.append(f"  ↳ 接口地址: {b_url}")
+                            if b.get("response"):
+                                resp_preview = json.dumps(b["response"], ensure_ascii=False)
+                                if len(resp_preview) > 300:
+                                    resp_preview = resp_preview[:300] + "..."
+                                error_lines.append(f"  ↳ 响应报文: {resp_preview}")
+                        elif b_type == "network_error":
+                            error_lines.append(f"[network_error] HTTP {b.get('status')}: {b_url}")
+                        elif b_type == "console_error":
+                            loc_suffix = f" (代码位置: {b_loc})" if b_loc else ""
+                            error_lines.append(f"[console_error{loc_suffix}] {b_msg}")
+                            if b_related:
+                                error_lines.append(f"  ↳ 自动关联接口: {b_related}")
+                                if b.get("api_response"):
+                                    resp_preview = json.dumps(b["api_response"], ensure_ascii=False)
+                                    if len(resp_preview) > 300:
+                                        resp_preview = resp_preview[:300] + "..."
+                                    error_lines.append(f"  ↳ 接口响应报文: {resp_preview}")
+                        else:
+                            error_lines.append(f"[{b_type}] {b_msg}")
                     actual_err_str = "\n".join(error_lines)
 
                     path_str = " -> ".join(current_ui_path) if current_ui_path else "未知路径"

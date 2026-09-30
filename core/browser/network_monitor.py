@@ -68,7 +68,36 @@ class NetworkMonitorMixin:
                     logger.debug(f"[Electron Console Filtered (Noise)] {msg.text}")
                     return
                 logger.warning(f"[Electron Console Error] {msg.text}")
-                self.caught_bugs.append({"type": "console_error", "msg": msg.text})
+
+                # 提取报错的代码物理位置 (文件、行号)
+                loc_info = None
+                try:
+                    loc = msg.location
+                    if loc and loc.get("url"):
+                        loc_clean = loc["url"].split("?")[0].split("/")[-1]
+                        line_no = loc.get("lineNumber", 0)
+                        if loc_clean:
+                            loc_info = f"{loc_clean}:{line_no}"
+                except Exception:
+                    pass
+
+                bug_entry = {
+                    "type": "console_error",
+                    "msg": msg.text,
+                    "location": loc_info
+                }
+
+                # 核心黑科技：跨层时序自动关联底层业务接口
+                try:
+                    matched_api = self._find_matching_recent_api(msg.text)
+                    if matched_api:
+                        bug_entry["related_api"] = matched_api.get("full_url")
+                        bug_entry["api_response"] = matched_api.get("data")
+                        logger.info(f"🔗 [Console Correlated] 成功为控制台报错自动关联到底层接口: {matched_api.get('full_url')}")
+                except Exception:
+                    pass
+
+                self.caught_bugs.append(bug_entry)
             else:
                 logger.debug(f"[Electron Console][{msg.type}] {msg.text}")
 
@@ -160,6 +189,31 @@ class NetworkMonitorMixin:
                             "scope": active_scope,
                             "hit_count": self.api_registry.get(endpoint_name, {}).get("hit_count", 0) + 1
                         }
+
+                        # 核心黑科技 1：检测 HTTP 200 里的业务异常 (code != 0/200, 比如权限不足、系统内部错误)
+                        if isinstance(data, dict):
+                            code = data.get("code") if "code" in data else data.get("status")
+                            msg_val = str(data.get("msg") or data.get("message") or "")
+                            
+                            # 判定业务逻辑报错 (code 非 0/200，或者 msg 明确包含权限不足/失败等)
+                            biz_err_codes = (7, 401, 403, 500, -1, "7", "401", "403", "500", "-1")
+                            is_biz_err = False
+                            if code in biz_err_codes:
+                                is_biz_err = True
+                            elif code not in (None, 0, 200, "0", "200") and msg_val and any(k in msg_val for k in ["权限", "失败", "异常", "错误", "未登录", "拒绝", "无权"]):
+                                is_biz_err = True
+
+                            if is_biz_err:
+                                logger.warning(f"🚨 [Auto-API] 捕获到底层业务接口异常: {endpoint_name} -> code: {code}, msg: '{msg_val}'")
+                                self.caught_bugs.append({
+                                    "type": "api_biz_error",
+                                    "url": url_clean,
+                                    "endpoint": endpoint_name,
+                                    "status": response.status,
+                                    "biz_code": code,
+                                    "msg": f"接口业务报错: {msg_val or f'code={code}'}",
+                                    "response": data
+                                })
 
                         # 1. 全局扁平注册表（便于跨页面全局查找与快速定位）
                         self.api_registry[endpoint_name] = record
@@ -564,10 +618,51 @@ class NetworkMonitorMixin:
         """返回核心 JSON 数据（向前兼容，自动支持带 query 的动态聚焦检索）"""
         return self.get_focused_api_records_summary(query_text=query_text)
 
+    def _find_matching_recent_api(self, error_text: str) -> Optional[dict]:
+        """
+        在最近拦截的时序接口池中，智能寻找与当前控制台报错相匹配的网络接口
+        """
+        if not hasattr(self, "api_records") or not self.api_records:
+            return None
+
+        now = time.time()
+        # 倒序遍历最近的 20 个接口记录，限制在 8 秒以内
+        recent = [r for r in reversed(self.api_records[-20:]) if (now - r.get("timestamp", now)) <= 8.0]
+        if not recent:
+            # 容错：如果时间差较大，取最近 3 个
+            recent = list(reversed(self.api_records[-3:]))
+        if not recent:
+            return None
+
+        # 1. 优先比对报文内容（如错误文本中包含相同的 code 或 msg）
+        for r in recent:
+            resp_data = r.get("data")
+            if isinstance(resp_data, dict):
+                code_str = str(resp_data.get("code", ""))
+                msg_str = str(resp_data.get("msg") or resp_data.get("message") or "")
+                if code_str and (f"code: {code_str}" in error_text or f"code={code_str}" in error_text or f"\"code\":{code_str}" in error_text):
+                    return r
+                if msg_str and len(msg_str) >= 2 and msg_str in error_text:
+                    return r
+
+        # 2. 如果控制台报错里包含 url 片段或 endpoint 名称
+        for r in recent:
+            ep = r.get("url", "")
+            if ep and len(ep) >= 3 and ep.lower() in error_text.lower():
+                return r
+
+        # 3. 兜底策略：如果是前端通用 HTTP 请求拦截报错，直接返回最近一个发出的业务接口
+        err_lower = error_text.lower()
+        if any(k in err_lower for k in ["http", "axios", "请求", "request", "response"]):
+            return recent[0]
+
+        return None
+
     def get_and_clear_bugs(self) -> list:
         """获取并清空后台捕获到的所有异常报错"""
         bugs = list(self.caught_bugs)
         self.caught_bugs = []
         return bugs
+
 
 
