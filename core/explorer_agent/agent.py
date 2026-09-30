@@ -155,7 +155,21 @@ class ExplorerAgent:
                 thought = plan.get("thought", "")
                 budget = int(plan.get("allocated_steps", 8))
                 focus_region = plan.get("focus_region")
-                
+                is_completed = bool(plan.get("is_completed", False))
+
+                # --- 智能提前完工判定 (Smart Early Stop) ---
+                # 1. 显式布尔值 is_completed 为 True
+                # 2. 或子目标中明确包含目标已完全达成/收工的关键词
+                completion_keywords = ["探索完成", "完全覆盖", "全面达成", "优雅收工", "结束探索", "已全部探索", "无未测盲区"]
+                if is_completed or any(k in sub_objective for k in completion_keywords):
+                    logger.info("=" * 60)
+                    logger.info(f"🎉 [Planner Early Stop] 目标已 100% 达成，提前优雅收工！")
+                    logger.info(f"   📊 步数结余: 实际消耗 {steps_taken}/{max_steps} 步 (结余 {max_steps - steps_taken} 步)")
+                    logger.info(f"   💡 完工依据: {thought}")
+                    logger.info(f"   🎯 最终状态: {sub_objective}")
+                    logger.info("=" * 60)
+                    break
+
                 if sub_objective:
                     recent_sub_objectives.append(sub_objective)
                     if len(recent_sub_objectives) > 10:
@@ -778,6 +792,18 @@ class ExplorerAgent:
         except Exception as api_err:
             logger.warning(f"⚠️ 导出接口大盘异常: {api_err}")
 
+        # 自动生成高颜值可视化 HTML 全景报告
+        try:
+            from utils.report_generator import ReportGenerator
+            reporter = ReportGenerator(self.run_dir)
+            report_file = reporter.generate_html()
+            logger.info("=" * 60)
+            logger.info(f"📊 [Auto-Report] 交互式全景视觉报告已同步生成！")
+            logger.info(f"   👉 双击或浏览器打开查看: file:///{report_file.as_posix()}")
+            logger.info("=" * 60)
+        except Exception as rep_err:
+            logger.warning(f"⚠️ 自动生成 HTML 报告失败: {rep_err}")
+
         logger.info("=" * 60)
         logger.info("🏁 探索任务结束！")
         logger.info(f"📂 探索产物已完整归档至: {self.run_dir}")
@@ -964,6 +990,19 @@ class ExplorerAgent:
         logger.info(f"📂 冒烟截图与详细日志保存在: {self.explore_dir}")
         logger.info("ℹ️ 说明: 本次运行为纯冒烟测试模式，未修改或导出 Mermaid 架构地图文件。")
         logger.info("=" * 70)
+
+        # 自动生成冒烟巡检可视化 HTML 报告
+        try:
+            from utils.report_generator import ReportGenerator
+            reporter = ReportGenerator(self.run_dir)
+            report_file = reporter.generate_html()
+            logger.info("=" * 70)
+            logger.info(f"📊 [Auto-Report] 冒烟巡检可视化大盘已生成！")
+            logger.info(f"   👉 双击或浏览器打开查看: file:///{report_file.as_posix()}")
+            logger.info("=" * 70)
+        except Exception as rep_err:
+            logger.warning(f"⚠️ 自动生成冒烟报告失败: {rep_err}")
+
 
 
 
