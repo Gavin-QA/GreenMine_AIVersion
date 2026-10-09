@@ -98,9 +98,11 @@ class ReportHub:
                     "id": b.get("id", "BUG"),
                     "title": b.get("title", ""),
                     "run_id": r_id,
-                    "date": b.get("creation_date", ""),
-                    "step": (b.get("details") or {}).get("step", ""),
-                    "actual": (b.get("details") or {}).get("actual", ""),
+                    "date": b.get("creation_date", b.get("date", "")),
+                    "status": b.get("status", "Open"),
+                    "step": (b.get("details") or {}).get("step", b.get("step", "")),
+                    "actual": (b.get("details") or {}).get("actual", b.get("actual", "")),
+                    "rel_screenshot": b.get("rel_screenshot", ""),
                     "report_link": r_link
                 })
 
@@ -665,10 +667,12 @@ class ReportHub:
         <thead>
           <tr>
             <th style="width: 140px;">缺陷编号</th>
-            <th style="width: 220px;">来源 Run ID</th>
-            <th>触发步骤 / 页面路径</th>
+            <th style="width: 180px;">RUN ID</th>
+            <th style="width: 80px;">状态</th>
+            <th style="width: 300px;">业务路径与目标</th>
             <th>异常详情</th>
-            <th style="width: 110px;">操作</th>
+            <th style="width: 100px;">BUG截图</th>
+            <th style="width: 100px;">操作</th>
           </tr>
         </thead>
         <tbody id="bugsTbody"></tbody>
@@ -784,19 +788,35 @@ class ReportHub:
     function renderBugs() {{
       const tbody = document.getElementById('bugsTbody');
       if (allBugs.length === 0) {{
-        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:50px;color:var(--text-dim);">🎉 全局无任何历史缺陷记录</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:50px;color:var(--text-dim);">🎉 全局无任何历史缺陷记录</td></tr>';
         return;
       }}
 
       let html = '';
       allBugs.forEach(b => {{
+        const screenshotUrl = b.rel_screenshot ? `./${{b.run_id}}/${{b.rel_screenshot}}` : '';
+        const imgHtml = screenshotUrl ? `<img src="${{screenshotUrl}}" style="max-width:80px;border-radius:4px;border:1px solid rgba(255,255,255,0.1);cursor:pointer;" onclick="window.open(this.src)"/>` : '<span style="color:#64748b;font-size:12px;">无截图</span>';
+        const statusBadge = (b.status === 'Open' || b.status === '激活')
+            ? `<span style="background:rgba(244,63,94,0.15);color:#f43f5e;padding:2px 8px;border-radius:99px;font-size:12px;font-weight:600;border:1px solid rgba(244,63,94,0.3)">Open</span>` 
+            : `<span style="background:rgba(16,185,129,0.15);color:#10b981;padding:2px 8px;border-radius:99px;font-size:12px;font-weight:600;border:1px solid rgba(16,185,129,0.3)">Closed</span>`;
+
         html += `
           <tr>
-            <td><span style="font-family:var(--font-mono);font-weight:700;color:#fb7185;">${{escapeHtml(b.id)}}</span></td>
-            <td><span style="font-family:var(--font-mono);color:var(--text-muted);font-size:12px;">${{escapeHtml(b.run_id)}}</span></td>
-            <td style="color:#cbd5e1;">${{escapeHtml(b.step || '(无步骤)')}}</td>
-            <td><div style="font-family:var(--font-mono);font-size:12px;color:#fca5a5;max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${{escapeHtml(b.actual || '')}}</div></td>
-            <td><a href="${{b.report_link}}" class="bug-link">核验证据 →</a></td>
+            <td><span style="font-family:var(--font-mono);font-weight:700;color:#fb7185;font-size:12px;">${{escapeHtml(b.id)}}</span></td>
+            <td><span style="font-family:var(--font-mono);color:var(--text-muted);font-size:11px;">${{escapeHtml(b.run_id)}}</span></td>
+            <td>${{statusBadge}}</td>
+            <td style="color:#cbd5e1;font-size:13px;line-height:1.4;">
+                <div style="font-weight:600;margin-bottom:6px;color:#f8fafc;">${{escapeHtml(b.title)}}</div>
+                <div style="color:#94a3b8;font-family:var(--font-mono);font-size:11px;">${{escapeHtml(b.step || '(无步骤)')}}</div>
+            </td>
+            <td><div style="font-family:var(--font-mono);font-size:11px;color:#fca5a5;max-height:80px;overflow-y:auto;line-height:1.4;word-break:break-all;padding-right:8px;">${{escapeHtml(b.actual || '')}}</div></td>
+            <td style="text-align:center;vertical-align:middle;">${{imgHtml}}</td>
+            <td>
+              <div style="display:flex;flex-direction:column;gap:6px;">
+                <button onclick="navigator.clipboard.writeText('${{escapeHtml(b.step || '').replace(/'/g, "\\'")}}')" style="background:transparent;border:1px solid rgba(255,255,255,0.1);color:#94a3b8;border-radius:4px;padding:4px 8px;font-size:11px;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.color='#fff';this.style.borderColor='var(--primary)'" onmouseout="this.style.color='#94a3b8';this.style.borderColor='rgba(255,255,255,0.1)'">复制路径</button>
+                <a href="${{b.report_link}}" style="background:rgba(99,102,241,0.1);border:1px solid var(--primary);color:var(--primary);border-radius:4px;padding:4px 8px;font-size:11px;text-align:center;text-decoration:none;transition:all 0.2s;" onmouseover="this.style.background='var(--primary)';this.style.color='#fff'" onmouseout="this.style.background='rgba(99,102,241,0.1)';this.style.color='var(--primary)'">Bug 详情</a>
+              </div>
+            </td>
           </tr>
         `;
       }});
