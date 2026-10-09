@@ -22,3 +22,4 @@ llm:
 
 reports:
   dir: "reports"
+  sync_docs: false       # 是否同步更新动态架构树至 docs/ 目录 (默认 false，保护文档目录纯净)

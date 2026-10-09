@@ -2,7 +2,7 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from utils.artifacts import get_run_generated_cases_dir
+from utils.paths import get_run_generated_cases_dir
 
 logger = logging.getLogger("explorer_agent.trajectory")
 

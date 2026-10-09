@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 
 from core.vision.agent import VisionAgent
-from utils.artifacts import GLOBAL_BUGS_DIR, get_run_bugs_dir
+from utils.paths import GLOBAL_BUGS_DIR, get_run_bugs_dir
 
 logger = logging.getLogger("core.bug_reporter")
 
@@ -56,8 +56,10 @@ class BugReporter:
             else:
                 # 极端异常情况：查到了 ID 但库里找不到
                 bug_id = self._create_new_bug(title, step_prompt, actual_result, now_date)
+                bug_record = self.global_bugs[-1]
         else:
             bug_id = self._create_new_bug(title, step_prompt, actual_result, now_date)
+            bug_record = self.global_bugs[-1]
             logger.info(f"✨ 确认是全新问题，新建缺陷档案: [{bug_id}]")
             
         # 2. 将案发现场截图复制一份到专属目录，实现物理隔离，防止 logs 被清理
@@ -70,7 +72,11 @@ class BugReporter:
                 timestamp = datetime.now().strftime("%H%M%S")
                 new_img_path = run_dir / f"{bug_id}_{timestamp}{img_suffix}"
             try:
+                import shutil
                 shutil.copy2(crash_image_path, new_img_path)
+                # 更新 bug_record 里的 screenshot 为最新复现截图
+                if bug_record:
+                    bug_record["screenshot"] = str(new_img_path).replace('\\', '/')
             except Exception as e:
                 logger.warning(f"复制案发现场截图失败: {e}")
                 new_img_path = None

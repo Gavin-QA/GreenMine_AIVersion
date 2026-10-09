@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, List
 
-from utils.artifacts import TOPOLOGY_DIR, TOPOLOGY_SNAPSHOTS_DIR, DOCS_DIR
+from utils.paths import TOPOLOGY_DIR, TOPOLOGY_SNAPSHOTS_DIR, DOCS_DIR
 
 logger = logging.getLogger("explorer_agent.page_map")
 

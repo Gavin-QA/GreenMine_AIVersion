@@ -8,7 +8,7 @@ from typing import Optional
 from core.browser import ElectronDriver
 from core.vision.agent import VisionAgent
 from core.bug_reporter import BugReporter
-from utils.artifacts import (
+from utils.paths import (
     report_run_id,
     get_run_dir,
     get_run_screenshots_dir,

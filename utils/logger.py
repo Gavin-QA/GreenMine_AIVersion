@@ -10,7 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from utils.artifacts import current_run_log_path
+from utils.paths import current_run_log_path
 from config.settings import settings
 
 

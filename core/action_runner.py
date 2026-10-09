@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 from core.browser import ElectronDriver
 from core.vision.agent import VisionAgent, VisionAgentException
 from core.bug_reporter import BugReporter
-from utils.artifacts import screenshot_path, report_run_id
+from utils.paths import screenshot_path, report_run_id
 
 logger = logging.getLogger("core.action_runner")
 
