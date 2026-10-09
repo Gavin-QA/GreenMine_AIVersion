@@ -37,7 +37,7 @@ PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from utils.paths import RUNS_DIR
+from utils.paths import RUNS_DIR, GLOBAL_BUGS_DIR
 
 logger = logging.getLogger("report_hub")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] [%(name)s] %(message)s")
@@ -90,20 +90,47 @@ class ReportHub:
         
         # 统计全局 Bug 列表
         all_bugs = []
+        # 加载全局缺陷库附加信息
+        global_bugs_file = GLOBAL_BUGS_DIR / "global_bugs.json"
+        global_bugs_map = {}
+        if global_bugs_file.exists():
+            try:
+                import json
+                with open(global_bugs_file, "r", encoding="utf-8") as f:
+                    gb_list = json.load(f)
+                    for gb in gb_list:
+                        if isinstance(gb, dict) and gb.get("id"):
+                            global_bugs_map[gb.get("id")] = gb
+            except Exception as e:
+                logger.warning(f"加载 global_bugs.json 失败: {e}")
+
         for r in runs:
             r_id = r.get("run_id", "")
             r_link = r.get("report_url", "#")
             for b in r.get("bugs", []):
+                b_id = b.get("id", "BUG")
+                gb = global_bugs_map.get(b_id, {})
+                
                 all_bugs.append({
-                    "id": b.get("id", "BUG"),
-                    "title": b.get("title", ""),
+                    "id": b_id,
+                    "title": gb.get("title") or b.get("title", ""),
                     "run_id": r_id,
-                    "date": b.get("creation_date", b.get("date", "")),
-                    "status": b.get("status", "Open"),
-                    "step": (b.get("details") or {}).get("step", b.get("step", "")),
-                    "actual": (b.get("details") or {}).get("actual", b.get("actual", "")),
+                    "date": gb.get("date") or b.get("creation_date", b.get("date", "")),
+                    "status": gb.get("status") or b.get("status", "Open"),
+                    "step": gb.get("global_step") or (b.get("details") or {}).get("step", b.get("step", "")),
+                    "actual": gb.get("error_log") or (b.get("details") or {}).get("actual", b.get("actual", "")),
                     "rel_screenshot": b.get("rel_screenshot", ""),
-                    "report_link": r_link
+                    "report_link": r_link,
+                    "occurrences": gb.get("occurrences", 1),
+                    "last_seen": gb.get("last_seen", gb.get("date") or ""),
+                    "global_step": gb.get("global_step", "无"),
+                    "action_type": gb.get("action_type", "无"),
+                    "target_element": gb.get("target_element", "无"),
+                    "assignee": gb.get("assignee", "Unassigned"),
+                    "tags": ", ".join(gb.get("tags", [])) if isinstance(gb.get("tags"), list) else (gb.get("tags") or "无"),
+                    "severity": gb.get("severity", 3),
+                    "ui_path": gb.get("ui_path", "无"),
+                    "analysis_notes": gb.get("analysis_notes", "无")
                 })
 
         runs_json = json.dumps(runs, ensure_ascii=False)
@@ -681,6 +708,84 @@ class ReportHub:
 
   </div>
 
+  <!-- Bug Modal Overlay -->
+  <div id="bugModalOverlay" style="display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.8);z-index:9998;align-items:center;justify-content:center;">
+    <div id="bugModalContent" style="background:var(--bg-base);width:85vw;max-width:1000px;max-height:90vh;border-radius:12px;border:1px solid rgba(255,255,255,0.1);display:flex;flex-direction:column;z-index:9999;box-shadow:0 25px 50px -12px rgba(0,0,0,0.8);">
+      <div style="padding:16px 24px;border-bottom:1px solid rgba(255,255,255,0.05);display:flex;justify-content:space-between;align-items:center;">
+         <div id="modalHeader" style="display:flex;gap:12px;align-items:center;">
+            <div id="modalBugId" style="font-family:var(--font-mono);font-size:16px;color:#f8fafc;font-weight:700;background:rgba(255,255,255,0.05);padding:6px 12px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);">BUG-XXX</div>
+            <div id="modalStatus"></div>
+            <div id="modalSeverity" style="background:rgba(245,158,11,0.1);color:#f59e0b;padding:6px 12px;border-radius:6px;font-weight:700;border:1px solid rgba(245,158,11,0.3);font-size:14px;">🔥 3</div>
+         </div>
+         <button onclick="document.getElementById('bugModalOverlay').style.display='none'" style="background:transparent;border:none;color:#94a3b8;font-size:28px;cursor:pointer;line-height:1;transition:color 0.2s;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#94a3b8'">&times;</button>
+      </div>
+      <div id="modalBody" style="padding:24px;overflow-y:auto;display:flex;flex-direction:column;gap:16px;background:var(--bg-surface);">
+        <!-- Metadata Grid -->
+        <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:16px;">
+          <div style="background:var(--bg-card);padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.05);">
+            <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:6px;">▮ 所属运行 (RUN ID)</div>
+            <div id="modalRunId" style="color:#f8fafc;font-family:var(--font-mono);font-size:13px;">-</div>
+          </div>
+          <div style="background:var(--bg-card);padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.05);">
+            <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:6px;">▮ 发现日期</div>
+            <div id="modalDate" style="color:#f8fafc;font-family:var(--font-mono);font-size:13px;">-</div>
+          </div>
+          <div style="background:var(--bg-card);padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.05);">
+            <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:6px;">▮ 复现次数</div>
+            <div id="modalOccurrences" style="color:#f8fafc;font-family:var(--font-mono);font-size:13px;">-</div>
+          </div>
+          <div style="background:var(--bg-card);padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.05);">
+            <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:6px;">▮ 最后出现</div>
+            <div id="modalLastSeen" style="color:#f8fafc;font-family:var(--font-mono);font-size:13px;">-</div>
+          </div>
+          <div style="background:var(--bg-card);padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.05);">
+            <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:6px;">▮ 全局步骤</div>
+            <div id="modalGlobalStep" style="color:#f8fafc;font-family:var(--font-mono);font-size:13px;">-</div>
+          </div>
+          <div style="background:var(--bg-card);padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.05);">
+            <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:6px;">▮ 操作类型</div>
+            <div id="modalActionType" style="color:#f8fafc;font-family:var(--font-mono);font-size:13px;">-</div>
+          </div>
+          <div style="background:var(--bg-card);padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.05);">
+            <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:6px;">▮ 目标元素</div>
+            <div id="modalTargetElement" style="color:#f8fafc;font-size:13px;">-</div>
+          </div>
+          <div style="background:var(--bg-card);padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.05);">
+            <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:6px;">▮ 处理人</div>
+            <div id="modalAssignee" style="color:#f8fafc;font-size:13px;">-</div>
+          </div>
+          <div style="background:var(--bg-card);padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.05);">
+            <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:6px;">▮ 标签</div>
+            <div id="modalTags" style="color:#f8fafc;font-size:13px;">-</div>
+          </div>
+        </div>
+
+        <!-- Full Width Fields -->
+        <div style="background:var(--bg-card);padding:16px;border-radius:8px;border:1px solid rgba(255,255,255,0.05);">
+          <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:8px;">▮ 缺陷简要 (TITLE)</div>
+          <div id="modalTitleText" style="color:#f8fafc;font-size:14px;line-height:1.5;">-</div>
+        </div>
+        <div style="background:var(--bg-card);padding:16px;border-radius:8px;border:1px solid rgba(255,255,255,0.05);">
+          <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:8px;">▮ 业务路径 (UI PATH)</div>
+          <div id="modalUiPath" style="color:#cbd5e1;font-size:13px;line-height:1.5;">-</div>
+        </div>
+        <div style="background:var(--bg-card);padding:16px;border-radius:8px;border:1px solid rgba(255,255,255,0.05);">
+          <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:8px;">▮ 异常诊断结果</div>
+          <div id="modalActual" style="color:#fca5a5;font-family:var(--font-mono);font-size:13px;line-height:1.6;white-space:pre-wrap;">-</div>
+        </div>
+        <div style="background:var(--bg-card);padding:16px;border-radius:8px;border:1px solid rgba(255,255,255,0.05);">
+          <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:8px;">▮ 分析备注</div>
+          <div id="modalAnalysis" style="color:#cbd5e1;font-size:13px;line-height:1.6;white-space:pre-wrap;">-</div>
+        </div>
+        <div style="background:var(--bg-card);padding:16px;border-radius:8px;border:1px solid rgba(255,255,255,0.05);">
+          <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:8px;">▮ 现场截图</div>
+          <div id="modalScreenshot" style="margin-top:8px;">-</div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
   <script>
     const allRuns = {runs_json};
     const allBugs = {bugs_json};
@@ -813,14 +918,49 @@ class ReportHub:
             <td style="text-align:center;vertical-align:middle;">${{imgHtml}}</td>
             <td>
               <div style="display:flex;flex-direction:column;gap:6px;">
-                <button onclick="navigator.clipboard.writeText('${{escapeHtml(b.step || '').replace(/'/g, "\\'")}}')" style="background:transparent;border:1px solid rgba(255,255,255,0.1);color:#94a3b8;border-radius:4px;padding:4px 8px;font-size:11px;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.color='#fff';this.style.borderColor='var(--primary)'" onmouseout="this.style.color='#94a3b8';this.style.borderColor='rgba(255,255,255,0.1)'">复制路径</button>
-                <a href="${{b.report_link}}" style="background:rgba(99,102,241,0.1);border:1px solid var(--primary);color:var(--primary);border-radius:4px;padding:4px 8px;font-size:11px;text-align:center;text-decoration:none;transition:all 0.2s;" onmouseover="this.style.background='var(--primary)';this.style.color='#fff'" onmouseout="this.style.background='rgba(99,102,241,0.1)';this.style.color='var(--primary)'">Bug 详情</a>
+                <a href="${{b.report_link}}" style="background:transparent;border:1px solid rgba(255,255,255,0.1);color:#94a3b8;border-radius:4px;padding:4px 8px;font-size:11px;text-align:center;text-decoration:none;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.color='#fff';this.style.borderColor='var(--primary)'" onmouseout="this.style.color='#94a3b8';this.style.borderColor='rgba(255,255,255,0.1)'">报告详情</a>
+                <button onclick="showBugModal('${{escapeHtml(b.id)}}')" style="background:rgba(99,102,241,0.1);border:1px solid var(--primary);color:var(--primary);border-radius:4px;padding:4px 8px;font-size:11px;text-align:center;text-decoration:none;transition:all 0.2s;cursor:pointer;" onmouseover="this.style.background='var(--primary)';this.style.color='#fff'" onmouseout="this.style.background='rgba(99,102,241,0.1)';this.style.color='var(--primary)'">Bug 详情</button>
               </div>
             </td>
           </tr>
         `;
       }});
       tbody.innerHTML = html;
+    }}
+
+    function showBugModal(bugId) {{
+      const b = allBugs.find(x => x.id === bugId);
+      if (!b) return;
+      
+      document.getElementById('modalBugId').innerText = b.id;
+      document.getElementById('modalStatus').innerHTML = (b.status === 'Open' || b.status === '激活')
+          ? `<div style="background:rgba(244,63,94,0.15);color:#f43f5e;padding:6px 12px;border-radius:6px;font-size:14px;font-weight:700;border:1px solid rgba(244,63,94,0.3)">Open</div>`
+          : `<div style="background:rgba(16,185,129,0.15);color:#10b981;padding:6px 12px;border-radius:6px;font-size:14px;font-weight:700;border:1px solid rgba(16,185,129,0.3)">Closed</div>`;
+      document.getElementById('modalSeverity').innerText = `🔥 ${{b.severity || 3}}`;
+      
+      document.getElementById('modalRunId').innerText = b.run_id || '无';
+      document.getElementById('modalDate').innerText = b.date || '无';
+      document.getElementById('modalOccurrences').innerText = b.occurrences || '1';
+      document.getElementById('modalLastSeen').innerText = b.last_seen || '无';
+      document.getElementById('modalGlobalStep').innerText = b.global_step || '无';
+      document.getElementById('modalActionType').innerText = b.action_type || '无';
+      document.getElementById('modalTargetElement').innerText = b.target_element || '无';
+      document.getElementById('modalAssignee').innerText = b.assignee || 'Unassigned';
+      document.getElementById('modalTags').innerText = b.tags || '无';
+      
+      document.getElementById('modalTitleText').innerText = b.title || '无标题';
+      document.getElementById('modalUiPath').innerText = b.ui_path || b.step || '无路径';
+      document.getElementById('modalActual').innerText = b.actual || '无详情';
+      document.getElementById('modalAnalysis').innerText = b.analysis_notes || '无';
+      
+      const screenshotUrl = b.rel_screenshot ? `./${{b.run_id}}/${{b.rel_screenshot}}` : '';
+      if (screenshotUrl) {{
+          document.getElementById('modalScreenshot').innerHTML = `<img src="${{screenshotUrl}}" style="max-width:100%;max-height:400px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);cursor:pointer;" onclick="window.open(this.src)"/>`;
+      }} else {{
+          document.getElementById('modalScreenshot').innerHTML = '<span style="color:#64748b;">无截图数据</span>';
+      }}
+      
+      document.getElementById('bugModalOverlay').style.display = 'flex';
     }}
 
     function escapeHtml(str) {{
