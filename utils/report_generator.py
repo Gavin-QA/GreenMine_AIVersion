@@ -1112,18 +1112,136 @@ class ReportGenerator:
       cursor: pointer;
       line-height: 1;
     }}
+
+    /* Layout wrapper for Sidebar */
+    .layout-wrapper {{
+      display: flex;
+      min-height: 100vh;
+    }}
+
+    .sidebar {{
+      width: 280px;
+      background: #0d121f;
+      border-right: 1px solid var(--border-subtle);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+    }}
+
+    .sidebar-header {{
+      padding: 24px 20px;
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }}
+    
+    .back-btn {{
+      display: inline-flex;
+      justify-content: center;
+      align-items: center;
+      gap: 8px;
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(79, 70, 229, 0.15));
+      border: 1px solid rgba(99, 102, 241, 0.4);
+      color: #e0e7ff;
+      padding: 10px 16px;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 700;
+      text-decoration: none;
+      cursor: pointer;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 4px 12px -4px rgba(99, 102, 241, 0.2);
+    }}
+
+    .back-btn:hover {{
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(79, 70, 229, 0.3));
+      border-color: rgba(99, 102, 241, 0.8);
+      color: #fff;
+      transform: translateY(-1px);
+      box-shadow: 0 6px 16px -4px rgba(99, 102, 241, 0.4);
+    }}
+
+    .sidebar-list {{
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }}
+
+    .sidebar-item {{
+      display: flex;
+      flex-direction: column;
+      padding: 12px;
+      border-radius: 8px;
+      background: transparent;
+      border: 1px solid transparent;
+      text-decoration: none;
+      color: var(--text-muted);
+      transition: all 0.2s;
+    }}
+
+    .sidebar-item:hover {{
+      background: rgba(255, 255, 255, 0.03);
+    }}
+
+    .sidebar-item.active {{
+      background: rgba(99, 102, 241, 0.1);
+      border-color: var(--primary);
+      color: #fff;
+    }}
+
+    .sidebar-item-title {{
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 4px;
+      word-break: break-all;
+    }}
+
+    .sidebar-item-meta {{
+      font-size: 11px;
+      color: var(--text-dim);
+      display: flex;
+      justify-content: space-between;
+    }}
+    
+    .main-content {{
+      flex: 1;
+      min-width: 0; /* prevent flex blowout */
+      overflow-y: auto;
+    }}
+
   </style>
+  <script src="../runs_data.js"></script>
 </head>
 <body>
 
-  <div class="container">
+<div class="layout-wrapper">
+  <!-- Left Sidebar -->
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <a href="../index.html" class="back-btn">
+        <span style="font-size: 16px;">⬅️</span> 返回大盘
+      </a>
+      <div style="font-size: 14px; font-weight: 700; color: #fff; margin-top: 8px;">📋 历史测试报告导航</div>
+    </div>
+    <div class="sidebar-list" id="sidebarList">
+      <!-- Dynamically populated by JS -->
+    </div>
+  </div>
+
+  <!-- Main Content -->
+  <div class="main-content">
+    <div class="container">
     
     <!-- Hero Header -->
     <div class="hero">
       <div class="hero-top">
         <div class="hero-title-group">
           <h1>
-            <span>⚡ Electron Vision AI · 执行全景报告</span>
+            <span>⚡ Electron Vision AI · 自动化测试报告</span>
             <span class="badge">{data['mode']}</span>
           </h1>
           <div class="run-id-pill">
@@ -1228,7 +1346,7 @@ class ReportGenerator:
       <div class="topology-card">
         <h3 style="font-size:16px;margin-bottom:16px;color:#fff;">🗺️ 本次探索点亮的应用架构拓扑</h3>
         <div class="mermaid" style="display:flex;justify-content:center;">
-{html.escape(mermaid_raw) if mermaid_raw else "graph TD; A[未检测到拓扑数据];"}
+{mermaid_raw if mermaid_raw else "graph TD; A[未检测到拓扑数据];"}
         </div>
       </div>
     </div>
@@ -1444,10 +1562,52 @@ class ReportGenerator:
     }}
 
     // 页面初始化渲染第一页
+    function renderSidebar() {{
+      const sidebarList = document.getElementById('sidebarList');
+      if (typeof window.GLOBAL_RUNS_LIST === 'undefined' || !window.GLOBAL_RUNS_LIST.length) {{
+          sidebarList.innerHTML = '<div style="color:var(--text-dim);font-size:12px;padding:12px;text-align:center;">暂无其他历史记录<br>(或未通过大盘构建)</div>';
+          return;
+      }}
+      
+      const currentRunId = "{data['run_id']}";
+      let html = '';
+      
+      // 按照修改时间降序排序 (mtime)
+      const sortedRuns = [...window.GLOBAL_RUNS_LIST].sort((a, b) => (b.mtime || 0) - (a.mtime || 0));
+      
+      sortedRuns.forEach(r => {{
+          const isActive = r.run_id === currentRunId ? 'active' : '';
+          const modeLabel = r.run_id && r.run_id.startsWith('explore') ? '自主探索' : '全量冒烟';
+          html += `
+            <a href="../${{r.run_id}}/report.html" class="sidebar-item ${{isActive}}">
+              <div class="sidebar-item-title">${{r.run_id}}</div>
+              <div class="sidebar-item-meta">
+                <span>${{modeLabel}}</span>
+                <span>${{r.kpi ? r.kpi.total_steps : 0}}步 | ${{r.kpi ? r.kpi.bugs_count : 0}}Bug</span>
+              </div>
+            </a>
+          `;
+      }});
+      
+      sidebarList.innerHTML = html;
+      
+      // 自动滚动到当前激活的项
+      setTimeout(() => {{
+          const activeItem = sidebarList.querySelector('.sidebar-item.active');
+          if (activeItem) {{
+              activeItem.scrollIntoView({{ behavior: 'smooth', block: 'center' }});
+          }}
+      }}, 100);
+    }}
+
     document.addEventListener('DOMContentLoaded', () => {{
       renderSteps();
+      renderSidebar();
     }});
   </script>
+  </div> <!-- end container -->
+  </div> <!-- end main-content -->
+</div> <!-- end layout-wrapper -->
 </body>
 </html>
 """

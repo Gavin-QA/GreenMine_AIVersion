@@ -1303,7 +1303,7 @@
     "target_element": "",
     "error_log": "元素完全未找到，AI 纯视觉判定解释: 当前截图中，一级菜单栏显示了【首页】、【资源管理】、【生产管理】、【设备管理】、【安全管理】、【智控管理】等选项，但所有二级下拉菜单均未展开。由于【胶带运输监测】属于二级菜单项，且在当前画面中没有展开任何下拉菜单，因此无法在图中找到该选项的物理渲染位置。根据【未展开防空与同名防误触铁律】，必须将 found 设为 false。",
     "analysis_notes": "",
-    "screenshot": "D:/Auto/electron_ai_vision/artifacts/bugs/screenshots/BUG-20260928-001.png",
+    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/smoke_20260928_155310/bugs/BUG-20260928-001.png",
     "tags": [],
     "assignee": "Unassigned"
   },
@@ -1322,7 +1322,7 @@
     "target_element": "下拉菜单项【生产统计】",
     "error_log": "[console_error] Failed to load resource: the server responded with a status of 404 (Not Found)\n[network_error] http://localhost:9528/nplusone/fdbErp/getProductionStatistic?periodType=month&startDate=2026-04-01&endDate=2026-09-28 (Status: 404)\n[console_error] Failed to load resource: the server responded with a status of 404 (Not Found)\n[network_error] http://localhost:9528/nplusone/fdbErp/getTransportStatistic?periodType=day&startDate=2026-09-22&endDate=2026-09-28 (Status: 404)\n[console_error] Failed to load resource: the server responded with a status of 404 (Not Found)",
     "analysis_notes": "",
-    "screenshot": "D:/Auto/electron_ai_vision/artifacts/bugs/screenshots/BUG-20260928-002.png",
+    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/explore_20260928_182632/bugs/BUG-20260928-002.png",
     "tags": [],
     "assignee": "Unassigned"
   },
@@ -1341,7 +1341,7 @@
     "target_element": "下拉菜单项【卡车调度】",
     "error_log": "[console_error] http请求通用错误： {code: 7, data: Object, msg: 权限不足, err: null}",
     "analysis_notes": "",
-    "screenshot": "D:/Auto/electron_ai_vision/artifacts/bugs/screenshots/BUG-20260928-003.png",
+    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/explore_20260928_182632/bugs/BUG-20260928-003.png",
     "tags": [],
     "assignee": "Unassigned"
   },
@@ -1379,7 +1379,7 @@
     "target_element": "",
     "error_log": "数据断言失败: 候选接口 getKsEquipmentExaminationList 中的运料车（number: 运料车鄂PZZR02）数据与截图中显示的信息存在关键字段不一致：接口中证书有效期起始日为 2025-08-16，而截图中显示为 2025-07-16，相差一个月。尽管状态均为‘已过期’，但有效期起始时间明显冲突，构成真实数据错误。",
     "analysis_notes": "",
-    "screenshot": "D:/Auto/electron_ai_vision/artifacts/bugs/screenshots/BUG-20260930-001.png",
+    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/explore_20260930_174037/bugs/BUG-20260930-001.png",
     "tags": [],
     "assignee": "Unassigned"
   },
@@ -1398,7 +1398,7 @@
     "target_element": "顶部一级菜单【设备管理】",
     "error_log": "[console_error (代码位置: 3bb051fa30480b4c25babf7b52243258_20251113112711.jpg:0)] Failed to load resource: net::ERR_CONTENT_LENGTH_MISMATCH",
     "analysis_notes": "",
-    "screenshot": "D:/Auto/electron_ai_vision/artifacts/bugs/screenshots/BUG-20260930-002.png",
+    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/explore_20260930_174037/bugs/BUG-20260930-002.png",
     "tags": [],
     "assignee": "Unassigned"
   },
@@ -1417,7 +1417,7 @@
     "target_element": "设备巡检记录图表（显示历史累计巡检次数趋势）",
     "error_log": "图表批量断言未通过: 核验了9个时间点的数据，发现2026-04和2026-05的数值不一致：图表显示为0，但接口数据显示为23和33。其他时间点数据一致。虽然2026-03的count字段为对象而非数字，但其含义为0次巡检，业务上可接受。因此，整体数据核验失败，主要原因是2026-04和2026-05的数值不一致。",
     "analysis_notes": "",
-    "screenshot": "D:/Auto/electron_ai_vision/artifacts/bugs/screenshots/BUG-20260930-003.png",
+    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/explore_20260930_174037/bugs/BUG-20260930-003.png",
     "tags": [],
     "assignee": "Unassigned"
   },
@@ -1436,7 +1436,7 @@
     "target_element": "弹窗中的‘历史画面’标签页",
     "error_log": "[console_error (代码位置: hls.m3u8:0)] Failed to load resource: the server responded with a status of 404 (Not Found)",
     "analysis_notes": "",
-    "screenshot": "D:/Auto/electron_ai_vision/artifacts/bugs/screenshots/BUG-20260930-004.png",
+    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/explore_20260930_174037/bugs/BUG-20260930-004.png",
     "tags": [],
     "assignee": "Unassigned"
   },
@@ -1455,7 +1455,7 @@
     "target_element": "右侧‘碰撞区域预警统计’图表",
     "error_log": "图表批量断言未通过: 图表‘碰撞区域预警统计’应展示预警次数的时间序列数据，但探针仅捕获到一个标签‘默认视角’，且后台接口 getEquipmentTypeList 返回的是设备类型列表，不含任何预警统计相关字段。接口数据与图表需求不匹配，且图表实际为空白，说明数据未正确加载或接口错误。存在严重业务异常：关键图表无数据支撑，属于断流或数据源配置错误。",
     "analysis_notes": "",
-    "screenshot": "D:/Auto/electron_ai_vision/artifacts/bugs/screenshots/BUG-20260930-005.png",
+    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/explore_20260930_174037/bugs/BUG-20260930-005.png",
     "tags": [],
     "assignee": "Unassigned"
   },
@@ -1474,7 +1474,7 @@
     "target_element": "下拉菜单项【智能巡检】",
     "error_log": "[network_error] HTTP 500: http://localhost:9528/nplusone/InspectionRobot/GetObjectInspectionResultsService\n[console_error (代码位置: GetObjectInspectionResultsService:0)] Failed to load resource: the server responded with a status of 500 (Internal Server Error)\n[network_error] HTTP 500: http://localhost:9528/nplusone/InspectionRobot/AlarmInfoService\n[console_error (代码位置: AlarmInfoService:0)] Failed to load resource: the server responded with a status of 500 (Internal Server Error)\n[network_error] HTTP 500: http://localhost:9528/nplusone/InspectionRobot/GetVideoPlayUrl?robotId=184&videoType=1\n[console_error (代码位置: GetVideoPlayUrl:0)] Failed to load resource: the server responded with a status of 500 (Internal Server Error)\n[network_error] HTTP 500: http://localhost:9528/nplusone/InspectionRobot/GetVideoPlayUrl?robotId=184&videoType=2\n[console_error (代码位置: GetVideoPlayUrl:0)] Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
     "analysis_notes": "",
-    "screenshot": "D:/Auto/electron_ai_vision/artifacts/bugs/screenshots/BUG-20261001-001.png",
+    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/explore_20261001_111351/bugs/BUG-20261001-001.png",
     "tags": [],
     "assignee": "Unassigned"
   },
@@ -1493,7 +1493,7 @@
     "target_element": "右侧【风速监测】区域中的条形图（包含多个矿井风速数据）",
     "error_log": "图表批量断言未通过: 探针捕获的图表数据点仅为'默认视角'，缺少实际的风速数值和时间序列。在倒排检索的API响应中，未能找到任何包含'风速'或'wind speed'相关字段的接口数据，且现有接口（如getFdbPassBasicList）返回的是溜井、放矿机等设备的非风速状态信息。虽然前端截图显示了具体的风速值（如0.17 m/s），但这些数据在后台接口中无对应来源，导致无法核验其准确性。因此，判定为失败，原因是图表数据与后台接口数据之间存在断层，无法建立有效映射关系。",
     "analysis_notes": "",
-    "screenshot": "D:/Auto/electron_ai_vision/artifacts/bugs/screenshots/BUG-20261001-002.png",
+    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/explore_20261001_111351/bugs/BUG-20261001-002.png",
     "tags": [],
     "assignee": "Unassigned"
   },
@@ -1512,7 +1512,7 @@
     "target_element": "",
     "error_log": "数据断言失败: 候选接口 getFdcMonitoringEquipmentList 与截图中要核验的一氧化碳传感器状态网格属于同源业务实体。根据接口数据，编号为 '一氧化碳' 的传感器（deviceId: 054CBA51-982D-4C6A-8912-C4F39D2055E4）的 latestValue 为 0.00，onlineStatus 为 '在线'，status 为 0，curAlarmLevel 为 0，alarmLevel 为 0，formatAlarmLevel 和 alarmStatus 均为空，表明其状态为正常。然而，截图中第一行第一个方格显示为红色，通常代表异常状态，与后端返回的正常状态不一致，因此判定为数据不匹配，存在真实缺陷。",
     "analysis_notes": "",
-    "screenshot": "D:/Auto/electron_ai_vision/artifacts/bugs/screenshots/BUG-20261001-003.png",
+    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/explore_20261001_111351/bugs/BUG-20261001-003.png",
     "tags": [],
     "assignee": "Unassigned"
   },
@@ -1531,7 +1531,7 @@
     "target_element": "右侧‘传感器监测’区域中的一氧化碳传感器状态网格（第一行第一个方格）",
     "error_log": "图表批量断言未通过: 探针捕获的数据点仅为 '默认视角' 标签，不包含任何传感器状态数值；后台接口  `getFdcVideoEquipmentList` 返回的是视频设备列表，未包含一氧化碳传感器的实时状态或浓度数据，无法进行有效比对。尽管前端显示正常，但由于缺乏可比对的业务数据，无法确认数据一致性，故判定为核验失败。",
     "analysis_notes": "",
-    "screenshot": "D:/Auto/electron_ai_vision/artifacts/bugs/screenshots/BUG-20261001-004.png",
+    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/explore_20261001_111351/bugs/BUG-20261001-004.png",
     "tags": [],
     "assignee": "Unassigned"
   },
@@ -1550,7 +1550,7 @@
     "target_element": "",
     "error_log": "数据断言失败: 候选接口 findProject 和 getProjectList 均返回了采矿许可证相关数据，属于同源业务实体。但接口中 expirationDate 为 '2047-09-30'，而截图中显示的有效期截止日为 '2030年8月13日'，两者相差17年，超出合理格式化误差范围，构成真实数据不一致缺陷。因此判定为 MISMATCH，触发 Bug 报告。",
     "analysis_notes": "",
-    "screenshot": "D:/Auto/electron_ai_vision/artifacts/bugs/screenshots/BUG-20261001-005.png",
+    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/explore_20261001_111351/bugs/BUG-20261001-005.png",
     "tags": [],
     "assignee": "Unassigned"
   },
@@ -1569,7 +1569,7 @@
     "target_element": "",
     "error_log": "数据断言失败: 候选接口 getMonthBinStats 中，2026-10-01 这一天的入仓重量（intoRecord）和出仓重量（outRecord）均为 0，但截图中显示的‘入仓重量’柱状图高度约为 2000t，存在明显数值冲突，属于真实缺陷。",
     "analysis_notes": "",
-    "screenshot": "D:/Auto/electron_ai_vision/artifacts/bugs/screenshots/BUG-20261001-006.png",
+    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/explore_20261001_111351/bugs/BUG-20261001-006.png",
     "tags": [],
     "assignee": "Unassigned"
   },
@@ -1588,7 +1588,7 @@
     "target_element": "",
     "error_log": "数据断言失败: 候选接口 getKsEquipmentInfoManagementList 中存在名为 '矿用液压锚杆台车' 且编号为 'G230324004' 的设备记录（ID: 398），其设备编号与截图一致。但该记录的 nextExamDate 为 '2018-07-08'，远早于当前时间，逻辑上无效；而截图中显示的有效期至 2028-08-08，为合理未来日期。两者在有效期上存在严重冲突，表明后端数据或前端渲染存在缺陷，导致信息不一致。",
     "analysis_notes": "",
-    "screenshot": "D:/Auto/electron_ai_vision/artifacts/bugs/screenshots/BUG-20261001-007.png",
+    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/explore_20261001_111351/bugs/BUG-20261001-007.png",
     "tags": [],
     "assignee": "Unassigned"
   },
@@ -1607,7 +1607,7 @@
     "target_element": "",
     "error_log": "数据断言失败: 候选接口 getTopEnergyConsumption 与当前被测目标‘用电Top3回路’属于同源业务。接口中前两条记录的耗电量（42567.24 kWh 和 18374.57 kWh）与截图中两个‘变压器’的数值一致，但截图中第三个设备‘HT92锚杆台车’的耗电量（14036.64 kWh）在接口返回的列表中未找到对应记录，说明后端数据缺失或接口未返回完整数据，导致前端渲染与后端数据不一致，构成真实缺陷。",
     "analysis_notes": "",
-    "screenshot": "D:/Auto/electron_ai_vision/artifacts/bugs/screenshots/BUG-20261001-008.png",
+    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/explore_20261001_111351/bugs/BUG-20261001-008.png",
     "tags": [],
     "assignee": "Unassigned"
   },
@@ -1626,7 +1626,7 @@
     "target_element": "",
     "error_log": "数据断言失败: 候选接口 getKsRectifactionForAlarmList 与截图中‘已完成维修’卡片属于同源业务实体，接口返回的已完成工单总数为980，但截图中该卡片显示的数值为0，两者数值严重不符，属于前端数据渲染错误，触发真实Bug报告。",
     "analysis_notes": "",
-    "screenshot": "D:/Auto/electron_ai_vision/artifacts/bugs/screenshots/BUG-20261001-009.png",
+    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/explore_20261001_111351/bugs/BUG-20261001-009.png",
     "tags": [],
     "assignee": "Unassigned"
   },
@@ -1645,7 +1645,7 @@
     "target_element": "右侧‘运输设备总览’区域中的设备利用率环形图（显示89%）",
     "error_log": "图表批量断言未通过: 探针捕获的数据点仅为标签'默认视角'，无具体数值；后台接口中未发现与设备利用率89%相关的计算依据或原始数据源。尽管前端显示89%，但无法从现有接口响应中反推出该数值，存在数据缺失或前端硬编码风险，不符合数据一致性校验要求。",
     "analysis_notes": "",
-    "screenshot": "D:/Auto/electron_ai_vision/artifacts/bugs/screenshots/BUG-20261001-010.png",
+    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/explore_20261001_111351/bugs/BUG-20261001-010.png",
     "tags": [],
     "assignee": "Unassigned"
   },
@@ -1664,7 +1664,7 @@
     "target_element": "右侧‘今日库存统计分析’柱状图",
     "error_log": "图表批量断言未通过: 核验发现严重业务异常：图表数据显示2026-09-26的入仓重量为66.2t，但所有候选API接口（getMonthBinStats, getProduceBinStaus等）返回的当日入仓记录均为0。这表明系统可能未正确采集或传输该日的入仓数据，属于严重的业务断流问题。此外，图表显示的四个矿仓的今日库存值（862.25t, 2159.63t, 1571.68t, 1946.15t）与getMonthBinStats接口中对应矿仓的inventory字段完全一致，这部分数据是正确的。然而，由于核心的入仓数据存在断流，整个图表的业务逻辑不完整，因此判定为失败。",
     "analysis_notes": "",
-    "screenshot": "D:/Auto/electron_ai_vision/artifacts/bugs/screenshots/BUG-20261001-011.png",
+    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/explore_20261001_111351/bugs/BUG-20261001-011.png",
     "tags": [],
     "assignee": "Unassigned"
   },
@@ -1683,7 +1683,7 @@
     "target_element": "",
     "error_log": "数据断言失败: 候选接口 getFddPersonTrackList 是人员运动轨迹的合理数据源，其返回的 list 为空，表示无轨迹点位和时间序列数据。但截图中三维地图清晰显示了人员运动轨迹（蓝色线条），说明前端渲染了轨迹数据。前后端数据不一致，前端展示内容无法由接口数据支撑，构成真实缺陷。",
     "analysis_notes": "",
-    "screenshot": "D:/Auto/electron_ai_vision/artifacts/bugs/screenshots/BUG-20261001-012.png",
+    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/explore_20261001_111351/bugs/BUG-20261001-012.png",
     "tags": [],
     "assignee": "Unassigned"
   },
@@ -1702,8 +1702,34 @@
     "target_element": "",
     "error_log": "数据断言失败: 候选接口 getKsEquipmentExaminationList 与截图中‘运输设备证书’区域属于同源业务，但接口中可见的‘过期待检’证书仅有 2 条（ID=2,3），而截图中显示为 5，存在明显数值冲突。尽管接口中存在 _omitted_records_count 表示数据不完整，但当前可验证范围内已出现不一致，且无法通过现有数据确认前端统计逻辑是否正确，故判定为 MISMATCH。",
     "analysis_notes": "",
-    "screenshot": "D:/Auto/electron_ai_vision/artifacts/bugs/screenshots/BUG-20261001-013.png",
+    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/explore_20261001_111351/bugs/BUG-20261001-013.png",
     "tags": [],
     "assignee": "Unassigned"
+  },
+  {
+    "id": "BUG-20261009-001",
+    "title": "[explore_20261009_141253] 探索操作 '下拉菜单项【生产统计】' 触发底层异常",
+    "severity": "Medium",
+    "status": "激活",
+    "date": "2026-10-09",
+    "occurrences": 3,
+    "last_seen": "2026-10-09",
+    "step": "[CLICK] 交互目标: '下拉菜单项【生产统计】' (页面路径: 生产管理)",
+    "actual": "[console_error (代码位置: %E8%83%8C%E6%99%AF%E6%95%B0%E5%AD%97%E9%9B%A8.png:0)] Failed to load resource: the server responded with a status of 404 (Not Found)\n[network_error] HTTP 404: http://localhost:9528/nplusone/fdbErp/getProductionStatistic?periodType=month&startDate=2026-04-01&endDate=2026-10-09\n[console_error (代码位置: getProductionStatistic:0)] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/explore_20261009_141253/bugs/BUG-20261009-001_142022.png",
+    "run_id": "explore_20261009_141253"
+  },
+  {
+    "id": "BUG-20261009-002",
+    "title": "[explore_20261009_141253] 探索操作 '左侧‘实时预警信息’列表中的第一条预警记录' 触发底层异常",
+    "severity": "Medium",
+    "status": "激活",
+    "date": "2026-10-09",
+    "occurrences": 1,
+    "last_seen": "2026-10-09",
+    "step": "[CLICK] 交互目标: '左侧‘实时预警信息’列表中的第一条预警记录' (页面路径: 安全管理 -> 人车防碰撞)",
+    "actual": "[console_error (代码位置: %E7%A2%B0%E6%92%9E%E9%A2%84%E8%AD%A6%E7%82%B9.png:0)] Failed to load resource: net::ERR_CONNECTION_TIMED_OUT",
+    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/explore_20261009_141253/bugs/BUG-20261009-002.png",
+    "run_id": "explore_20261009_141253"
   }
 ]

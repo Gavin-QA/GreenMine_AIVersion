@@ -53,12 +53,16 @@ class BugReporter:
                 bug_id = dup_id
             else:
                 # 极端异常情况：查到了 ID 但库里找不到
-                bug_id = self._create_new_bug(title, step_prompt, actual_result, now_date)
+                bug_id = self._create_new_bug(run_id, title, step_prompt, actual_result, now_date)
                 bug_record = self.global_bugs[-1]
         else:
-            bug_id = self._create_new_bug(title, step_prompt, actual_result, now_date)
+            bug_id = self._create_new_bug(run_id, title, step_prompt, actual_result, now_date)
             bug_record = self.global_bugs[-1]
             logger.info(f"✨ 确认是全新问题，新建缺陷档案: [{bug_id}]")
+            
+        # Ensure run_id is always up to date
+        if bug_record:
+            bug_record["run_id"] = run_id
             
         # 2. 将案发现场截图复制一份到专属目录，实现物理隔离，防止 logs 被清理
         new_img_path = None
@@ -108,7 +112,7 @@ class BugReporter:
         logger.info("=" * 60)
         return bug_id
 
-    def _create_new_bug(self, title, step, actual, date):
+    def _create_new_bug(self, run_id, title, step, actual, date):
         # 自动生成递增 ID
         date_prefix = datetime.now().strftime("%Y%m%d")
         todays_bugs = [b for b in self.global_bugs if b["id"].startswith(f"BUG-{date_prefix}")]
@@ -117,6 +121,7 @@ class BugReporter:
         
         new_bug = {
             "id": bug_id,
+            "run_id": run_id,
             "title": title,
             "severity": "Medium",
             "status": "激活",

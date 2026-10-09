@@ -375,6 +375,7 @@ class ExplorerAgent:
                 logger.info(f"🤖 [Worker] 决定: [{action_type.upper()}] -> 目标: {element_desc or '(子任务达成/完成)'}")
 
                 action_success = False
+                batch_chart_handled = False
 
                 # 4. 执行决策
                 if action_type == "finish":
@@ -450,7 +451,6 @@ class ExplorerAgent:
                         self.driver.draw_cursor_on_image(str(step_img_path), x, y, dpr)
                     except Exception as e:
                         logger.warning(f"⚠️ 无法在截图 {step_img_path.name} 上绘制准星: {e}")
-                    batch_chart_handled = False
                     is_chart_target = (element_type == "chart") or any(k in (element_desc or "") for k in ["折线图", "柱状图", "面积图", "数据拐点", "趋势图", "七天风量", "风量数据"])
 
                     # 1. 优先尝试触发【图表全量节点批量嗅探引擎】(Batch Chart Inspector)

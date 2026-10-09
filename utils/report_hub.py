@@ -104,6 +104,15 @@ class ReportHub:
         # 1. 以全局库为主导
         for b_id, gb in global_bugs_map.items():
             r_id = gb.get("run_id", "")
+            # 验证截图是否在物理磁盘上存活（防用户删除了运行日志导致坏图）
+            rel_shot = f"bugs/{b_id}.png"
+            if r_id and not (self.runs_dir / r_id / rel_shot).exists():
+                # Fallback to bug_assets if available
+                if (self.runs_dir / "bug_assets" / f"{b_id}.png").exists():
+                    rel_shot = f"../bug_assets/{b_id}.png"
+                else:
+                    rel_shot = ""
+
             all_bugs_dict[b_id] = {
                 "id": b_id,
                 "title": gb.get("title", ""),
@@ -112,7 +121,7 @@ class ReportHub:
                 "status": gb.get("status", "Open"),
                 "step": gb.get("global_step") or gb.get("ui_path") or gb.get("step", ""),
                 "actual": gb.get("error_log") or gb.get("actual", ""),
-                "rel_screenshot": f"bugs/{b_id}.png",  # 默认预测
+                "rel_screenshot": rel_shot,
                 "report_link": f"./{r_id}/report.html" if r_id else "#",
                 "occurrences": gb.get("occurrences", 1),
                 "last_seen": gb.get("last_seen", gb.get("date") or ""),
@@ -133,10 +142,24 @@ class ReportHub:
             for b in r.get("bugs", []):
                 b_id = b.get("id", "BUG")
                 if b_id in all_bugs_dict:
-                    if b.get("rel_screenshot"):
-                        all_bugs_dict[b_id]["rel_screenshot"] = b.get("rel_screenshot")
+                    rel_shot = b.get("rel_screenshot", "")
+                    if rel_shot:
+                        if (self.runs_dir / r_id / rel_shot).exists():
+                            all_bugs_dict[b_id]["rel_screenshot"] = rel_shot
+                        elif (self.runs_dir / "bug_assets" / f"{b_id}.png").exists():
+                            all_bugs_dict[b_id]["rel_screenshot"] = f"../bug_assets/{b_id}.png"
+                        else:
+                            all_bugs_dict[b_id].pop("rel_screenshot", None)
                     all_bugs_dict[b_id]["report_link"] = r_link
                 else:
+                    rel_shot = b.get("rel_screenshot", "")
+                    if rel_shot:
+                        if not (self.runs_dir / r_id / rel_shot).exists():
+                            if (self.runs_dir / "bug_assets" / f"{b_id}.png").exists():
+                                rel_shot = f"../bug_assets/{b_id}.png"
+                            else:
+                                rel_shot = ""
+
                     all_bugs_dict[b_id] = {
                         "id": b_id,
                         "title": b.get("title", ""),
@@ -145,7 +168,7 @@ class ReportHub:
                         "status": b.get("status", "Open"),
                         "step": (b.get("details") or {}).get("step", b.get("step", "")),
                         "actual": (b.get("details") or {}).get("actual", b.get("actual", "")),
-                        "rel_screenshot": b.get("rel_screenshot", ""),
+                        "rel_screenshot": rel_shot,
                         "report_link": r_link,
                         "occurrences": 1,
                         "last_seen": b.get("creation_date", b.get("date", "")),
@@ -172,7 +195,7 @@ class ReportHub:
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Electron Vision AI · 自动化巡检与探索全景门户</title>
+  <title>Electron Vision AI · 自动化测试大盘</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -661,7 +684,7 @@ class ReportHub:
     <div class="hero">
       <div class="hero-top">
         <div class="hero-title-group">
-          <h1>⚡ Electron Vision AI · 自动化巡检与探索全景门户</h1>
+          <h1>⚡ Electron Vision AI · 自动化测试大盘</h1>
           <p>多模态大模型端到端巡检全要素大盘 · 所有历史运行轨迹与缺陷汇总</p>
         </div>
 
@@ -695,7 +718,7 @@ class ReportHub:
     <!-- Navigation Tabs -->
     <div class="tabs-bar">
       <button class="tab-btn active" onclick="switchMainTab('tab-runs', event)">
-        🎬 历史巡检记录大盘 <span class="badge">{total_runs}</span>
+        🎬 历史巡检记录 <span class="badge">{total_runs}</span>
       </button>
       <button class="tab-btn" onclick="switchMainTab('tab-bugs', event)">
         🐞 全局缺陷知识库 <span class="badge" style="background:#f43f5e;color:#fff;">{total_bugs}</span>
@@ -716,6 +739,7 @@ class ReportHub:
       </div>
 
       <div id="runsContainer" class="runs-grid"></div>
+      <div id="runsPaginationControls" style="display:flex;justify-content:flex-end;align-items:center;gap:16px;margin-top:16px;padding:8px;"></div>
     </div>
 
     <!-- Tab 2: Bugs Table -->
@@ -734,6 +758,7 @@ class ReportHub:
         </thead>
         <tbody id="bugsTbody"></tbody>
       </table>
+      <div id="paginationControls" style="display:flex;justify-content:flex-end;align-items:center;gap:16px;margin-top:16px;padding:8px;"></div>
     </div>
 
   </div>
@@ -815,12 +840,18 @@ class ReportHub:
       </div>
     </div>
   </div>
+  <!-- Image Viewer Overlay -->
+  <div id="imageViewerOverlay" style="display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.9);z-index:10000;align-items:center;justify-content:center;cursor:zoom-out;" onclick="this.style.display='none'">
+    <img id="imageViewerImg" src="" style="max-width:90%;max-height:90%;object-fit:contain;border-radius:8px;box-shadow:0 25px 50px -12px rgba(0,0,0,1);">
+  </div>
 
   <script>
     const allRuns = {runs_json};
     const allBugs = {bugs_json};
     let currentFilter = 'all';
     let searchQuery = '';
+    let currentRunPage = 1;
+    let runsPerPage = 10;
 
     function switchMainTab(tabId, event) {{
       document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -831,6 +862,7 @@ class ReportHub:
 
     function filterRuns(type, event) {{
       currentFilter = type;
+      currentRunPage = 1;
       document.querySelectorAll('.filter-pill').forEach(b => b.classList.remove('active'));
       event.currentTarget.classList.add('active');
       renderRuns();
@@ -838,11 +870,24 @@ class ReportHub:
 
     function handleSearch() {{
       searchQuery = document.getElementById('runSearch').value.toLowerCase().trim();
+      currentRunPage = 1;
       renderRuns();
+    }}
+
+    function changeRunsPerPage(size) {{
+        runsPerPage = parseInt(size);
+        currentRunPage = 1;
+        renderRuns();
+    }}
+
+    function changeRunPage(page) {{
+        currentRunPage = page;
+        renderRuns();
     }}
 
     function renderRuns() {{
       const container = document.getElementById('runsContainer');
+      const pageControls = document.getElementById('runsPaginationControls');
       const filtered = allRuns.filter(r => {{
         const runId = (r.run_id || '').toLowerCase();
         if (currentFilter === 'explore' && !runId.startsWith('explore_')) return false;
@@ -860,11 +905,19 @@ class ReportHub:
 
       if (filtered.length === 0) {{
         container.innerHTML = '<div style="text-align:center;padding:80px;color:var(--text-dim);">没有符合条件的运行记录</div>';
+        if (pageControls) pageControls.innerHTML = '';
         return;
       }}
 
+      const totalPages = Math.ceil(filtered.length / runsPerPage) || 1;
+      if (currentRunPage > totalPages) currentRunPage = totalPages;
+      if (currentRunPage < 1) currentRunPage = 1;
+
+      const startIndex = (currentRunPage - 1) * runsPerPage;
+      const paginatedRuns = filtered.slice(startIndex, startIndex + runsPerPage);
+
       let html = '';
-      filtered.forEach(r => {{
+      paginatedRuns.forEach(r => {{
         const runId = r.run_id || '';
         let modeClass = 'explore';
         let modeLabel = '自主探索';
@@ -910,7 +963,7 @@ class ReportHub:
 
             <div>
               <a href="${{r.report_url}}" class="open-report-btn">
-                <span>👉 查看视觉全景报告</span>
+                <span>👉 测试报告</span>
               </a>
             </div>
           </div>
@@ -918,19 +971,70 @@ class ReportHub:
       }});
 
       container.innerHTML = html;
+
+      if (pageControls) {{
+         pageControls.innerHTML = `
+            <div style="color:var(--text-dim);font-size:12px;">共 ${{filtered.length}} 条记录</div>
+            <select style="background:var(--bg-surface);border:1px solid rgba(255,255,255,0.1);color:var(--text-muted);border-radius:4px;padding:4px 8px;font-size:12px;outline:none;cursor:pointer;" onchange="changeRunsPerPage(this.value)">
+                <option value="10" ${{runsPerPage===10?'selected':''}}>10 条/页</option>
+                <option value="20" ${{runsPerPage===20?'selected':''}}>20 条/页</option>
+                <option value="50" ${{runsPerPage===50?'selected':''}}>50 条/页</option>
+                <option value="100" ${{runsPerPage===100?'selected':''}}>100 条/页</option>
+            </select>
+            
+            <div style="display:flex;gap:4px;align-items:center;">
+                <button onclick="changeRunPage(${{currentRunPage - 1}})" ${{currentRunPage === 1 ? 'disabled' : ''}} style="background:var(--bg-surface);border:1px solid rgba(255,255,255,0.1);color:var(--text-muted);border-radius:4px;padding:4px 8px;cursor:${{currentRunPage === 1 ? 'not-allowed' : 'pointer'}};font-size:12px;opacity:${{currentRunPage === 1 ? '0.5' : '1'}};">上一页</button>
+                <span style="color:var(--text-muted);font-size:12px;margin:0 4px;">${{currentRunPage}} / ${{totalPages}}</span>
+                <button onclick="changeRunPage(${{currentRunPage + 1}})" ${{currentRunPage === totalPages ? 'disabled' : ''}} style="background:var(--bg-surface);border:1px solid rgba(255,255,255,0.1);color:var(--text-muted);border-radius:4px;padding:4px 8px;cursor:${{currentRunPage === totalPages ? 'not-allowed' : 'pointer'}};font-size:12px;opacity:${{currentRunPage === totalPages ? '0.5' : '1'}};">下一页</button>
+            </div>
+            
+            <div style="display:flex;gap:4px;align-items:center;margin-left:8px;">
+                <span style="color:var(--text-dim);font-size:12px;">跳至</span>
+                <input type="number" id="runPageJumpInput" min="1" max="${{totalPages}}" style="width:50px;background:var(--bg-surface);border:1px solid rgba(255,255,255,0.1);color:var(--text-muted);border-radius:4px;padding:4px;font-size:12px;text-align:center;outline:none;">
+                <span style="color:var(--text-dim);font-size:12px;">页</span>
+                <button onclick="const p=parseInt(document.getElementById('runPageJumpInput').value);if(!isNaN(p)&amp;&amp;p&gt;=1&amp;&amp;p&lt;=${{totalPages}})changeRunPage(p);" style="background:var(--bg-surface);border:1px solid var(--primary);color:var(--primary);border-radius:4px;padding:4px 8px;cursor:pointer;font-size:12px;">跳转</button>
+            </div>
+         `;
+      }}
+    }}
+
+    let currentBugPage = 1;
+    let bugsPerPage = 10;
+
+    function changeBugsPerPage(size) {{
+        bugsPerPage = parseInt(size);
+        currentBugPage = 1;
+        renderBugs();
+    }}
+
+    function changeBugPage(page) {{
+        currentBugPage = page;
+        renderBugs();
     }}
 
     function renderBugs() {{
       const tbody = document.getElementById('bugsTbody');
+      const pageControls = document.getElementById('paginationControls');
       if (allBugs.length === 0) {{
         tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:50px;color:var(--text-dim);">🎉 全局无任何历史缺陷记录</td></tr>';
+        if (pageControls) pageControls.innerHTML = '';
         return;
       }}
 
+      // Sort bugs descending by ID (which encodes the time, e.g. BUG-20261001-...)
+      allBugs.sort((a, b) => b.id.localeCompare(a.id));
+
+      const totalPages = Math.ceil(allBugs.length / bugsPerPage) || 1;
+      if (currentBugPage > totalPages) currentBugPage = totalPages;
+      if (currentBugPage < 1) currentBugPage = 1;
+
+      const startIndex = (currentBugPage - 1) * bugsPerPage;
+      const paginatedBugs = allBugs.slice(startIndex, startIndex + bugsPerPage);
+
       let html = '';
-      allBugs.forEach(b => {{
-        const screenshotUrl = b.rel_screenshot ? `./${{b.run_id}}/${{b.rel_screenshot}}` : '';
-        const imgHtml = screenshotUrl ? `<img src="${{screenshotUrl}}" style="max-width:80px;border-radius:4px;border:1px solid rgba(255,255,255,0.1);cursor:pointer;" onclick="window.open(this.src)"/>` : '<span style="color:#64748b;font-size:12px;">无截图</span>';
+      paginatedBugs.forEach(b => {{
+        const screenshotUrl = b.rel_screenshot ? (b.rel_screenshot.startsWith('../') ? b.rel_screenshot.replace('../', './') : `./${{b.run_id}}/${{b.rel_screenshot}}`) : '';
+        const imgHtml = screenshotUrl ? `<img src="${{screenshotUrl}}" style="max-width:80px;border-radius:4px;border:1px solid rgba(255,255,255,0.1);cursor:zoom-in;transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'" onclick="showImageFullscreen(this.src, event)"/>` : '<span style="color:#64748b;font-size:12px;">无截图</span>';
         const statusBadge = (b.status === 'Open' || b.status === '激活')
             ? `<span style="background:rgba(244,63,94,0.15);color:#f43f5e;padding:2px 8px;border-radius:99px;font-size:12px;font-weight:600;border:1px solid rgba(244,63,94,0.3)">激活</span>` 
             : `<span style="background:rgba(16,185,129,0.15);color:#10b981;padding:2px 8px;border-radius:99px;font-size:12px;font-weight:600;border:1px solid rgba(16,185,129,0.3)">已关闭</span>`;
@@ -956,6 +1060,31 @@ class ReportHub:
         `;
       }});
       tbody.innerHTML = html;
+
+      if (pageControls) {{
+         pageControls.innerHTML = `
+            <div style="color:var(--text-dim);font-size:12px;">共 ${{allBugs.length}} 条记录</div>
+            <select style="background:var(--bg-surface);border:1px solid rgba(255,255,255,0.1);color:var(--text-muted);border-radius:4px;padding:4px 8px;font-size:12px;outline:none;cursor:pointer;" onchange="changeBugsPerPage(this.value)">
+                <option value="10" ${{bugsPerPage===10?'selected':''}}>10 条/页</option>
+                <option value="20" ${{bugsPerPage===20?'selected':''}}>20 条/页</option>
+                <option value="50" ${{bugsPerPage===50?'selected':''}}>50 条/页</option>
+                <option value="100" ${{bugsPerPage===100?'selected':''}}>100 条/页</option>
+            </select>
+            
+            <div style="display:flex;gap:4px;align-items:center;">
+                <button onclick="changeBugPage(${{currentBugPage - 1}})" ${{currentBugPage === 1 ? 'disabled' : ''}} style="background:var(--bg-surface);border:1px solid rgba(255,255,255,0.1);color:var(--text-muted);border-radius:4px;padding:4px 8px;cursor:${{currentBugPage === 1 ? 'not-allowed' : 'pointer'}};font-size:12px;opacity:${{currentBugPage === 1 ? '0.5' : '1'}};">上一页</button>
+                <span style="color:var(--text-muted);font-size:12px;margin:0 4px;">${{currentBugPage}} / ${{totalPages}}</span>
+                <button onclick="changeBugPage(${{currentBugPage + 1}})" ${{currentBugPage === totalPages ? 'disabled' : ''}} style="background:var(--bg-surface);border:1px solid rgba(255,255,255,0.1);color:var(--text-muted);border-radius:4px;padding:4px 8px;cursor:${{currentBugPage === totalPages ? 'not-allowed' : 'pointer'}};font-size:12px;opacity:${{currentBugPage === totalPages ? '0.5' : '1'}};">下一页</button>
+            </div>
+            
+            <div style="display:flex;gap:4px;align-items:center;margin-left:8px;">
+                <span style="color:var(--text-dim);font-size:12px;">跳至</span>
+                <input type="number" id="pageJumpInput" min="1" max="${{totalPages}}" style="width:50px;background:var(--bg-surface);border:1px solid rgba(255,255,255,0.1);color:var(--text-muted);border-radius:4px;padding:4px;font-size:12px;text-align:center;outline:none;">
+                <span style="color:var(--text-dim);font-size:12px;">页</span>
+                <button onclick="const p=parseInt(document.getElementById('pageJumpInput').value);if(!isNaN(p)&amp;&amp;p&gt;=1&amp;&amp;p&lt;=${{totalPages}})changeBugPage(p);" style="background:var(--bg-surface);border:1px solid var(--primary);color:var(--primary);border-radius:4px;padding:4px 8px;cursor:pointer;font-size:12px;">跳转</button>
+            </div>
+         `;
+      }}
     }}
 
     function showBugModal(bugId) {{
@@ -983,9 +1112,9 @@ class ReportHub:
       document.getElementById('modalActual').innerText = b.actual || '无详情';
       document.getElementById('modalAnalysis').innerText = b.analysis_notes || '无';
       
-      const screenshotUrl = b.rel_screenshot ? `./${{b.run_id}}/${{b.rel_screenshot}}` : '';
+      const screenshotUrl = b.rel_screenshot ? (b.rel_screenshot.startsWith('../') ? b.rel_screenshot.replace('../', './') : `./${{b.run_id}}/${{b.rel_screenshot}}`) : '';
       if (screenshotUrl) {{
-          document.getElementById('modalScreenshot').innerHTML = `<img src="${{screenshotUrl}}" style="max-width:100%;max-height:400px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);cursor:pointer;" onclick="window.open(this.src)"/>`;
+          document.getElementById('modalScreenshot').innerHTML = `<img src="${{screenshotUrl}}" style="max-width:100%;max-height:400px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);cursor:zoom-in;" onclick="showImageFullscreen(this.src, event)"/>`;
       }} else {{
           document.getElementById('modalScreenshot').innerHTML = '<span style="color:#64748b;">无截图数据</span>';
       }}
@@ -1003,6 +1132,12 @@ class ReportHub:
         .replace(/'/g, '&#039;');
     }}
 
+    function showImageFullscreen(src, event) {{
+        if(event) event.stopPropagation();
+        document.getElementById('imageViewerImg').src = src;
+        document.getElementById('imageViewerOverlay').style.display = 'flex';
+    }}
+
     document.addEventListener('DOMContentLoaded', () => {{
       renderRuns();
       renderBugs();
@@ -1013,6 +1148,13 @@ class ReportHub:
 """
         out_file.write_text(html_content, encoding="utf-8")
         logger.info(f"🎉 统一巡检门户大盘已生成: {out_file}")
+        
+        # 同时生成一份独立的 runs_data.js 供各个子报告的左侧边栏使用
+        js_content = f"window.GLOBAL_RUNS_LIST = {json.dumps(runs, ensure_ascii=False)};\n"
+        js_file = self.runs_dir / "runs_data.js"
+        js_file.write_text(js_content, encoding="utf-8")
+        logger.info(f"✅ 生成全局数据源: {js_file}")
+        
         return out_file
 
     def serve(self, port: int = 8080):
