@@ -1383,7 +1383,6 @@ class ReportGenerator:
               ${{displayImg ? `
                 <div class="step-thumb-wrapper" onclick="openLightbox('${{displayImg}}', '步骤 #${{s.step}}: [${{s.action}}] ${{escapeHtml(s.target)}}')">
                   <img src="${{displayImg}}" alt="Step Screenshot" loading="lazy">
-                  <div class="zoom-hint">🎯 带准星</div>
                 </div>
               ` : '<div style="font-size:12px;color:var(--text-dim);text-align:center;">无关联截图</div>'}}
             </div>
