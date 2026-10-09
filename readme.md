@@ -37,7 +37,7 @@
    - **自动版本快照机制**：每次持久化前自动在 `artifacts/topology/snapshots/` 备份快照，彻底防止大模型幻觉污染历史基线，支持随时回滚。
 8. **用例隔离与晋升机制 (Case Isolation & Promotion)**：探索模式沉淀的 YAML 测试脚本自动保存在每次运行专属的 `reports/runs/<run_id>/generated_cases/` 目录下，彻底杜绝未经人工核验的探索脚本污染正式回归用例库 `test_cases/`；确认高质量后可人工晋升（Promote）。
 9. **智能自愈与前置补救 (Semantic Self-Healing)**：内置“三层防线”自愈机制。当物理重试耗尽时，AI 调取案发现场截图分析失败根因，自动给出点击前置 Tab、收起遮挡层或滚动查找等补救动作，实现无人值守的自我修复。
-10. **解耦式缺陷闭环与大模型查重 (Auto Bug Reporting & Deduplication)**：深度集成完全解耦的 `BugReporter` 模块。当执行或探索发现控制台异常或断言失败时，案发现场大图与报错 JSON 物理收敛至本次运行目录，并调用大模型进行语义特征查重，在 `artifacts/bugs/` 下自动生成全局去重的 JSON、Markdown、CSV 三维大盘。
+10. **解耦式缺陷闭环与大模型查重 (Auto Bug Reporting & Deduplication)**：深度集成完全解耦的 `BugReporter` 模块。当执行或探索发现控制台异常或断言失败时，案发现场大图与报错 JSON 物理收敛至本次运行目录，并调用大模型进行语义特征查重，在 `artifacts/bugs/` 下自动生成全局去重 JSON 数据库，并可一键生成全量交互式 Web 门户。
 11. **资产与产物分层治理 (Tiered Lifecycle Architecture)**：
     - **长期核心资产 (`artifacts/`)**：仅包含全局 Bug 知识库、拓扑基线与用例归档，体积不足 1 MB，绝不因清理日志误删。
     - **单次运行工作区 (`reports/runs/<run_id>/`)**：一次运行对应一个唯一文件夹，包含专属日志、检查点记忆、缺陷证据与探索用例。
@@ -82,7 +82,7 @@ electron_ai_vision/
 │       └── prompts.py           # 集中管控所有 AI System Prompts (速查文档头管理)
 │
 ├── artifacts/             # 💎 【长期持久资产区】轻量核心数据 (~200KB)，永久保留防误删
-│   ├── bugs/                    # 全局去重缺陷大盘总库 (global_bugs.json / md / csv)
+│   ├── bugs/                    # 全局去重缺陷大盘总库 (global_bugs.json)
 │   ├── topology/                # 全局架构树基线 (global_page_tree.json, auto_page_map.md)
 │   │   └── snapshots/           # 拓扑历史版本快照备份 (带时间戳，防模型幻觉改坏)
 │   └── archived_cases/          # 历史探索闭环自动生成的测试用例归档
@@ -106,7 +106,9 @@ electron_ai_vision/
 │   └── test_roam_only.yaml      # 3D 漫游巡检用例
 │
 ├── utils/                 # 通用基础设施工具
-│   ├── artifacts.py       # 统一产物路径与生命周期管理器
+│   ├── paths.py           # 统一产物路径与生命周期管理器
+│   ├── report_generator.py# 离线交互式测试报告(HTML)单次运行生成器
+│   ├── report_hub.py      # 全量巡检与大盘门户服务引擎
 │   ├── cleaner.py         # 磁盘存储大盘诊断与安全瘦身维护工具
 │   ├── logger.py          # 框架集中日志管理，支持 Unicode 防乱码与彩色输出
 │   └── electron_launcher.py # Electron 进程管理辅助工具
@@ -161,11 +163,17 @@ python utils/cleaner.py --retain-days 7
 python utils/cleaner.py --clean-legacy
 ```
 
+### 5. 启动测试全景大盘门户
+```powershell
+# 自动合并所有历史运行数据并启动本地 Web 门户 (默认端口 8080)
+python utils/report_hub.py --serve
+```
+
 ---
 
 ## 📊 产出物查阅指南
 
 - **动态全景 UI 架构树**：直接在编辑器中预览打开 [`docs/auto_page_map.md`](docs/auto_page_map.md)（或资产主库 [`artifacts/topology/auto_page_map.md`](artifacts/topology/auto_page_map.md)），查看层级分明的组件拓扑大纲与 Mermaid 图。
-- **全局缺陷大盘**：预览打开 [`artifacts/bugs/global_bugs.md`](artifacts/bugs/global_bugs.md)，查看经过大模型语义查重后的缺陷总览（含 ID、严重级别、最近复现时间与复现次数）。
-- **单次运行工作区**：在 `reports/runs/<run_id>/` 中可查阅当前次运行的完整控制台日志 (`run.log`)、案发现场证据 (`bugs/`)、续跑检查点 (`checkpoint/`) 以及本次闭环生成的 YAML 用例 (`generated_cases/`)。
+- **全局缺陷与测试大盘**：执行 `python utils/report_hub.py --serve`，并在浏览器中访问 `http://localhost:8080`，查看经过大模型语义查重后的全局缺陷总览、按运行批次划分的完整步骤快照、以及交互式的全景图表报告。
+- **单次运行工作区**：在 `reports/runs/<run_id>/` 中可查阅当前次运行的完整控制台日志 (`run.log`)、案发现场证据 (`bugs/`)、交互式离线报告 (`report.html`)、续跑检查点 (`checkpoint/`) 以及本次闭环生成的 YAML 用例 (`generated_cases/`)。
 - **用例晋升**：若某次探索闭环生成的 YAML 用例业务价值高且运行稳定，可将其从 `reports/runs/<run_id>/generated_cases/` 复制并重命名至 `test_cases/`，正式纳入自动化回归体系。
