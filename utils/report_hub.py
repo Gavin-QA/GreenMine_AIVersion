@@ -55,7 +55,7 @@ class ReportHub:
         if not self.runs_dir.exists():
             return runs_data
 
-        subdirs = sorted([d for d in self.runs_dir.iterdir() if d.is_dir()], key=lambda p: p.stat().st_mtime, reverse=True)
+        subdirs = sorted([d for d in self.runs_dir.iterdir() if d.is_dir() and (d.name.startswith("explore_") or d.name.startswith("smoke_"))], key=lambda p: p.stat().st_mtime, reverse=True)
 
         for d in subdirs:
             # 确保每个运行目录内部都有 report.html
