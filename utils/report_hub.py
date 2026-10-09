@@ -86,10 +86,6 @@ class ReportHub:
         # 统计宏观总计数据
         total_runs = len(runs)
         total_steps = sum(r.get("kpi", {}).get("total_steps", 0) for r in runs)
-        total_bugs = sum(r.get("kpi", {}).get("bugs_count", 0) for r in runs)
-        
-        # 统计全局 Bug 列表
-        all_bugs = []
         # 加载全局缺陷库附加信息
         global_bugs_file = GLOBAL_BUGS_DIR / "global_bugs.json"
         global_bugs_map = {}
@@ -104,34 +100,68 @@ class ReportHub:
             except Exception as e:
                 logger.warning(f"加载 global_bugs.json 失败: {e}")
 
+        all_bugs_dict = {}
+        # 1. 以全局库为主导
+        for b_id, gb in global_bugs_map.items():
+            r_id = gb.get("run_id", "")
+            all_bugs_dict[b_id] = {
+                "id": b_id,
+                "title": gb.get("title", ""),
+                "run_id": r_id,
+                "date": gb.get("date", ""),
+                "status": gb.get("status", "Open"),
+                "step": gb.get("global_step") or gb.get("ui_path") or gb.get("step", ""),
+                "actual": gb.get("error_log") or gb.get("actual", ""),
+                "rel_screenshot": f"bugs/{b_id}.png",  # 默认预测
+                "report_link": f"./{r_id}/report.html" if r_id else "#",
+                "occurrences": gb.get("occurrences", 1),
+                "last_seen": gb.get("last_seen", gb.get("date") or ""),
+                "global_step": gb.get("global_step", "无"),
+                "action_type": gb.get("action_type", "无"),
+                "target_element": gb.get("target_element", "无"),
+                "assignee": gb.get("assignee", "Unassigned"),
+                "tags": ", ".join(gb.get("tags", [])) if isinstance(gb.get("tags"), list) else (gb.get("tags") or "无"),
+                "severity": gb.get("severity", 3),
+                "ui_path": gb.get("ui_path", "无"),
+                "analysis_notes": gb.get("analysis_notes", "无")
+            }
+
+        # 2. 从当前存在的 runs 中补充截图等确切数据，或新增尚未并入 global 的 bug
         for r in runs:
             r_id = r.get("run_id", "")
             r_link = r.get("report_url", "#")
             for b in r.get("bugs", []):
                 b_id = b.get("id", "BUG")
-                gb = global_bugs_map.get(b_id, {})
-                
-                all_bugs.append({
-                    "id": b_id,
-                    "title": gb.get("title") or b.get("title", ""),
-                    "run_id": r_id,
-                    "date": gb.get("date") or b.get("creation_date", b.get("date", "")),
-                    "status": gb.get("status") or b.get("status", "Open"),
-                    "step": gb.get("global_step") or (b.get("details") or {}).get("step", b.get("step", "")),
-                    "actual": gb.get("error_log") or (b.get("details") or {}).get("actual", b.get("actual", "")),
-                    "rel_screenshot": b.get("rel_screenshot", ""),
-                    "report_link": r_link,
-                    "occurrences": gb.get("occurrences", 1),
-                    "last_seen": gb.get("last_seen", gb.get("date") or ""),
-                    "global_step": gb.get("global_step", "无"),
-                    "action_type": gb.get("action_type", "无"),
-                    "target_element": gb.get("target_element", "无"),
-                    "assignee": gb.get("assignee", "Unassigned"),
-                    "tags": ", ".join(gb.get("tags", [])) if isinstance(gb.get("tags"), list) else (gb.get("tags") or "无"),
-                    "severity": gb.get("severity", 3),
-                    "ui_path": gb.get("ui_path", "无"),
-                    "analysis_notes": gb.get("analysis_notes", "无")
-                })
+                if b_id in all_bugs_dict:
+                    if b.get("rel_screenshot"):
+                        all_bugs_dict[b_id]["rel_screenshot"] = b.get("rel_screenshot")
+                    all_bugs_dict[b_id]["report_link"] = r_link
+                else:
+                    all_bugs_dict[b_id] = {
+                        "id": b_id,
+                        "title": b.get("title", ""),
+                        "run_id": r_id,
+                        "date": b.get("creation_date", b.get("date", "")),
+                        "status": b.get("status", "Open"),
+                        "step": (b.get("details") or {}).get("step", b.get("step", "")),
+                        "actual": (b.get("details") or {}).get("actual", b.get("actual", "")),
+                        "rel_screenshot": b.get("rel_screenshot", ""),
+                        "report_link": r_link,
+                        "occurrences": 1,
+                        "last_seen": b.get("creation_date", b.get("date", "")),
+                        "global_step": "无",
+                        "action_type": "无",
+                        "target_element": "无",
+                        "assignee": "Unassigned",
+                        "tags": "无",
+                        "severity": 3,
+                        "ui_path": "无",
+                        "analysis_notes": "无"
+                    }
+                    
+        # 3. 生成 all_bugs 并修正总数
+        all_bugs = list(all_bugs_dict.values())
+        total_bugs = len(all_bugs)
 
         runs_json = json.dumps(runs, ensure_ascii=False)
         bugs_json = json.dumps(all_bugs, ensure_ascii=False)
