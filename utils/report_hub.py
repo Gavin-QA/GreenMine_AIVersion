@@ -902,8 +902,8 @@ class ReportHub:
         const screenshotUrl = b.rel_screenshot ? `./${{b.run_id}}/${{b.rel_screenshot}}` : '';
         const imgHtml = screenshotUrl ? `<img src="${{screenshotUrl}}" style="max-width:80px;border-radius:4px;border:1px solid rgba(255,255,255,0.1);cursor:pointer;" onclick="window.open(this.src)"/>` : '<span style="color:#64748b;font-size:12px;">无截图</span>';
         const statusBadge = (b.status === 'Open' || b.status === '激活')
-            ? `<span style="background:rgba(244,63,94,0.15);color:#f43f5e;padding:2px 8px;border-radius:99px;font-size:12px;font-weight:600;border:1px solid rgba(244,63,94,0.3)">Open</span>` 
-            : `<span style="background:rgba(16,185,129,0.15);color:#10b981;padding:2px 8px;border-radius:99px;font-size:12px;font-weight:600;border:1px solid rgba(16,185,129,0.3)">Closed</span>`;
+            ? `<span style="background:rgba(244,63,94,0.15);color:#f43f5e;padding:2px 8px;border-radius:99px;font-size:12px;font-weight:600;border:1px solid rgba(244,63,94,0.3)">激活</span>` 
+            : `<span style="background:rgba(16,185,129,0.15);color:#10b981;padding:2px 8px;border-radius:99px;font-size:12px;font-weight:600;border:1px solid rgba(16,185,129,0.3)">已关闭</span>`;
 
         html += `
           <tr>
@@ -934,8 +934,8 @@ class ReportHub:
       
       document.getElementById('modalBugId').innerText = b.id;
       document.getElementById('modalStatus').innerHTML = (b.status === 'Open' || b.status === '激活')
-          ? `<div style="background:rgba(244,63,94,0.15);color:#f43f5e;padding:6px 12px;border-radius:6px;font-size:14px;font-weight:700;border:1px solid rgba(244,63,94,0.3)">Open</div>`
-          : `<div style="background:rgba(16,185,129,0.15);color:#10b981;padding:6px 12px;border-radius:6px;font-size:14px;font-weight:700;border:1px solid rgba(16,185,129,0.3)">Closed</div>`;
+          ? `<div style="background:rgba(244,63,94,0.15);color:#f43f5e;padding:6px 12px;border-radius:6px;font-size:14px;font-weight:700;border:1px solid rgba(244,63,94,0.3)">激活</div>`
+          : `<div style="background:rgba(16,185,129,0.15);color:#10b981;padding:6px 12px;border-radius:6px;font-size:14px;font-weight:700;border:1px solid rgba(16,185,129,0.3)">已关闭</div>`;
       document.getElementById('modalSeverity').innerText = `🔥 ${{b.severity || 3}}`;
       
       document.getElementById('modalRunId').innerText = b.run_id || '无';
