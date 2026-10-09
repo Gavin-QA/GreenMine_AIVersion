@@ -27,6 +27,7 @@ def parse_args():
     parser.add_argument("--resume-from", type=str, help="指定上一次探索的运行目录（如 reports/runs/explore_xxx 或旧 logs/xxx），以实现断点续传（继承记忆与页面架构树）")
     parser.add_argument("--reexplore", type=str, nargs="?", const="auto", help="强制重新探索指定模块（即使已在架构树中存在）。可指定模块名（如 智能通风），若不带参数则自动从 --explore 提示词中提取")
     parser.add_argument("--max-steps", type=int, default=20, help="自主探索的最大步数限制（默认: 20）")
+    parser.add_argument("--max-times", type=int, default=10, help="自主探索的最大时间限制(分钟，默认: 10)")
     parser.add_argument("--start-delay", type=float, default=getattr(settings, "start_delay", 15.0), help="启动应用后的等待时间(秒)，确保引擎和UI完全加载（默认从 config.yaml 读取）")
     parser.add_argument("--wait-ready", type=str, help="【智能视觉等待】指定自然语言条件，持续轮询截屏直到满足条件")
     parser.add_argument("--wait-timeout", type=float, default=60.0, help="智能视觉等待的最大超时时间(秒) (默认: 60.0)")
@@ -146,6 +147,7 @@ def run_explore_mode(driver: ElectronDriver, vision_agent: VisionAgent, args):
     explorer.start_exploration(
         objective=args.explore,
         max_steps=args.max_steps,
+        max_time_mins=args.max_times,
         context=context_str,
         resume_from=args.resume_from,
         reexplore_module=reexplore_module

@@ -53,11 +53,12 @@ class ExplorerAgent:
         self.chart_data_buffer = {}  # 缓存图表全量节点数据，用于集中断言与跨弹窗数据暂存 (Batch Chart Inspector)
 
 
-    def start_exploration(self, objective: str, max_steps: int = 20, context: str = "", resume_from: Optional[str] = None, reexplore_module: Optional[str] = None):
+    def start_exploration(self, objective: str, max_steps: int = 20, max_time_mins: int = 10, context: str = "", resume_from: Optional[str] = None, reexplore_module: Optional[str] = None):
         """
         开启自主探索循环
         :param objective: 宏观探索目标
         :param max_steps: 最大探索步数
+        :param max_time_mins: 最大探索时间（分钟）
         :param context: 注入的项目背景知识或探索规则
         :param resume_from: 续跑目录 (如 'logs/explore_xxx')
         :param reexplore_module: 指定强制重新探索的二级模块名（清空该模块历史子树，展开全新探索）
@@ -66,10 +67,11 @@ class ExplorerAgent:
         logger.info(f"🚀 开启自主探索模式 | 目标: {objective}")
         if context:
             logger.info(f"📚 已加载探索先验知识: {len(context)} 字符")
-        logger.info(f"🛑 最大步数限制: {max_steps} | Run ID: {self.run_id}")
+        logger.info(f"🛑 最大步数限制: {max_steps} | 最大时间: {max_time_mins}分钟 | Run ID: {self.run_id}")
         logger.info("=" * 60)
 
         steps_taken = 0
+        exploration_start_time = time.time()
         global_history = []
         trajectory = [] # 用于记录闭环转化生成的完整轨迹
         
@@ -131,6 +133,11 @@ class ExplorerAgent:
         recent_sub_objectives = []
 
         while steps_taken < max_steps:
+            elapsed_mins = (time.time() - exploration_start_time) / 60.0
+            if elapsed_mins >= max_time_mins:
+                logger.info(f"\n⏳ 达到最大探索时间限制 ({max_time_mins} 分钟)，停止探索。")
+                break
+
             logger.info(f"\n" + "=" * 40)
             logger.info(f"🧠 [Planner Phase] 开始规划，当前进度: {steps_taken}/{max_steps}")
             
