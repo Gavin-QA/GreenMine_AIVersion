@@ -1483,12 +1483,12 @@ def main():
             target_dir = runs[0]
 
     if not target_dir:
-        # 默认匹配 explore_20260928_182632
-        cand_default = RUNS_DIR / "explore_20260928_182632"
-        if cand_default.exists():
-            target_dir = cand_default
+        print("💡 未显式指定运行目录，自动寻找最近一次的测试产物目录...")
+        runs = sorted([p for p in RUNS_DIR.iterdir() if p.is_dir() and (p.name.startswith("explore_") or p.name.startswith("smoke_"))], key=lambda p: p.stat().st_mtime, reverse=True)
+        if runs:
+            target_dir = runs[0]
         else:
-            print("❌ 请通过 --run 指定运行目录或使用 --latest 参数！")
+            print("❌ 找不到任何历史运行目录，请先执行一次测试！")
             sys.exit(1)
 
     print(f"🚀 开始为运行目录生成视觉报告: {target_dir.name} ...")
