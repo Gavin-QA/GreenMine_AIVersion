@@ -18,8 +18,6 @@ class BugReporter:
         self.global_bugs_dir = GLOBAL_BUGS_DIR
         self.global_bugs_dir.mkdir(parents=True, exist_ok=True)
         self.global_json = self.global_bugs_dir / "global_bugs.json"
-        self.global_md = self.global_bugs_dir / "global_bugs.md"
-        self.global_csv = self.global_bugs_dir / "global_bugs.csv"
         
         # 允许外部传入已有的 VisionAgent，若没有则自己实例化一个用于 LLM 推理
         self.vision = vision_agent if vision_agent else VisionAgent()
@@ -185,24 +183,3 @@ class BugReporter:
         # 1. JSON
         with open(self.global_json, "w", encoding="utf-8") as f:
             json.dump(self.global_bugs, f, ensure_ascii=False, indent=2)
-            
-        # 2. Markdown
-        md_lines = ["# 全局缺陷大盘 (Global Bug Library)\n"]
-        md_lines.append("| ID | BUG标题 | 严重等级 | 状态 | 创建日期 | 最近复现 | 复现次数 |")
-        md_lines.append("|---|---|---|---|---|---|---|")
-        for b in reversed(self.global_bugs):  # 最新发现的放最前面
-            md_lines.append(f"| {b['id']} | {b['title']} | {b['severity']} | {b['status']} | {b['date']} | {b.get('last_seen', b['date'])} | {b.get('occurrences', 1)} |")
-            
-        with open(self.global_md, "w", encoding="utf-8") as f:
-            f.write("\n".join(md_lines))
-            
-        # 3. CSV
-        with open(self.global_csv, "w", encoding="utf-8", newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow(["ID", "BUG标题", "严重等级", "状态", "创建日期", "最近复现", "复现次数", "步骤", "报错结果"])
-            for b in self.global_bugs:
-                writer.writerow([
-                    b["id"], b["title"], b["severity"], b["status"],
-                    b["date"], b.get("last_seen", b["date"]), b.get("occurrences", 1),
-                    b.get("step", ""), b.get("actual", "")
-                ])
