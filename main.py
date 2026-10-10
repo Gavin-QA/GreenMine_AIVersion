@@ -208,6 +208,14 @@ def run_yaml_mode(driver: ElectronDriver, vision_agent: VisionAgent, cases_to_ru
     try:
         from utils.report_generator import ReportGenerator
         from utils.paths import get_run_dir
+        
+        # 导出接口大盘供报告渲染
+        api_file = get_run_dir() / "api_registry.json"
+        try:
+            driver.dump_api_registry(str(api_file))
+        except Exception as api_err:
+            logger.warning(f"⚠️ 导出接口大盘异常: {api_err}")
+            
         ReportGenerator(get_run_dir()).generate_html()
     except Exception as e:
         logger.error(f"❌ 生成 YAML 测试报告失败: {e}")
