@@ -16,7 +16,7 @@ llm:
   provider: "openai" # 使用 OpenAI 兼容模式
   api_key: ""        # 请在 .env 文件中配置 LLM_API_KEY，此处留空以防泄露
   base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
-  model: "qwen-vl-max"
+  model: "qwen3-vl-plus"
   timeout: 60        # 单次大模型调用超时保障(秒)
   temperature: 0.1   # 模型采样温度 (控制视觉定位稳定性)
 
