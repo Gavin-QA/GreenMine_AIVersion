@@ -1564,10 +1564,15 @@ class ReportGenerator:
     <!-- Tab 4: API Pool -->
     <div id="tab-api" class="tab-pane">
       <div class="api-card">
-        <h3 style="font-size:16px;margin-bottom:8px;color:#fff;">🌐 底层网络接口拦截池</h3>
-        <p style="font-size:13px;color:var(--text-dim);margin-bottom:20px;">
-          框架静默拦截并归纳的 {data['kpi']['apis_count']} 个核心后端 API，涉及 {data['kpi']['page_scopes_count']} 个二级业务页面作用域。
-        </p>
+        <div class="yaml-header">
+          <div>
+            <h3 style="font-size:16px;margin-bottom:8px;color:#fff;">🌐 底层网络接口拦截池</h3>
+            <p style="font-size:13px;color:var(--text-dim);margin-bottom:0;">
+              框架静默拦截并归纳的 {data['kpi']['apis_count']} 个核心后端 API，涉及 {data['kpi']['page_scopes_count']} 个二级业务页面作用域。
+            </p>
+          </div>
+          <button class="copy-btn" onclick="copyApiJson(event)">📋 一键复制接口 JSON</button>
+        </div>
         <table class="api-table">
           <thead>
             <tr>
@@ -1615,6 +1620,8 @@ class ReportGenerator:
   <script>
     // 原始数据注入
     const allSteps = {steps_json};
+    const apisData = {apis_json};
+    
     let currentFilter = 'all';
     let searchQuery = '';
     let currentPage = 1;
@@ -1899,6 +1906,15 @@ class ReportGenerator:
         const btn = event.target;
         btn.innerText = '✅ 已复制到剪贴板！';
         setTimeout(() => {{ btn.innerText = '📋 一键复制 YAML 用例'; }}, 2000);
+      }});
+    }}
+
+    function copyApiJson(e) {{
+      const code = JSON.stringify(apisData, null, 2);
+      navigator.clipboard.writeText(code).then(() => {{
+        const btn = e.target;
+        btn.innerText = '✅ 已复制到剪贴板！';
+        setTimeout(() => {{ btn.innerText = '📋 一键复制接口 JSON'; }}, 2000);
       }});
     }}
 
