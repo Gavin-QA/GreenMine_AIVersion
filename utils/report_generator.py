@@ -1571,7 +1571,7 @@ class ReportGenerator:
               框架静默拦截并归纳的 {data['kpi']['apis_count']} 个核心后端 API，涉及 {data['kpi']['page_scopes_count']} 个二级业务页面作用域。
             </p>
           </div>
-          <button class="copy-btn" onclick="copyApiJson(event)">📋 一键复制接口 JSON</button>
+          <button class="copy-btn" onclick="window.open('./screenshots', '_blank')">📁 打开接口文件目录</button>
         </div>
         <table class="api-table">
           <thead>
@@ -1598,9 +1598,12 @@ class ReportGenerator:
               由本次探索中所有成功验证 (PASS) 的路径全自动编译而成，已过滤冗余与失败步骤。
             </p>
           </div>
-          <button class="copy-btn" onclick="copyYaml()">📋 一键复制 YAML 用例</button>
+          <button class="copy-btn" onclick="window.open('./generated_cases', '_blank')">📁 打开 YAML 所在目录</button>
         </div>
-        <div id="yamlCode" class="code-view">{html.escape(data['generated_yaml'] or '# 暂无自动生成的用例')}</div>
+        <div class="code-view" style="text-align:center; padding:40px; color:var(--text-dim);">
+          <div style="font-size:32px; margin-bottom:12px;">📁</div>
+          回归用例已作为独立文件保存在本地。<br>请点击右上角按钮打开对应目录查看或进行二次编辑。
+        </div>
       </div>
     </div>
 
@@ -1898,24 +1901,6 @@ class ReportGenerator:
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
-    }}
-
-    function copyYaml() {{
-      const code = document.getElementById('yamlCode').innerText;
-      navigator.clipboard.writeText(code).then(() => {{
-        const btn = event.target;
-        btn.innerText = '✅ 已复制到剪贴板！';
-        setTimeout(() => {{ btn.innerText = '📋 一键复制 YAML 用例'; }}, 2000);
-      }});
-    }}
-
-    function copyApiJson(e) {{
-      const code = JSON.stringify(apisData, null, 2);
-      navigator.clipboard.writeText(code).then(() => {{
-        const btn = e.target;
-        btn.innerText = '✅ 已复制到剪贴板！';
-        setTimeout(() => {{ btn.innerText = '📋 一键复制接口 JSON'; }}, 2000);
-      }});
     }}
 
     // 页面初始化渲染第一页
