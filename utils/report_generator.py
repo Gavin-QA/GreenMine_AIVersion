@@ -437,7 +437,7 @@ class ReportGenerator:
 
         # ====== 双模自适应逻辑 ======
         is_yaml_mode = data['run_id'].startswith("yaml_")
-        hero_title = "⚡ Electron Vision AI · 自动化回归测试报告" if is_yaml_mode else "⚡ Electron Vision AI · 自主探索报告"
+        hero_title = "⚡ Electron Vision AI · 自动化回归测试报告" if is_yaml_mode else "⚡ Electron Vision AI · 自主探索测试报告"
         badge_text = "YAML 强校验模式" if is_yaml_mode else "自主探索驱动"
         
         planner_kpi_style = "display:none;" if is_yaml_mode else ""
@@ -621,58 +621,92 @@ class ReportGenerator:
     /* KPI Cards */
     .kpi-grid {{
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-      gap: 16px;
-      margin-bottom: 32px;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 18px;
+      margin-bottom: 36px;
     }}
 
     .kpi-card {{
-      background: var(--bg-card);
-      border: 1px solid var(--border-subtle);
+      background: linear-gradient(145deg, rgba(30, 41, 59, 0.6) 0%, rgba(15, 23, 42, 0.4) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.05);
       border-radius: 16px;
-      padding: 20px 24px;
-      backdrop-filter: blur(12px);
-      transition: transform 0.2s, border-color 0.2s;
+      padding: 24px;
+      backdrop-filter: blur(16px);
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      position: relative;
+      overflow: hidden;
+    }}
+
+    .kpi-card::before {{
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0; height: 2px;
+      background: linear-gradient(90deg, transparent, rgba(99, 102, 241, 0.5), transparent);
+      opacity: 0;
+      transition: opacity 0.3s ease;
     }}
 
     .kpi-card:hover {{
-      transform: translateY(-2px);
-      border-color: var(--border-focus);
+      transform: translateY(-4px) scale(1.02);
+      border-color: rgba(99, 102, 241, 0.4);
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3), 0 0 20px rgba(99, 102, 241, 0.15);
+      z-index: 10;
+    }}
+
+    .kpi-card:hover::before {{
+      opacity: 1;
     }}
 
     .kpi-card .kpi-label {{
       font-size: 13px;
-      color: var(--text-dim);
-      font-weight: 500;
+      color: #94a3b8;
+      font-weight: 600;
       display: flex;
       align-items: center;
-      gap: 6px;
-      margin-bottom: 8px;
+      gap: 8px;
+      margin-bottom: 14px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
     }}
 
     .kpi-card .kpi-value {{
-      font-size: 28px;
-      font-weight: 800;
-      letter-spacing: -0.02em;
-      color: #fff;
+      font-size: 34px;
+      font-weight: 900;
+      letter-spacing: -0.03em;
+      color: #f8fafc;
       display: flex;
       align-items: baseline;
-      gap: 6px;
+      gap: 8px;
+      text-shadow: 0 2px 10px rgba(0,0,0,0.3);
     }}
 
     .kpi-card .kpi-value span.sub {{
-      font-size: 13px;
+      font-size: 14px;
       font-weight: 500;
-      color: var(--text-dim);
+      color: #64748b;
+      letter-spacing: 0;
+      text-shadow: none;
     }}
 
     .kpi-card.bugs-card {{
       border-color: rgba(244, 63, 94, 0.3);
-      background: linear-gradient(135deg, rgba(30, 20, 35, 0.7), rgba(20, 25, 45, 0.7));
+      background: linear-gradient(135deg, rgba(244, 63, 94, 0.1), rgba(15, 23, 42, 0.6));
+      box-shadow: 0 4px 20px rgba(244, 63, 94, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    }}
+    
+    .kpi-card.bugs-card::before {{
+      background: linear-gradient(90deg, transparent, rgba(244, 63, 94, 0.6), transparent);
+    }}
+
+    .kpi-card.bugs-card:hover {{
+      border-color: rgba(244, 63, 94, 0.6);
+      box-shadow: 0 12px 30px rgba(244, 63, 94, 0.2), 0 0 20px rgba(244, 63, 94, 0.15);
     }}
 
     .kpi-card.bugs-card .kpi-value {{
       color: #fb7185;
+      text-shadow: 0 2px 15px rgba(244, 63, 94, 0.4);
     }}
 
     /* Tabs Navigation */
