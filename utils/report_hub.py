@@ -736,6 +736,17 @@ class ReportHub:
 
     <!-- Tab 2: Bugs Table -->
     <div id="tab-bugs" class="tab-pane">
+      <div class="filter-bar">
+        <div class="filter-pills">
+          <button class="filter-pill active" onclick="filterBugs('all', event)">全部模式 ({total_bugs})</button>
+          <button class="filter-pill" onclick="filterBugs('explore', event)">自主探索</button>
+          <button class="filter-pill" onclick="filterBugs('smoke', event)">全量冒烟</button>
+          <button class="filter-pill" onclick="filterBugs('yaml', event)">回归测试</button>
+        </div>
+
+        <input type="text" id="bugSearch" class="search-box" placeholder="搜索 缺陷编号、标题或路径..." oninput="handleBugSearch()">
+      </div>
+      
       <table class="bugs-table">
         <thead>
           <tr>
@@ -992,6 +1003,22 @@ class ReportHub:
 
     let currentBugPage = 1;
     let bugsPerPage = 10;
+    let currentBugFilter = 'all';
+    let bugSearchQuery = '';
+
+    function filterBugs(type, event) {{
+      currentBugFilter = type;
+      currentBugPage = 1;
+      document.querySelectorAll('#tab-bugs .filter-pill').forEach(b => b.classList.remove('active'));
+      event.currentTarget.classList.add('active');
+      renderBugs();
+    }}
+
+    function handleBugSearch() {{
+      bugSearchQuery = document.getElementById('bugSearch').value.toLowerCase().trim();
+      currentBugPage = 1;
+      renderBugs();
+    }}
 
     function changeBugsPerPage(size) {{
         bugsPerPage = parseInt(size);
@@ -1007,21 +1034,37 @@ class ReportHub:
     function renderBugs() {{
       const tbody = document.getElementById('bugsTbody');
       const pageControls = document.getElementById('paginationControls');
-      if (allBugs.length === 0) {{
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:50px;color:var(--text-dim);">🎉 全局无任何历史缺陷记录</td></tr>';
+      
+      const filtered = allBugs.filter(b => {{
+        const runId = (b.run_id || '').toLowerCase();
+        if (currentBugFilter === 'explore' && !runId.startsWith('explore_')) return false;
+        if (currentBugFilter === 'smoke' && !runId.startsWith('smoke_')) return false;
+        if (currentBugFilter === 'yaml' && (runId.startsWith('explore_') || runId.startsWith('smoke_'))) return false;
+
+        if (bugSearchQuery) {{
+          const matchId = (b.id || '').toLowerCase().includes(bugSearchQuery);
+          const matchTitle = (b.title || '').toLowerCase().includes(bugSearchQuery);
+          const matchStep = (b.step || '').toLowerCase().includes(bugSearchQuery);
+          if (!matchId && !matchTitle && !matchStep) return false;
+        }}
+        return true;
+      }});
+
+      if (filtered.length === 0) {{
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:50px;color:var(--text-dim);">🎉 当前筛选条件下无任何缺陷记录</td></tr>';
         if (pageControls) pageControls.innerHTML = '';
         return;
       }}
 
       // Sort bugs descending by ID (which encodes the time, e.g. BUG-20261001-...)
-      allBugs.sort((a, b) => b.id.localeCompare(a.id));
+      filtered.sort((a, b) => b.id.localeCompare(a.id));
 
-      const totalPages = Math.ceil(allBugs.length / bugsPerPage) || 1;
+      const totalPages = Math.ceil(filtered.length / bugsPerPage) || 1;
       if (currentBugPage > totalPages) currentBugPage = totalPages;
       if (currentBugPage < 1) currentBugPage = 1;
 
       const startIndex = (currentBugPage - 1) * bugsPerPage;
-      const paginatedBugs = allBugs.slice(startIndex, startIndex + bugsPerPage);
+      const paginatedBugs = filtered.slice(startIndex, startIndex + bugsPerPage);
 
       let html = '';
       paginatedBugs.forEach(b => {{
@@ -1055,7 +1098,7 @@ class ReportHub:
 
       if (pageControls) {{
          pageControls.innerHTML = `
-            <div style="color:var(--text-dim);font-size:12px;">共 ${{allBugs.length}} 条记录</div>
+            <div style="color:var(--text-dim);font-size:12px;">共 ${{filtered.length}} 条记录</div>
             <select style="background:var(--bg-surface);border:1px solid rgba(255,255,255,0.1);color:var(--text-muted);border-radius:4px;padding:4px 8px;font-size:12px;outline:none;cursor:pointer;" onchange="changeBugsPerPage(this.value)">
                 <option value="10" ${{bugsPerPage===10?'selected':''}}>10 条/页</option>
                 <option value="20" ${{bugsPerPage===20?'selected':''}}>20 条/页</option>
