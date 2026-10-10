@@ -562,14 +562,23 @@ class ReportGenerator:
       border: 1px solid rgba(99, 102, 241, 0.3);
     }}
 
+    .run-id-group {{
+      display: flex;
+      gap: 20px;
+      margin-top: 8px;
+    }}
+
     .run-id-pill {{
       font-family: var(--font-mono);
       font-size: 13px;
       color: var(--text-muted);
-      margin-top: 6px;
       display: flex;
       align-items: center;
       gap: 8px;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      padding: 6px 12px;
+      border-radius: 8px;
     }}
 
     .hero-meta {{
@@ -1427,11 +1436,13 @@ class ReportGenerator:
             <span>{hero_title}</span>
             <span class="badge">{badge_text}</span>
           </h1>
-          <div class="run-id-pill">
-            <span>🏷️ Run ID:</span> <strong>{data['run_id']}</strong>
-          </div>
-          <div class="run-id-pill" style="margin-left: 12px; background: rgba(255,255,255,0.03); border-color: rgba(255,255,255,0.1);">
-            <span>🕒 起止时间:</span> <strong>{data['start_time'].split(' ')[1]} - {data['end_time'].split(' ')[1]} ({data['start_time'].split(' ')[0]})</strong>
+          <div class="run-id-group">
+            <div class="run-id-pill">
+              <span>🏷️ Run ID:</span> <strong style="color: #cbd5e1;">{data['run_id']}</strong>
+            </div>
+            <div class="run-id-pill">
+              <span>🕒 起止时间:</span> <strong style="color: #cbd5e1;">{data['start_time'].split(' ')[1]} - {data['end_time'].split(' ')[1]} <span style="color:var(--text-dim);font-weight:normal;font-size:12px;margin-left:4px;">({data['start_time'].split(' ')[0]})</span></strong>
+            </div>
           </div>
         </div>
 
