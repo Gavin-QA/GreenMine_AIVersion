@@ -6,7 +6,6 @@
    - artifacts/bugs/              全局缺陷大盘总库 (global_bugs.json, global_bugs.md, global_bugs.csv)
    - artifacts/topology/          全局 UI 拓扑基线 (global_page_tree.json, auto_page_map.md)
    - artifacts/topology/snapshots/ 历史架构拓扑版本快照 (防止模型幻觉改坏树结构)
-   - artifacts/archived_cases/    历史探索闭环自动生成的测试用例归档
 
 2. 📦 运行产物收敛区 (reports/runs/<run_id>/) - 一次运行对应一个独立完整目录
    - reports/runs/<run_id>/run.log               运行完整日志
@@ -36,7 +35,6 @@ ARTIFACTS_DIR = PROJECT_ROOT / "artifacts"
 GLOBAL_BUGS_DIR = ARTIFACTS_DIR / "bugs"
 TOPOLOGY_DIR = ARTIFACTS_DIR / "topology"
 TOPOLOGY_SNAPSHOTS_DIR = TOPOLOGY_DIR / "snapshots"
-ARCHIVED_CASES_DIR = ARTIFACTS_DIR / "archived_cases"
 
 # 2. 运行时收敛目录 (Run Outputs)
 REPORTS_DIR = PROJECT_ROOT / "reports"
@@ -57,7 +55,6 @@ def ensure_artifact_dirs() -> None:
         GLOBAL_BUGS_DIR,
         TOPOLOGY_DIR,
         TOPOLOGY_SNAPSHOTS_DIR,
-        ARCHIVED_CASES_DIR,
         RUNS_DIR,
         DOCS_DIR,
         TEST_CASES_DIR,

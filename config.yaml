@@ -23,3 +23,6 @@ llm:
 reports:
   dir: "reports"
   sync_docs: false       # 是否同步更新动态架构树至 docs/ 目录 (默认 false，保护文档目录纯净)
+  feishu_webhook: "https://open.feishu.cn/open-apis/bot/v2/hook/c7c57a81-0bb1-4af0-b7e2-2d0fbf53d62e" # 飞书群机器人推送地址
+  feishu_secret: "Uo84rXzarL4FQqsiRQNI6e" # 飞书签名密钥
+  report_base_url: "http://192.168.1.156" # 外部访问报告的基础 URL (如 IIS 服务地址)

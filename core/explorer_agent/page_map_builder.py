@@ -408,8 +408,6 @@ class PageMapBuilder:
             
             artifacts_map_path = TOPOLOGY_DIR / "auto_page_map.md"
             artifacts_global_file = TOPOLOGY_DIR / "global_page_tree.json"
-            docs_map_path = DOCS_DIR / "auto_page_map.md"
-            docs_global_file = DOCS_DIR / "global_page_tree.json"
 
             # 1. 加载基准骨架并清洗导航噪音节点
             base_tree = PageMapBuilder.parse_base_rules()
@@ -420,7 +418,7 @@ class PageMapBuilder:
                 merged_tree[l1] = dict(l2_dict)
 
             # 先合入全局历史持久化树（防止清空日志后丢失以往探索的模块）
-            read_history_file = artifacts_global_file if artifacts_global_file.exists() else docs_global_file
+            read_history_file = artifacts_global_file
             if read_history_file.exists():
                 try:
                     with open(read_history_file, "r", encoding="utf-8") as f:
@@ -441,11 +439,10 @@ class PageMapBuilder:
             # 4. 自动创建版本快照 (防坏账备份)
             PageMapBuilder._create_topology_snapshot(artifacts_global_file)
 
-            # 5. 实时持久化 global_page_tree.json (主存 artifacts/topology/，镜像 docs/)
+            # 5. 实时持久化 global_page_tree.json (主存 artifacts/topology/)
             try:
-                for target_json in [artifacts_global_file, docs_global_file]:
-                    with open(target_json, "w", encoding="utf-8") as f:
-                        json.dump(clean_tree, f, ensure_ascii=False, indent=2)
+                with open(artifacts_global_file, "w", encoding="utf-8") as f:
+                    json.dump(clean_tree, f, ensure_ascii=False, indent=2)
             except Exception as e:
                 logger.warning(f"持久化 global_page_tree.json 失败: {e}")
 
@@ -467,10 +464,8 @@ class PageMapBuilder:
             ]
             content = "\n".join(lines)
 
-            # 双写写入 artifacts/topology/ 与 docs/
+            # 仅写入 artifacts/topology/
             with open(artifacts_map_path, "w", encoding="utf-8") as f:
-                f.write(content)
-            with open(docs_map_path, "w", encoding="utf-8") as f:
                 f.write(content)
 
             logger.info(f"🗺️ 已成功渲染动态 UI 架构树 (Markdown + Mermaid): {artifacts_map_path}")

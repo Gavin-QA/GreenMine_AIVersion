@@ -79,7 +79,7 @@ class ReportGenerator:
         log_candidates = list(self.run_dir.glob("explorer_*.log")) + list(self.run_dir.glob("smoke_tour_*.log")) + list(self.run_dir.glob("*.log"))
         main_log = None
         for cand in log_candidates:
-            if not cand.name.startswith("startup_"):
+            if not cand.name.startswith("startup_") and not cand.name.startswith("summary_"):
                 main_log = cand
                 break
         if not main_log and log_candidates:
@@ -120,11 +120,12 @@ class ReportGenerator:
                 with open(tree_cand, "r", encoding="utf-8") as f:
                     data["page_tree"] = json.load(f)
                 
-                # 尝试用 PageMapBuilder 转为 Mermaid
                 try:
                     from core.explorer_agent.page_map_builder import PageMapBuilder
-                    data["mermaid_str"] = PageMapBuilder.dict_to_mermaid_string(data["page_tree"])
-                except Exception:
+                    # 直接复用原生的纯 Markdown 组件拓扑树
+                    data["mermaid_str"] = PageMapBuilder.render_markdown_tree(data["page_tree"])
+                except Exception as e:
+                    logger.warning(f"生成纯 Markdown 树失败: {e}")
                     data["mermaid_str"] = ""
             except Exception as e:
                 logger.warning(f"读取 page_tree 失败: {e}")
@@ -189,6 +190,15 @@ class ReportGenerator:
                 except Exception:
                     pass
 
+        # 预期目标和限制
+        limit_match = re.search(r"🛑 最大步数限制: (\d+) \| 最大时间: (\d+)分钟", text)
+        if limit_match:
+            data["kpi"]["max_steps"] = limit_match.group(1)
+            data["kpi"]["max_time"] = f"{limit_match.group(2)} 分钟"
+        else:
+            data["kpi"]["max_steps"] = "-"
+            data["kpi"]["max_time"] = "-"
+
         # 宏观目标提取
         macro_match = re.search(r"🚀 开启自主探索模式 \| 目标: (.*?)(?=\n|\Z)", text)
         if macro_match:
@@ -197,82 +207,165 @@ class ReportGenerator:
             macro_match2 = re.search(r"探题目[:：]\s*(.*?)(?=\n|\Z)", text)
             if macro_match2:
                 data["macro_objective"] = macro_match2.group(1).strip()
+            else:
+                macro_match3 = re.search(r"▶️ 开始执行巡检用例: (.*?)(?=\n|\Z)", text)
+                if macro_match3:
+                    data["macro_objective"] = macro_match3.group(1).strip()
 
         # 统计 Planner 次数
         data["kpi"]["planner_phases"] = len(re.findall(r"🧠 \[Planner Phase\]", text))
 
-        # 提取 Worker 单步
-        pattern = re.compile(
-            r"--- \[Worker Step (\d+)/(\d+)\] \(Global: (\d+)/(\d+)\) ---\n"
-            r"(.*?)(?=(?:--- \[Worker Step|\Z))",
-            re.DOTALL
-        )
-
+        # 提取 Planner 和 Worker 单步
         shots_dir = self.run_dir / "screenshots"
+        
+        # 按 Planner Phase 切分
+        planner_blocks = re.split(r"🧠 \[Planner Phase\] 开始规划", text)
+        if len(planner_blocks) > 1:
+            for p_idx, p_block in enumerate(planner_blocks[1:]):
+                planner_phase_num = p_idx + 1
+                
+                # 解析 Planner 信息
+                ts_m = re.search(r"^，当前进度.*?\n(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})", p_block) or re.search(r"\n(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})", p_block)
+                ts = ts_m.group(1) if ts_m else ""
+                
+                prog_m = re.search(r"^，当前进度[：:]\s*(.*?)(?=\n)", p_block)
+                global_prog = prog_m.group(1).strip() if prog_m else ""
+                
+                plan_shot_m = re.search(r"截图已保存至: .*?screenshots[\\/](plan_step_\d+\.png)", p_block)
+                plan_shot_path = f"screenshots/{plan_shot_m.group(1)}" if plan_shot_m else None
+                
+                th_m = re.search(r"💡 \[Planner\] 思考链: (.*?)(?=\n\d{4}|\n💡|\Z)", p_block, re.DOTALL)
+                thought = th_m.group(1).strip() if th_m else ""
+                
+                target_m = re.search(r"🎯 \[Planner\] 下达新任务: ['\"](.*?)['\"]", p_block)
+                if not target_m:
+                    target_m = re.search(r"🎯 最终状态: (.*?)(?=\n|\Z)", p_block)
+                target = target_m.group(1).strip() if target_m else "未解析到明确目标"
+                
+                data["steps"].append({
+                    "type": "planner",
+                    "step": planner_phase_num,
+                    "timestamp": ts,
+                    "global_prog": global_prog,
+                    "thought": thought,
+                    "target": target,
+                    "action": "PLANNER",
+                    "screenshot": plan_shot_path,
+                    "has_bug": False
+                })
+                
+                # 提取此 Phase 下的所有 Worker Step
+                pattern = re.compile(
+                    r"--- \[Worker Step (\d+)/(\d+)\] \(Global: (\d+)/(\d+)\) ---\n"
+                    r"(.*?)(?=(?:--- \[Worker Step|\Z))",
+                    re.DOTALL
+                )
+                for m in pattern.finditer(p_block):
+                    w_step = int(m.group(1))
+                    budget = int(m.group(2))
+                    g_step = int(m.group(3))
+                    block = m.group(5)
 
-        for m in pattern.finditer(text):
-            w_step = int(m.group(1))
-            budget = int(m.group(2))
-            g_step = int(m.group(3))
-            block = m.group(5)
+                    w_ts_m = re.search(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})", block)
+                    w_ts = w_ts_m.group(1) if w_ts_m else ""
+                    sub_m = re.search(r"🤖 \[Worker\] 执行子目标: ['\"](.*?)['\"]", block)
+                    sub = sub_m.group(1) if sub_m else ""
+                    w_th_m = re.search(r"💡 \[Worker\] 思考链: (.*?)(?=\n\d{4}|\Z)", block, re.DOTALL)
+                    w_thought = w_th_m.group(1).strip() if w_th_m else ""
+                    act_m = re.search(r"🤖 \[Worker\] 决定: \[(\w+)\] -> 目标: (.*?)(?=\n|\Z)", block)
+                    w_action = act_m.group(1).upper() if act_m else "UNKNOWN"
+                    w_target = act_m.group(2).strip() if act_m else ""
+                    path_m = re.search(r"📍 \[Worker\] 当前推断路径: (\[.*?\])", block)
+                    ui_path = path_m.group(1) if path_m else "[]"
+                    has_bug = "🚨 [" in block
+                    
+                    shot_file = f"explore_step_{g_step}.png"
+                    shot_path = f"screenshots/{shot_file}" if (shots_dir / shot_file).exists() else None
+                    hover_file = f"explore_step_{g_step}_hover.png"
+                    hover_path = f"screenshots/{hover_file}" if (shots_dir / hover_file).exists() else None
+                    after_file = f"explore_step_{g_step}_after.png"
+                    after_path = f"screenshots/{after_file}" if (shots_dir / after_file).exists() else None
+                    
+                    data["steps"].append({
+                        "type": "worker",
+                        "step": g_step,
+                        "worker_step": w_step,
+                        "budget": budget,
+                        "timestamp": w_ts,
+                        "sub_objective": sub,
+                        "thought": w_thought,
+                        "action": w_action,
+                        "target": w_target,
+                        "ui_path": ui_path,
+                        "has_bug": has_bug,
+                        "screenshot": shot_path,
+                        "hover_screenshot": hover_path,
+                        "after_screenshot": after_path
+                    })
 
-            # 时间戳
-            ts_m = re.search(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})", block)
-            ts = ts_m.group(1) if ts_m else ""
+        if len(data["steps"]) == 0:
+            # 尝试提取 YAML 单步
+            yaml_pattern = re.compile(
+                r"--- \[Step (\d+)/(\d+)\] 类型: (\w+) ---\n"
+                r"(.*?)(?=(?:--- \[Step |\Z))",
+                re.DOTALL
+            )
+            for m in yaml_pattern.finditer(text):
+                g_step = int(m.group(1))
+                budget = int(m.group(2))
+                step_type = m.group(3)
+                block = m.group(4)
+                
+                # 时间戳
+                ts_m = re.search(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})", block)
+                ts = ts_m.group(1) if ts_m else ""
+                
+                # 子目标/指令提取
+                sub = ""
+                sub_m1 = re.search(r"(?:执行断言指令|寻找元素指令|对比两张图).*?: ['\"](.*)['\"]$", block, re.MULTILINE)
+                sub_m2 = re.search(r"⏳ \[Vision Wait\] 开始智能等待.*?: (.*)$", block, re.MULTILINE)
+                if sub_m1:
+                    sub = sub_m1.group(1).strip()
+                elif sub_m2:
+                    sub = sub_m2.group(1).strip()
+                else:
+                    sub = f"YAML 操作: {step_type}"
+                
+                # 思维链
+                th_m = re.search(r"💡 AI 思考链(?: \(纯视觉\))?: (.*?)(?=\n\d{4}|\Z)", block, re.DOTALL)
+                thought = th_m.group(1).strip() if th_m else ""
+                
+                # 动作与目标
+                action = step_type.upper()
+                # 强制令 target 等于子目标指令，即 YAML prompt
+                target = sub
+                
+                has_bug = "❌ 步骤" in block or "🐞 捕获到缺陷异常" in block or "断言失败" in block
+                
+                shot_path = None
+                if shots_dir.exists():
+                    crash_imgs = list(shots_dir.glob(f"*_step_{g_step}.png"))
+                    if crash_imgs:
+                        shot_path = f"screenshots/{crash_imgs[0].name}"
 
-            # 子目标
-            sub_m = re.search(r"🤖 \[Worker\] 执行子目标: ['\"](.*?)['\"]", block)
-            sub = sub_m.group(1) if sub_m else ""
+                data["steps"].append({
+                    "step": g_step,
+                    "worker_step": g_step,
+                    "budget": budget,
+                    "timestamp": ts,
+                    "sub_objective": sub,
+                    "thought": thought,
+                    "action": action,
+                    "target": target,
+                    "ui_path": "YAML 用例脚本",
+                    "element_type": "",
+                    "container": "",
+                    "has_bug": has_bug,
+                    "screenshot": shot_path,
+                    "hover_screenshot": None,
+                    "after_screenshot": None,
+                })
 
-            # 思维链
-            th_m = re.search(r"💡 \[Worker\] 思考链: (.*?)(?=\n\d{4}|\Z)", block, re.DOTALL)
-            thought = th_m.group(1).strip() if th_m else ""
-
-            # 动作与目标
-            act_m = re.search(r"🤖 \[Worker\] 决定: \[(\w+)\] -> 目标: (.*?)(?=\n|\Z)", block)
-            action = act_m.group(1).upper() if act_m else "UNKNOWN"
-            target = act_m.group(2).strip() if act_m else ""
-
-            # 推断路径
-            path_m = re.search(r"📍 \[Worker\] 当前推断路径: (\[.*?\])", block)
-            ui_path = path_m.group(1) if path_m else "[]"
-
-            # 元素类型与容器
-            elem_type_m = re.search(r"类型: (\w+)", block)
-            elem_type = elem_type_m.group(1) if elem_type_m else ""
-            container_m = re.search(r"容器: (.*?)(?=\n|\Z)", block)
-            container = container_m.group(1).strip() if container_m else ""
-
-            # 是否捕获异常
-            has_bug = "🚨 [BUG FOUND]" in block or "❌" in block
-
-            # 匹配截图路径
-            shot_file = f"explore_step_{g_step}.png"
-            shot_path = f"screenshots/{shot_file}" if (shots_dir / shot_file).exists() else None
-
-            hover_file = f"explore_step_{g_step}_hover.png"
-            hover_path = f"screenshots/{hover_file}" if (shots_dir / hover_file).exists() else None
-
-            after_file = f"explore_step_{g_step}_after.png"
-            after_path = f"screenshots/{after_file}" if (shots_dir / after_file).exists() else None
-
-            data["steps"].append({
-                "step": g_step,
-                "worker_step": w_step,
-                "budget": budget,
-                "timestamp": ts,
-                "sub_objective": sub,
-                "thought": thought,
-                "action": action,
-                "target": target,
-                "ui_path": ui_path,
-                "element_type": elem_type,
-                "container": container,
-                "has_bug": has_bug,
-                "screenshot": shot_path,
-                "hover_screenshot": hover_path,
-                "after_screenshot": after_path,
-            })
 
         data["kpi"]["total_steps"] = len(data["steps"])
 
@@ -342,6 +435,22 @@ class ReportGenerator:
             </tr>""")
         api_rows_html = "".join(api_rows_list)
 
+        # ====== 双模自适应逻辑 ======
+        is_yaml_mode = data['run_id'].startswith("yaml_")
+        hero_title = "⚡ Electron Vision AI · 自动化回归测试报告" if is_yaml_mode else "⚡ Electron Vision AI · 自主探索报告"
+        badge_text = "YAML 强校验模式" if is_yaml_mode else "自主探索驱动"
+        
+        planner_kpi_style = "display:none;" if is_yaml_mode else ""
+        pass_rate_kpi_style = "" if is_yaml_mode else "display:none;"
+        
+        pass_count = data['kpi']['total_steps'] - data['kpi']['bugs_count']
+        pass_rate = f"{int(pass_count / data['kpi']['total_steps'] * 100)}%" if data['kpi']['total_steps'] > 0 else "100%"
+        
+        tab_topology_style = "display:none;" if is_yaml_mode else ""
+        tab_yaml_style = "display:none;" if is_yaml_mode else ""
+        timeline_tab_name = "🎬 用例执行链路" if is_yaml_mode else "🎬 Planner-Worker 执行树"
+        # ==========================
+
         html_content = f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -351,7 +460,6 @@ class ReportGenerator:
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
   <style>
     :root {{
       --bg-base: #0a0d14;
@@ -804,6 +912,37 @@ class ReportGenerator:
       border-color: var(--primary);
     }}
 
+    .page-tree-list {{
+      list-style-type: none;
+      padding-left: 20px;
+      margin: 4px 0;
+      border-left: 1px dashed rgba(99, 102, 241, 0.3);
+    }}
+    .page-tree-node {{
+      margin: 6px 0;
+    }}
+    .node-content {{
+      display: flex;
+      align-items: center;
+      padding: 6px 12px;
+      border-radius: 6px;
+      background: rgba(15, 23, 42, 0.5);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      transition: background 0.2s;
+    }}
+    .node-content:hover {{
+      background: rgba(99, 102, 241, 0.15);
+      border-color: rgba(99, 102, 241, 0.3);
+    }}
+    .node-icon {{
+      margin-right: 10px;
+      font-size: 14px;
+    }}
+    .node-text {{
+      color: #cbd5e1;
+      font-size: 13px;
+    }}
+
     .pagination-bar {{
       display: flex;
       justify-content: space-between;
@@ -847,7 +986,7 @@ class ReportGenerator:
       border-radius: 14px;
       padding: 18px 24px;
       display: grid;
-      grid-template-columns: 80px 1fr 180px;
+      grid-template-columns: 80px 1fr auto;
       gap: 20px;
       align-items: center;
       transition: all 0.2s;
@@ -906,12 +1045,19 @@ class ReportGenerator:
       border-radius: 5px;
       text-transform: uppercase;
       font-family: var(--font-mono);
+      background: rgba(255, 255, 255, 0.1);
+      color: #e2e8f0;
+      border: 1px solid rgba(255, 255, 255, 0.2);
     }}
 
-    .action-tag.click {{ background: var(--primary-glow); color: #c7d2fe; border: 1px solid rgba(99, 102, 241, 0.4); }}
+    .action-tag.click, .action-tag.action {{ background: var(--primary-glow); color: #c7d2fe; border: 1px solid rgba(99, 102, 241, 0.4); }}
     .action-tag.hover {{ background: var(--cyan-bg); color: #a5f3fc; border: 1px solid rgba(6, 182, 212, 0.4); }}
-    .action-tag.wait {{ background: var(--amber-bg); color: #fde68a; border: 1px solid rgba(245, 158, 11, 0.4); }}
+    .action-tag.wait, .action-tag.wait_for {{ background: var(--amber-bg); color: #fde68a; border: 1px solid rgba(245, 158, 11, 0.4); }}
     .action-tag.finish {{ background: var(--emerald-bg); color: #a7f3d0; border: 1px solid rgba(16, 185, 129, 0.4); }}
+    .action-tag.input {{ background: var(--cyan-bg); color: #a5f3fc; border: 1px solid rgba(6, 182, 212, 0.4); }}
+    .action-tag.assert {{ background: rgba(168, 85, 247, 0.15); color: #d8b4fe; border: 1px solid rgba(168, 85, 247, 0.4); }}
+    .action-tag.api_assert {{ background: rgba(236, 72, 153, 0.15); color: #fbcfe8; border: 1px solid rgba(236, 72, 153, 0.4); }}
+    .action-tag.freeze_check {{ background: rgba(56, 189, 248, 0.15); color: #bae6fd; border: 1px solid rgba(56, 189, 248, 0.4); }}
 
     .path-crumb {{
       font-size: 12px;
@@ -1241,8 +1387,8 @@ class ReportGenerator:
       <div class="hero-top">
         <div class="hero-title-group">
           <h1>
-            <span>⚡ Electron Vision AI · 自动化测试报告</span>
-            <span class="badge">{data['mode']}</span>
+            <span>{hero_title}</span>
+            <span class="badge">{badge_text}</span>
           </h1>
           <div class="run-id-pill">
             <span>🏷️ Run ID:</span> <strong>{data['run_id']}</strong>
@@ -1250,14 +1396,11 @@ class ReportGenerator:
         </div>
 
         <div class="hero-meta">
-          <div class="meta-chip">
-            <span>⏱️ 耗时:</span> <strong>{data['duration']}</strong>
+          <div class="meta-chip" style="background: rgba(99, 102, 241, 0.15); border-color: rgba(99, 102, 241, 0.3);">
+            <span>🎯 预期最大步数:</span> <strong style="color: #a5b4fc;">{data['kpi'].get('max_steps', '-')}</strong>
           </div>
-          <div class="meta-chip">
-            <span>📅 开始:</span> <strong>{data['start_time']}</strong>
-          </div>
-          <div class="meta-chip">
-            <span>🏁 结束:</span> <strong>{data['end_time']}</strong>
+          <div class="meta-chip" style="background: rgba(236, 72, 153, 0.15); border-color: rgba(236, 72, 153, 0.3);">
+            <span>⏳ 预期运行时长:</span> <strong style="color: #f9a8d4;">{data['kpi'].get('max_time', '-')}</strong>
           </div>
         </div>
       </div>
@@ -1269,14 +1412,26 @@ class ReportGenerator:
     </div>
 
     <!-- KPI Grid -->
-    <div class="kpi-grid">
-      <div class="kpi-card">
-        <div class="kpi-label">🎯 总执行步数</div>
-        <div class="kpi-value">{data['kpi']['total_steps']} <span class="sub">步</span></div>
+    <div class="kpi-grid" style="grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));">
+      <div class="kpi-card" style="background: rgba(16, 185, 129, 0.05); border-color: rgba(16, 185, 129, 0.2);">
+        <div class="kpi-label">⏱️ 实际耗时</div>
+        <div class="kpi-value" style="color:#6ee7b7; font-size:20px;">{data['duration']}</div>
       </div>
       <div class="kpi-card">
+        <div class="kpi-label">📅 开始与结束</div>
+        <div class="kpi-value" style="font-size:14px; line-height:1.5; color:var(--text-muted);">起: {data['start_time']}<br>止: {data['end_time']}</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">🎯 实际执行步数</div>
+        <div class="kpi-value">{data['kpi']['total_steps']} <span class="sub">步</span></div>
+      </div>
+      <div class="kpi-card" style="{planner_kpi_style}">
         <div class="kpi-label">🧠 Planner 规划轮次</div>
         <div class="kpi-value">{data['kpi']['planner_phases']} <span class="sub">轮</span></div>
+      </div>
+      <div class="kpi-card" style="{pass_rate_kpi_style}">
+        <div class="kpi-label">✅ 测试断言通过率</div>
+        <div class="kpi-value" style="color: #34d399;">{pass_rate}</div>
       </div>
       <div class="kpi-card bugs-card">
         <div class="kpi-label">🐞 捕获严重缺陷</div>
@@ -1295,18 +1450,18 @@ class ReportGenerator:
     <!-- Navigation Tabs -->
     <div class="tabs-bar">
       <button class="tab-btn active" onclick="switchTab('tab-timeline')">
-        🎬 视觉步进时间轴 <span class="counter">{data['kpi']['total_steps']}</span>
+        {timeline_tab_name} <span class="counter">{data['kpi']['total_steps']}</span>
       </button>
       <button class="tab-btn" onclick="switchTab('tab-bugs')">
         🐞 缺陷证据库 <span class="counter" style="background:#f43f5e;color:#fff;">{data['kpi']['bugs_count']}</span>
       </button>
-      <button class="tab-btn" onclick="switchTab('tab-topology')">
-        🌳 动态架构拓扑图
+      <button class="tab-btn" onclick="switchTab('tab-topology')" style="{tab_topology_style}">
+        🌳 纯 Markdown 组件树
       </button>
       <button class="tab-btn" onclick="switchTab('tab-api')">
         🌐 底层接口池 <span class="counter">{data['kpi']['apis_count']}</span>
       </button>
-      <button class="tab-btn" onclick="switchTab('tab-yaml')">
+      <button class="tab-btn" onclick="switchTab('tab-yaml')" style="{tab_yaml_style}">
         📝 自动沉淀回归用例 <span class="counter">{data['kpi']['yaml_steps_count']} 步</span>
       </button>
     </div>
@@ -1317,8 +1472,6 @@ class ReportGenerator:
         <div class="filter-btn-group">
           <button class="filter-pill active" onclick="filterSteps('all')">全部 ({data['kpi']['total_steps']})</button>
           <button class="filter-pill" onclick="filterSteps('bugs')">仅看报错 ({data['kpi']['bugs_count']})</button>
-          <button class="filter-pill" onclick="filterSteps('click')">点击操作</button>
-          <button class="filter-pill" onclick="filterSteps('hover')">悬停操作</button>
         </div>
         <input type="text" id="stepSearch" class="search-box" placeholder="搜索步骤目标、路径或思维链..." oninput="handleSearch()">
       </div>
@@ -1341,13 +1494,13 @@ class ReportGenerator:
       </div>
     </div>
 
-    <!-- Tab 3: Mermaid Topology -->
+    <!-- Tab 3: Pure Markdown Topology -->
     <div id="tab-topology" class="tab-pane">
-      <div class="topology-card">
-        <h3 style="font-size:16px;margin-bottom:16px;color:#fff;">🗺️ 本次探索点亮的应用架构拓扑</h3>
-        <div class="mermaid" style="display:flex;justify-content:center;">
-{mermaid_raw if mermaid_raw else "graph TD; A[未检测到拓扑数据];"}
+      <div class="topology-card" style="padding:0; background:var(--bg-card); border-radius:12px; border:1px solid var(--border-subtle); overflow:hidden;">
+        <div style="padding:16px 20px; border-bottom:1px solid var(--border-subtle); background:rgba(15,23,42,0.5);">
+            <h3 style="font-size:15px;margin:0;color:#fff;display:flex;align-items:center;gap:8px;">🗺️ 纯 Markdown 组件拓扑树 <span style="font-size:12px;color:var(--text-dim);font-weight:normal;"></span></h3>
         </div>
+        <div class="code-view" style="margin:0; border-radius:0; border:none; padding:20px; font-family:var(--font-mono); font-size:14px; line-height:1.6; white-space:pre; color:#a5b4fc; overflow-x:auto;">{html.escape(mermaid_raw) if mermaid_raw else "未检测到拓扑数据"}</div>
       </div>
     </div>
 
@@ -1403,9 +1556,6 @@ class ReportGenerator:
   </div>
 
   <script>
-    // 初始化 Mermaid
-    mermaid.initialize({{ startOnLoad: true, theme: 'dark' }});
-
     // 原始数据注入
     const allSteps = {steps_json};
     let currentFilter = 'all';
@@ -1420,6 +1570,10 @@ class ReportGenerator:
       const targetPane = document.getElementById(tabId);
       if (targetPane) targetPane.classList.add('active');
       event.currentTarget.classList.add('active');
+
+      if (tabId === 'tab-topology' && typeof window.mermaidRenderer === 'function') {{
+        window.mermaidRenderer();
+      }}
     }}
 
     function filterSteps(type) {{
@@ -1437,83 +1591,213 @@ class ReportGenerator:
     }}
 
     function getFilteredSteps() {{
-      return allSteps.filter(s => {{
-        if (currentFilter === 'bugs' && !s.has_bug) return false;
-        if (currentFilter === 'click' && s.action !== 'CLICK') return false;
-        if (currentFilter === 'hover' && s.action !== 'HOVER') return false;
+      const passFilter = allSteps.map(s => {{
+        let pass = true;
+        if (currentFilter === 'bugs' && !s.has_bug) pass = false;
+        if (currentFilter === 'click' && s.action !== 'CLICK') pass = false;
+        if (currentFilter === 'hover' && s.action !== 'HOVER') pass = false;
         
         if (searchQuery) {{
           const matchTarget = (s.target || '').toLowerCase().includes(searchQuery);
           const matchPath = (s.ui_path || '').toLowerCase().includes(searchQuery);
           const matchThought = (s.thought || '').toLowerCase().includes(searchQuery);
           const matchSub = (s.sub_objective || '').toLowerCase().includes(searchQuery);
-          if (!matchTarget && !matchPath && !matchThought && !matchSub) return false;
+          if (!matchTarget && !matchPath && !matchThought && !matchSub) pass = false;
         }}
-        return true;
+        return pass;
       }});
+
+      // Maintain Planner-Worker hierarchy for Explore Mode
+      let currentPlannerIdx = -1;
+      for (let i = 0; i < allSteps.length; i++) {{
+          if (allSteps[i].type === 'planner') {{
+              currentPlannerIdx = i;
+          }} else if (allSteps[i].type === 'worker') {{
+              // If a worker passes the filter, its parent planner MUST be visible
+              if (passFilter[i] && currentPlannerIdx !== -1) {{
+                  passFilter[currentPlannerIdx] = true;
+              }}
+          }}
+      }}
+      
+      return allSteps.filter((s, i) => passFilter[i]);
+    }}
+
+    function togglePlanner(id) {{
+        const el = document.getElementById(id);
+        if(el) {{
+            el.style.display = (el.style.display === 'none' ? 'block' : 'none');
+        }}
     }}
 
     function renderSteps() {{
+      const isYamlMode = (allSteps.length > 0 && allSteps[0].type !== 'planner' && allSteps[0].type !== 'worker');
       const filtered = getFilteredSteps();
-      const total = filtered.length;
-      const totalPages = Math.ceil(total / pageSize) || 1;
-      currentPage = Math.max(1, Math.min(currentPage, totalPages));
-
-      const startIdx = (currentPage - 1) * pageSize;
-      const endIdx = Math.min(startIdx + pageSize, total);
-      const pageSteps = filtered.slice(startIdx, endIdx);
-
+      
       const container = document.getElementById('stepsContainer');
-      if (total === 0) {{
+      if (filtered.length === 0) {{
         container.innerHTML = '<div style="text-align:center;padding:60px;color:var(--text-dim);">没有符合条件的步骤</div>';
         document.getElementById('pageInfo').innerText = '显示 0 步';
-        document.getElementById('prevBtn').disabled = true;
-        document.getElementById('nextBtn').disabled = true;
+        if(document.getElementById('prevBtn')) document.getElementById('prevBtn').disabled = true;
+        if(document.getElementById('nextBtn')) document.getElementById('nextBtn').disabled = true;
         return;
       }}
 
       let html = '';
-      pageSteps.forEach(s => {{
-        const bugClass = s.has_bug ? 'is-bug' : '';
-        const actClass = s.action.toLowerCase();
-        const displayImg = s.hover_screenshot || s.screenshot;
+      
+      if (!isYamlMode && allSteps.some(s => s.type === 'planner')) {{
+          // --- Explore Mode (Nested Rendering) ---
+          const pgBar = document.querySelector('.pagination-bar');
+          if (pgBar) pgBar.style.display = 'none';
+          
+          let currentPlannerHtml = '';
+          let currentWorkersHtml = '';
+          let plannerCount = 0;
+          let displayCount = 0;
+          
+          const isFilterActive = (currentFilter !== 'all' || searchQuery !== '');
+          const initialDisplay = isFilterActive ? 'block' : 'none';
+          
+          filtered.forEach(s => {{
+              if (s.type === 'planner') {{
+                  // Flush previous planner
+                  if (currentPlannerHtml !== '') {{
+                      html += currentPlannerHtml;
+                      html += `<div id="planner-workers-${{plannerCount}}" style="display:${{initialDisplay}}; padding-left: 40px; border-left: 2px solid rgba(99,102,241,0.3); margin-left: 20px;">${{currentWorkersHtml}}</div>`;
+                  }}
+                  plannerCount = s.step;
+                  currentWorkersHtml = ''; // reset
+                  
+                  currentPlannerHtml = `
+                  <div class="step-card" style="border: 1px solid var(--primary); background: rgba(99, 102, 241, 0.05); cursor: pointer; margin-top: 16px;" onclick="togglePlanner('planner-workers-${{plannerCount}}')">
+                    <div class="step-index-badge" style="background: var(--primary);">
+                      <span class="num">P${{s.step}}</span>
+                    </div>
+                    <div class="step-main-info">
+                      <div class="step-header-line">
+                        <span class="action-tag" style="background:var(--primary);">🎯 PLANNER 制定规划 ${{s.global_prog ? `(全局进度: ${{s.global_prog}})` : ''}}</span>
+                        <span style="font-size:11px;color:var(--text-dim);margin-left:auto;">${{(s.timestamp || '').split(' ')[1] || ''}}</span>
+                      </div>
+                      <div class="step-target-name" style="color: #c7d2fe; font-size: 15px;">👉 目标: ${{escapeHtml(s.target)}}</div>
+                      <div class="step-thought-text expanded" onclick="event.stopPropagation(); this.classList.toggle('expanded')" title="思考过程">
+                        🧠 <strong>Planner思考:</strong> ${{escapeHtml(s.thought || '')}}
+                      </div>
+                    </div>
+                    <div>
+                      ${{s.screenshot ? `
+                        <div class="step-thumb-wrapper" onclick="event.stopPropagation(); openLightbox('${{s.screenshot}}', 'Planner 阶段 #${{s.step}}')">
+                          <img src="${{s.screenshot}}" alt="Plan Screenshot" loading="lazy">
+                        </div>
+                      ` : ''}}
+                    </div>
+                  </div>`;
+                  displayCount++;
+              }} else if (s.type === 'worker') {{
+                  const bugClass = s.has_bug ? 'is-bug' : '';
+                  const actClass = (s.action || '').toLowerCase();
+                  const displayImg = s.hover_screenshot || s.screenshot;
+                  
+                  currentWorkersHtml += `
+                  <div class="step-card ${{bugClass}}" style="transform: scale(0.98); margin-bottom: 8px;">
+                    <div class="step-index-badge">
+                      <span class="num">${{s.worker_step}}</span>
+                      <span class="sub">/ ${{s.budget}}</span>
+                    </div>
+                    <div class="step-main-info">
+                      <div class="step-header-line">
+                        <span class="action-tag ${{actClass}}">${{s.action}}</span>
+                        <span class="path-crumb">📍 ${{escapeHtml(s.ui_path)}}</span>
+                        <span style="font-size:11px;color:var(--text-dim);margin-left:auto;">${{(s.timestamp || '').split(' ')[1] || ''}}</span>
+                      </div>
+                      <div class="step-target-name">${{escapeHtml(s.target || '(子目标达成)')}}</div>
+                      <div class="step-thought-text" onclick="event.stopPropagation(); this.classList.toggle('expanded')">
+                        💡 <strong>Worker思考:</strong> ${{escapeHtml(s.thought || '无思考过程')}}
+                      </div>
+                    </div>
+                    <div style="display: flex; gap: 8px;">
+                      ${{s.screenshot ? `
+                        <div class="step-thumb-wrapper" onclick="event.stopPropagation(); openLightbox('${{s.screenshot}}', '执行前 #${{s.step}}')" title="执行前截图">
+                          <div style="position:absolute; top:4px; left:4px; background:rgba(0,0,0,0.6); color:#fff; font-size:10px; padding:2px 4px; border-radius:4px; pointer-events:none;">执行前</div>
+                          <img src="${{s.screenshot}}" alt="Before" loading="lazy">
+                        </div>
+                      ` : ''}}
+                      ${{(s.after_screenshot || s.hover_screenshot) ? `
+                        <div class="step-thumb-wrapper" onclick="event.stopPropagation(); openLightbox('${{s.after_screenshot || s.hover_screenshot}}', '执行后 #${{s.step}}')" title="执行后截图">
+                          <div style="position:absolute; top:4px; left:4px; background:rgba(0,0,0,0.6); color:#fff; font-size:10px; padding:2px 4px; border-radius:4px; pointer-events:none;">执行后</div>
+                          <img src="${{s.after_screenshot || s.hover_screenshot}}" alt="After" loading="lazy">
+                        </div>
+                      ` : ''}}
+                    </div>
+                  </div>`;
+              }}
+          }});
+          
+          // Flush the last one
+          if (currentPlannerHtml !== '') {{
+              html += currentPlannerHtml;
+              html += `<div id="planner-workers-${{plannerCount}}" style="display:${{typeof initialDisplay !== 'undefined' ? initialDisplay : 'none'}}; padding-left: 40px; border-left: 2px solid rgba(99,102,241,0.3); margin-left: 20px;">${{currentWorkersHtml}}</div>`;
+          }}
+          
+          container.innerHTML = html;
+          document.getElementById('pageInfo').innerText = `显示共 ${{displayCount}} 个 Planner 规划轮次 (点击展开对应 Worker 步骤)`;
+      }} else {{
+          // --- YAML Mode (Flat Rendering) ---
+          const pgBar = document.querySelector('.pagination-bar');
+          if (pgBar) pgBar.style.display = 'flex';
+          const total = filtered.length;
+          const totalPages = Math.ceil(total / pageSize) || 1;
+          currentPage = Math.max(1, Math.min(currentPage, totalPages));
 
-        html += `
-          <div class="step-card ${{bugClass}}">
-            <div class="step-index-badge">
-              <span class="num">${{s.step}}</span>
-              <span class="sub">/ 1000</span>
-            </div>
+          const startIdx = (currentPage - 1) * pageSize;
+          const endIdx = Math.min(startIdx + pageSize, total);
+          const pageSteps = filtered.slice(startIdx, endIdx);
 
-            <div class="step-main-info">
-              <div class="step-header-line">
-                <span class="action-tag ${{actClass}}">${{s.action}}</span>
-                <span class="path-crumb">📍 ${{escapeHtml(s.ui_path)}}</span>
-                <span style="font-size:11px;color:var(--text-dim);margin-left:auto;">${{s.timestamp.split(' ')[1] || ''}}</span>
-              </div>
-              <div class="step-target-name">${{escapeHtml(s.target || '(子目标达成)')}}</div>
-              <div class="step-thought-text" onclick="this.classList.toggle('expanded')" title="点击展开/收起完整思考链">
-                💡 <strong>Worker思考:</strong> ${{escapeHtml(s.thought || '无思考过程')}}
-              </div>
-            </div>
+          pageSteps.forEach(s => {{
+            const bugClass = s.has_bug ? 'is-bug' : '';
+            const actClass = (s.action || '').toLowerCase();
+            const displayImg = s.hover_screenshot || s.screenshot;
 
-            <div>
-              ${{displayImg ? `
-                <div class="step-thumb-wrapper" onclick="openLightbox('${{displayImg}}', '步骤 #${{s.step}}: [${{s.action}}] ${{escapeHtml(s.target)}}')">
-                  <img src="${{displayImg}}" alt="Step Screenshot" loading="lazy">
+            html += `
+              <div class="step-card ${{bugClass}}">
+                <div class="step-index-badge">
+                  <span class="num">${{s.step}}</span>
                 </div>
-              ` : '<div style="font-size:12px;color:var(--text-dim);text-align:center;">无关联截图</div>'}}
-            </div>
-          </div>
-        `;
-      }});
+                <div class="step-main-info">
+                  <div class="step-header-line">
+                    <span class="action-tag ${{actClass}}">${{s.action}}</span>
+                    <span class="path-crumb">📍 ${{escapeHtml(s.ui_path)}}</span>
+                    <span style="font-size:11px;color:var(--text-dim);margin-left:auto;">${{(s.timestamp || '').split(' ')[1] || ''}}</span>
+                  </div>
+                  <div class="step-target-name">${{escapeHtml(s.target || '(子目标达成)')}}</div>
+                  <div class="step-thought-text" onclick="this.classList.toggle('expanded')" title="点击展开/收起完整思考链">
+                    💡 <strong>思考:</strong> ${{escapeHtml(s.thought || '无思考过程')}}
+                  </div>
+                </div>
+                <div style="display: flex; gap: 8px; justify-content: center;">
+                  ${{s.screenshot ? `
+                    <div class="step-thumb-wrapper" onclick="openLightbox('${{s.screenshot}}', '执行前 #${{s.step}}')" title="执行前截图">
+                      <div style="position:absolute; top:4px; left:4px; background:rgba(0,0,0,0.6); color:#fff; font-size:10px; padding:2px 4px; border-radius:4px; pointer-events:none;">执行前</div>
+                      <img src="${{s.screenshot}}" alt="Before" loading="lazy">
+                    </div>
+                  ` : ''}}
+                  ${{(s.after_screenshot || s.hover_screenshot) ? `
+                    <div class="step-thumb-wrapper" onclick="openLightbox('${{s.after_screenshot || s.hover_screenshot}}', '执行后 #${{s.step}}')" title="执行后截图">
+                      <div style="position:absolute; top:4px; left:4px; background:rgba(0,0,0,0.6); color:#fff; font-size:10px; padding:2px 4px; border-radius:4px; pointer-events:none;">执行后</div>
+                      <img src="${{s.after_screenshot || s.hover_screenshot}}" alt="After" loading="lazy">
+                    </div>
+                  ` : ''}}
+                  ${{(!s.screenshot && !s.after_screenshot && !s.hover_screenshot) ? '<div style="font-size:12px;color:var(--text-dim);display:flex;align-items:center;">无关联截图</div>' : ''}}
+                </div>
+              </div>
+            `;
+          }});
 
-      container.innerHTML = html;
-      document.getElementById('pageInfo').innerText = `显示第 ${{startIdx + 1}} 至 ${{endIdx}} 步 (共 ${{total}} 步)`;
-      document.getElementById('prevBtn').disabled = currentPage <= 1;
-      document.getElementById('nextBtn').disabled = currentPage >= totalPages;
+          container.innerHTML = html;
+          document.getElementById('pageInfo').innerText = `显示第 ${{startIdx + 1}} 至 ${{endIdx}} 步 (共 ${{total}} 步)`;
+          if(document.getElementById('prevBtn')) document.getElementById('prevBtn').disabled = currentPage <= 1;
+          if(document.getElementById('nextBtn')) document.getElementById('nextBtn').disabled = currentPage >= totalPages;
+      }}
     }}
-
     function prevPage() {{
       if (currentPage > 1) {{
         currentPage--;
@@ -1621,7 +1905,88 @@ class ReportGenerator:
         except Exception as e:
             logger.debug(f"更新全局门户 index.html 失败: {e}")
 
+        # 发送飞书通知
+        self._send_feishu_webhook(data)
+
         return out
+
+    def _send_feishu_webhook(self, data: dict):
+        webhook_url = None
+        feishu_secret = None
+        report_base_url = "http://localhost"
+        try:
+            import yaml
+            with open("config.yaml", "r", encoding="utf-8") as f:
+                config = yaml.safe_load(f)
+                webhook_url = config.get("reports", {}).get("feishu_webhook")
+                feishu_secret = config.get("reports", {}).get("feishu_secret")
+                report_base_url = config.get("reports", {}).get("report_base_url", report_base_url)
+        except Exception as e:
+            logger.debug(f"读取 config.yaml 获取 webhook 失败: {e}")
+            
+        if not webhook_url:
+            logger.debug("未配置飞书 webhook，跳过推送")
+            return
+        bugs_count = data['kpi'].get('bugs_count', 0)
+        template = "red" if int(bugs_count) > 0 else "blue"
+        
+        import time
+        import hashlib
+        import base64
+        import hmac
+
+        payload = {
+            "msg_type": "interactive",
+            "card": {
+                "header": {
+                    "template": template,
+                    "title": {
+                        "tag": "plain_text",
+                        "content": "🚀 Electron Vision AI 测试报告已生成"
+                    }
+                },
+                "elements": [
+                    {
+                        "tag": "div",
+                        "text": {
+                            "tag": "lark_md",
+                            "content": f"**🏷️ Run ID:** {data.get('run_id')}\n**🎯 宏观目标:** {data.get('macro_objective')}\n\n**📉 预期步数:** {data['kpi'].get('max_steps', '-')} | **预期耗时:** {data['kpi'].get('max_time', '-')}\n**📈 实际执行:** {data['kpi'].get('total_steps')} 步 | **实际耗时:** {data.get('duration')}\n\n**🐞 捕获严重缺陷:** {bugs_count} 个\n**🗺️ 触达二级页面:** {data['kpi'].get('page_scopes_count', 0)} 个"
+                        }
+                    },
+                    {
+                        "tag": "action",
+                        "actions": [
+                            {
+                                "tag": "button",
+                                "text": {
+                                    "tag": "plain_text",
+                                    "content": "🔗 打开 HTML 详细测试报告"
+                                },
+                                "type": "primary",
+                                "url": f"{report_base_url.rstrip('/')}/{data.get('run_id')}/report.html"
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+        if feishu_secret:
+            timestamp = str(int(time.time()))
+            string_to_sign = '{}\n{}'.format(timestamp, feishu_secret)
+            hmac_code = hmac.new(string_to_sign.encode("utf-8"), digestmod=hashlib.sha256).digest()
+            sign = base64.b64encode(hmac_code).decode('utf-8')
+            payload["timestamp"] = timestamp
+            payload["sign"] = sign
+
+        try:
+            import requests
+            resp = requests.post(webhook_url, json=payload, timeout=5)
+            if resp.status_code == 200:
+                logger.info("✅ 飞书群机器人测试报告通知发送成功！")
+            else:
+                logger.warning(f"❌ 飞书通知发送异常: {resp.text}")
+        except Exception as e:
+            logger.warning(f"❌ 飞书通知发送失败: {e}")
 
 
 def main():

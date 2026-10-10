@@ -55,7 +55,8 @@ class ReportHub:
         if not self.runs_dir.exists():
             return runs_data
 
-        subdirs = sorted([d for d in self.runs_dir.iterdir() if d.is_dir() and (d.name.startswith("explore_") or d.name.startswith("smoke_"))], key=lambda p: p.stat().st_mtime, reverse=True)
+        # 过滤掉非运行目录（比如自动生成的隐藏目录或特殊目录）
+        subdirs = sorted([d for d in self.runs_dir.iterdir() if d.is_dir() and not d.name.startswith((".", "__"))], key=lambda p: p.stat().st_mtime, reverse=True)
 
         for d in subdirs:
             # 确保每个运行目录内部都有 report.html
@@ -107,11 +108,7 @@ class ReportHub:
             # 验证截图是否在物理磁盘上存活（防用户删除了运行日志导致坏图）
             rel_shot = f"bugs/{b_id}.png"
             if r_id and not (self.runs_dir / r_id / rel_shot).exists():
-                # Fallback to bug_assets if available
-                if (self.runs_dir / "bug_assets" / f"{b_id}.png").exists():
-                    rel_shot = f"../bug_assets/{b_id}.png"
-                else:
-                    rel_shot = ""
+                rel_shot = ""
 
             all_bugs_dict[b_id] = {
                 "id": b_id,
@@ -146,8 +143,6 @@ class ReportHub:
                     if rel_shot:
                         if (self.runs_dir / r_id / rel_shot).exists():
                             all_bugs_dict[b_id]["rel_screenshot"] = rel_shot
-                        elif (self.runs_dir / "bug_assets" / f"{b_id}.png").exists():
-                            all_bugs_dict[b_id]["rel_screenshot"] = f"../bug_assets/{b_id}.png"
                         else:
                             all_bugs_dict[b_id].pop("rel_screenshot", None)
                     all_bugs_dict[b_id]["report_link"] = r_link
@@ -155,10 +150,7 @@ class ReportHub:
                     rel_shot = b.get("rel_screenshot", "")
                     if rel_shot:
                         if not (self.runs_dir / r_id / rel_shot).exists():
-                            if (self.runs_dir / "bug_assets" / f"{b_id}.png").exists():
-                                rel_shot = f"../bug_assets/{b_id}.png"
-                            else:
-                                rel_shot = ""
+                            rel_shot = ""
 
                     all_bugs_dict[b_id] = {
                         "id": b_id,

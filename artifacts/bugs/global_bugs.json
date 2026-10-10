@@ -1633,19 +1633,19 @@
   {
     "id": "BUG-20261001-010",
     "title": "图表全量数据核验异常: '右侧‘运输设备总览’区域中的设备利用率环形图（显示89%）'",
-    "run_id": "explore_20261001_111351",
+    "run_id": "explore_20261009_182222",
     "severity": 3,
     "status": "激活",
     "date": "2026-10-01",
-    "occurrences": 3,
-    "last_seen": "2026-10-01",
+    "occurrences": 4,
+    "last_seen": "2026-10-09",
     "global_step": 575,
     "action_type": "CHART-PROBE",
     "ui_path": "设备管理 -> 运输设备",
     "target_element": "右侧‘运输设备总览’区域中的设备利用率环形图（显示89%）",
     "error_log": "图表批量断言未通过: 探针捕获的数据点仅为标签'默认视角'，无具体数值；后台接口中未发现与设备利用率89%相关的计算依据或原始数据源。尽管前端显示89%，但无法从现有接口响应中反推出该数值，存在数据缺失或前端硬编码风险，不符合数据一致性校验要求。",
     "analysis_notes": "",
-    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/explore_20261001_111351/bugs/BUG-20261001-010.png",
+    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/explore_20261009_182222/bugs/BUG-20261001-010.png",
     "tags": [],
     "assignee": "Unassigned"
   },
@@ -1712,12 +1712,12 @@
     "severity": "Medium",
     "status": "激活",
     "date": "2026-10-09",
-    "occurrences": 3,
+    "occurrences": 4,
     "last_seen": "2026-10-09",
     "step": "[CLICK] 交互目标: '下拉菜单项【生产统计】' (页面路径: 生产管理)",
     "actual": "[console_error (代码位置: %E8%83%8C%E6%99%AF%E6%95%B0%E5%AD%97%E9%9B%A8.png:0)] Failed to load resource: the server responded with a status of 404 (Not Found)\n[network_error] HTTP 404: http://localhost:9528/nplusone/fdbErp/getProductionStatistic?periodType=month&startDate=2026-04-01&endDate=2026-10-09\n[console_error (代码位置: getProductionStatistic:0)] Failed to load resource: the server responded with a status of 404 (Not Found)",
-    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/explore_20261009_141253/bugs/BUG-20261009-001_142022.png",
-    "run_id": "explore_20261009_141253"
+    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/explore_20261009_182222/bugs/BUG-20261009-001.png",
+    "run_id": "explore_20261009_182222"
   },
   {
     "id": "BUG-20261009-002",
@@ -1731,5 +1731,57 @@
     "actual": "[console_error (代码位置: %E7%A2%B0%E6%92%9E%E9%A2%84%E8%AD%A6%E7%82%B9.png:0)] Failed to load resource: net::ERR_CONNECTION_TIMED_OUT",
     "screenshot": "D:/Auto/electron_ai_vision/reports/runs/explore_20261009_141253/bugs/BUG-20261009-002.png",
     "run_id": "explore_20261009_141253"
+  },
+  {
+    "id": "BUG-20261009-003",
+    "run_id": "yaml_20261009_173712",
+    "title": "[test_home_mine_intro] Step 4 异常崩溃",
+    "severity": "Medium",
+    "status": "激活",
+    "date": "2026-10-09",
+    "occurrences": 1,
+    "last_seen": "2026-10-09",
+    "step": "请仅仅作为一个视觉检测器：检查左侧的视频区域，确认画面正中央巨大的播放按钮是否已经【消失】，或者视频左下角控制栏是否出现了'暂停(两根竖线)'图标。只要满足任意一点，请直接判定断言成功 (True)，千万不要去推理视频到底有没有在动。",
+    "actual": "视觉断言失败！理由: 画面中央的播放按钮仍然存在，且视频左下角控制栏显示的是播放图标而非暂停图标，不满足断言条件中的任意一点。",
+    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/yaml_20261009_173712/bugs/BUG-20261009-003.png"
+  },
+  {
+    "id": "BUG-20261009-004",
+    "run_id": "yaml_20261009_173712",
+    "title": "[test_home_mine_intro] Step 7 异常崩溃",
+    "severity": "Medium",
+    "status": "激活",
+    "date": "2026-10-09",
+    "occurrences": 1,
+    "last_seen": "2026-10-09",
+    "step": "严格检查左侧面板顶部的标签文本，确认原本的'平台介绍'是否已经变为了'入井须知'。只要能在左侧面板上方明确看到'入井须知'这几个字，即说明面板切换成功，请直接断言为 True。",
+    "actual": "视觉断言失败！理由: 左侧面板顶部的标签文本中没有出现'入井须知'，仍然显示为'企业简介'和'矿山简介'，说明面板切换未成功。",
+    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/yaml_20261009_173712/bugs/BUG-20261009-004.png"
+  },
+  {
+    "id": "BUG-20261009-005",
+    "run_id": "yaml_20261009_173712",
+    "title": "[test_home_mine_intro] Step 11 异常崩溃",
+    "severity": "Medium",
+    "status": "激活",
+    "date": "2026-10-09",
+    "occurrences": 1,
+    "last_seen": "2026-10-09",
+    "step": "仔细阅读视频下方的大段企业或平台介绍的滚动文本。检查是否存在明显的错别字、乱码串，或者违背常识的错误表述。确认整体文字数据是否合理连贯。",
+    "actual": "视觉断言失败！理由: 文本中存在明显错别字（如'土资源部'应为'自然资源部'）、语句不完整（如'矿区与209'）以及与右侧数据面板严重矛盾的数值（7400万吨 vs 2875.8万吨），这些都表明文字内容存在错误，不符合合理连贯的要求。",
+    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/yaml_20261009_173712/bugs/BUG-20261009-005.png"
+  },
+  {
+    "id": "BUG-20261009-006",
+    "run_id": "yaml_20261009_173712",
+    "title": "[test_home_mine_intro] Step 40 异常崩溃",
+    "severity": "Medium",
+    "status": "激活",
+    "date": "2026-10-09",
+    "occurrences": 2,
+    "last_seen": "2026-10-09",
+    "step": "请仅仅作为一个视觉检测器：检查漫游控制条的最左侧，如果原来的播放按钮变成了'暂停(两根竖线)'图标，说明漫游视频正在正常播放，请直接判定为 True。",
+    "actual": "视觉断言失败！理由: 漫游控制条最左侧的按钮为播放图标（三角形），而非暂停图标（两根竖线），因此不能判定为正在正常播放，断言失败。",
+    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/yaml_20261009_173712/bugs/BUG-20261009-006_174529.png"
   }
 ]

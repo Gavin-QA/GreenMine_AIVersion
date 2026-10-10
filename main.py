@@ -205,6 +205,13 @@ def run_yaml_mode(driver: ElectronDriver, vision_agent: VisionAgent, cases_to_ru
     logger.info(f"🎯 巡检报告: 总计 {len(cases_to_run)} | 成功 {success_count} | 失败 {len(cases_to_run) - success_count}")
     logger.info("=" * 60)
     
+    try:
+        from utils.report_generator import ReportGenerator
+        from utils.paths import get_run_dir
+        ReportGenerator(get_run_dir()).generate_html()
+    except Exception as e:
+        logger.error(f"❌ 生成 YAML 测试报告失败: {e}")
+
     if success_count < len(cases_to_run):
         sys.exit(1)
 
@@ -212,11 +219,13 @@ def run_yaml_mode(driver: ElectronDriver, vision_agent: VisionAgent, cases_to_ru
 def main():
     args = parse_args()
 
-    # 隔离探索与冒烟模式的运行日志目录
+    # 隔离不同模式的运行日志目录
     if getattr(args, "tour", False):
         os.environ["REPORT_RUN_ID"] = "smoke_" + datetime.now().strftime("%Y%m%d_%H%M%S")
     elif args.explore:
         os.environ["REPORT_RUN_ID"] = "explore_" + datetime.now().strftime("%Y%m%d_%H%M%S")
+    else:
+        os.environ["REPORT_RUN_ID"] = "yaml_" + datetime.now().strftime("%Y%m%d_%H%M%S")
 
     # 初始化全局日志
     logger_manager = LoggerManager()

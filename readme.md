@@ -85,7 +85,6 @@ electron_ai_vision/
 │   ├── bugs/                    # 全局去重缺陷大盘总库 (global_bugs.json)
 │   ├── topology/                # 全局架构树基线 (global_page_tree.json, auto_page_map.md)
 │   │   └── snapshots/           # 拓扑历史版本快照备份 (带时间戳，防模型幻觉改坏)
-│   └── archived_cases/          # 历史探索闭环自动生成的测试用例归档
 │
 ├── reports/               # 📦 【运行时产物收敛区】一次运行 = 一个独立完整目录
 │   └── runs/<run_id>/           # 单次运行工作区
