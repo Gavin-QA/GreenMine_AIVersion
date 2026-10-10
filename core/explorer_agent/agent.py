@@ -127,8 +127,10 @@ class ExplorerAgent:
             global_history = [h for h in global_history if clean_kw not in h]
             if len(global_history) < old_len:
                 logger.info(f"🧹 [Re-explore Mode] 已从 global_history 中清除 {old_len - len(global_history)} 条与【{reexplore_module}】相关的历史记忆。")
-            # 导出重置后的架构树，确保 Planner 看到的 Mermaid 中该模块是空白新分支
-            PageMapBuilder.export_page_map(self.page_tree)
+            # 仅在内存和本地 checkpoint 中更新重置后的树，彻底剥离 View 层的高频渲染
+            tree_file = Path(self.checkpoint_dir) / "page_tree.json"
+            with open(tree_file, "w", encoding="utf-8") as f:
+                json.dump(self.page_tree, f, ensure_ascii=False, indent=2)
 
         recent_sub_objectives = []
 
@@ -365,12 +367,10 @@ class ExplorerAgent:
                         if leaf_name not in curr_node:
                             curr_node[leaf_name] = {}
                             
-                    # 实时持久化树与导出纯 Markdown 树状图
+                    # 实时持久化树到本地 checkpoint
                     tree_file = self.log_dir / "page_tree.json"
                     with open(tree_file, "w", encoding="utf-8") as f:
                         json.dump(self.page_tree, f, ensure_ascii=False, indent=2)
-                        
-                    PageMapBuilder.export_page_map(self.page_tree)
 
                 logger.info(f"🤖 [Worker] 决定: [{action_type.upper()}] -> 目标: {element_desc or '(子任务达成/完成)'}")
 
@@ -523,7 +523,11 @@ class ExplorerAgent:
                                 if curr_node is not None:
                                     consolidated_label = f"📊 {chart_title} (全量{len(points)}个数据点已核验)"
                                     curr_node[consolidated_label] = {}
-                                    PageMapBuilder.export_page_map(self.page_tree)
+                                    
+                                    # 将聚合后的状态静默落盘到 checkpoint
+                                    tree_file = Path(self.checkpoint_dir) / "page_tree.json"
+                                    with open(tree_file, "w", encoding="utf-8") as f:
+                                        json.dump(self.page_tree, f, ensure_ascii=False, indent=2)
 
                                 # 标记已处理并指示 Worker 本轮探索已圆满达成
                                 batch_chart_handled = True

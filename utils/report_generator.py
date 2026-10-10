@@ -454,6 +454,16 @@ class ReportGenerator:
         tab_topology_style = "display:none;" if is_yaml_mode else ""
         tab_yaml_style = "display:none;" if is_yaml_mode else ""
         timeline_tab_name = "🎬 用例执行链路" if is_yaml_mode else "🎬 Planner-Worker 执行树"
+        
+        # 安全处理时间字符串
+        start_t = data.get('start_time', '未知')
+        end_t = data.get('end_time', '未知')
+        if " " in start_t and " " in end_t:
+            start_date, start_hour = start_t.split(" ", 1)
+            _, end_hour = end_t.split(" ", 1)
+            time_display_html = f"{start_hour} - {end_hour} <span style='color:var(--text-dim);font-weight:normal;font-size:12px;margin-left:4px;'>({start_date})</span>"
+        else:
+            time_display_html = f"{start_t} - {end_t}"
         # ==========================
 
         html_content = f"""<!DOCTYPE html>
@@ -1452,7 +1462,7 @@ class ReportGenerator:
               <span>🏷️ Run ID:</span> <strong style="color: #cbd5e1;">{data['run_id']}</strong>
             </div>
             <div class="run-id-pill">
-              <span>🕒 起止时间:</span> <strong style="color: #cbd5e1;">{data['start_time'].split(' ')[1]} - {data['end_time'].split(' ')[1]} <span style="color:var(--text-dim);font-weight:normal;font-size:12px;margin-left:4px;">({data['start_time'].split(' ')[0]})</span></strong>
+              <span>🕒 起止时间:</span> <strong style="color: #cbd5e1;">{time_display_html}</strong>
             </div>
           </div>
         </div>
@@ -1520,7 +1530,7 @@ class ReportGenerator:
         🌐 底层接口池 <span class="counter">{data['kpi']['apis_count']}</span>
       </button>
       <button class="tab-btn" onclick="switchTab('tab-yaml')" style="{tab_yaml_style}">
-        📝 自动沉淀回归用例 <span class="counter">{data['kpi']['yaml_steps_count']} 步</span>
+        📝 回归用例 <span class="counter">{data['kpi']['yaml_steps_count']} 步</span>
       </button>
     </div>
 
@@ -1572,7 +1582,7 @@ class ReportGenerator:
               框架静默拦截并归纳的 {data['kpi']['apis_count']} 个核心后端 API，涉及 {data['kpi']['page_scopes_count']} 个二级业务页面作用域。
             </p>
           </div>
-          <button class="copy-btn" onclick="downloadApiJson()">⬇️ 下载 API 拦截大盘 JSON</button>
+          <button class="copy-btn" onclick="downloadApiJson()">⬇️ 下载 API 拦截池 </button>
         </div>
         <table class="api-table">
           <thead>
@@ -1594,12 +1604,12 @@ class ReportGenerator:
       <div class="yaml-card">
         <div class="yaml-header">
           <div>
-            <h3 style="font-size:16px;color:#fff;">📝 自动沉淀的回归用例 (Golden Baseline YAML)</h3>
+            <h3 style="font-size:16px;color:#fff;">📝 回归用例 (Golden Baseline YAML)</h3>
             <p style="font-size:13px;color:var(--text-dim);margin-top:4px;">
               由本次探索中所有成功验证 (PASS) 的路径全自动编译而成，已过滤冗余与失败步骤。
             </p>
           </div>
-          <button class="copy-btn" onclick="downloadYaml()">⬇️ 下载 YAML 回归用例</button>
+          <button class="copy-btn" onclick="downloadYaml()">⬇️ 下载回归用例</button>
         </div>
         <div class="code-view" style="max-height: 400px; overflow-y: auto;">{html.escape(data.get('generated_yaml', '') or '# 暂无自动生成的用例')}</div>
       </div>
