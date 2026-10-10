@@ -620,13 +620,16 @@ class ReportGenerator:
 
     /* KPI Cards */
     .kpi-grid {{
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 18px;
+      display: flex;
+      flex-wrap: nowrap;
+      gap: 16px;
       margin-bottom: 36px;
+      overflow-x: auto; /* Allow scrolling if screen is too narrow */
     }}
 
     .kpi-card {{
+      flex: 1;
+      min-width: 0; /* Let flex items compress */
       background: linear-gradient(145deg, rgba(30, 41, 59, 0.6) 0%, rgba(15, 23, 42, 0.4) 100%);
       border: 1px solid rgba(255, 255, 255, 0.08);
       box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.05);
