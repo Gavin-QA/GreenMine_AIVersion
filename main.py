@@ -15,6 +15,14 @@ from utils.logger import LoggerManager
 from config.settings import settings
 
 
+def format_duration(seconds: float) -> str:
+    sec = max(0, int(seconds))
+    h = sec // 3600
+    m = (sec % 3600) // 60
+    s = sec % 60
+    return f"{h}h {m}m {s}s" if h > 0 else f"{m}m {s}s"
+
+
 def parse_args():
     """解析命令行参数"""
     parser = argparse.ArgumentParser(description="Electron AI Vision 纯视觉自动化巡检框架")
@@ -144,6 +152,8 @@ def run_explore_mode(driver: ElectronDriver, vision_agent: VisionAgent, args):
     if reexplore_module:
         logging.getLogger("main").info(f"🎯 [Re-explore] 识别到模块重探需求，锁定目标模块: 【{reexplore_module}】")
 
+    start_time = datetime.now()
+    
     explorer.start_exploration(
         objective=args.explore,
         max_steps=args.max_steps,
@@ -152,6 +162,10 @@ def run_explore_mode(driver: ElectronDriver, vision_agent: VisionAgent, args):
         resume_from=args.resume_from,
         reexplore_module=reexplore_module
     )
+    
+    end_time = datetime.now()
+    duration = (end_time - start_time).total_seconds()
+    logging.getLogger("main").info(f"⏳ 任务执行统计 | 起始时间: {start_time.strftime('%Y-%m-%d %H:%M:%S')} | 结束时间: {end_time.strftime('%Y-%m-%d %H:%M:%S')} | 实际耗时: {format_duration(duration)}")
 
 
 def run_smoke_tour_mode(driver: ElectronDriver, vision_agent: VisionAgent, args):
@@ -181,13 +195,21 @@ def run_smoke_tour_mode(driver: ElectronDriver, vision_agent: VisionAgent, args)
             except Exception:
                 pass
             
+    start_time = datetime.now()
+            
     explorer.start_smoke_tour(context=context_str)
+    
+    end_time = datetime.now()
+    duration = (end_time - start_time).total_seconds()
+    logging.getLogger("main").info(f"⏳ 任务执行统计 | 起始时间: {start_time.strftime('%Y-%m-%d %H:%M:%S')} | 结束时间: {end_time.strftime('%Y-%m-%d %H:%M:%S')} | 实际耗时: {format_duration(duration)}")
 
 
 def run_yaml_mode(driver: ElectronDriver, vision_agent: VisionAgent, cases_to_run: list, args, logger: logging.Logger):
     """运行确定性用例模式"""
     runner = ActionRunner(driver, vision_agent)
     success_count = 0
+    
+    start_time = datetime.now()
     
     for idx, case_path in enumerate(cases_to_run, 1):
         case_name = Path(case_path).stem
@@ -200,8 +222,12 @@ def run_yaml_mode(driver: ElectronDriver, vision_agent: VisionAgent, cases_to_ru
         except Exception as e:
             logger.error(f"❌ 运行用例 {case_path} 失败: {e}")
             
+    end_time = datetime.now()
+    duration = (end_time - start_time).total_seconds()
+    
     logger.info("=" * 60)
     logger.info(f"🎯 巡检报告: 总计 {len(cases_to_run)} | 成功 {success_count} | 失败 {len(cases_to_run) - success_count}")
+    logger.info(f"⏳ 任务执行统计 | 起始时间: {start_time.strftime('%Y-%m-%d %H:%M:%S')} | 结束时间: {end_time.strftime('%Y-%m-%d %H:%M:%S')} | 实际耗时: {format_duration(duration)}")
     logger.info("=" * 60)
     
     try:

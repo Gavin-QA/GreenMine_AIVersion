@@ -168,28 +168,36 @@ class ReportGenerator:
             logger.error(f"读取日志文件失败: {e}")
             return
 
-        lines = text.splitlines()
-        if lines:
-            first_line = lines[0]
-            last_line = lines[-1]
-            ts_start_match = re.match(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})", first_line)
-            ts_end_match = re.match(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})", last_line)
-            if ts_start_match:
-                data["start_time"] = ts_start_match.group(1)
-            if ts_end_match:
-                data["end_time"] = ts_end_match.group(1)
+        # 首先尝试提取逻辑层明确打印的执行统计 (新版逻辑)
+        stats_match = re.search(r"⏳ 任务执行统计 \| 起始时间: (.*?) \| 结束时间: (.*?) \| 实际耗时: (.*?)(?=\n|\Z)", text)
+        if stats_match:
+            data["start_time"] = stats_match.group(1).strip()
+            data["end_time"] = stats_match.group(2).strip()
+            data["duration"] = stats_match.group(3).strip()
+        else:
+            # 兼容老版本报告的兜底逻辑
+            lines = text.splitlines()
+            if lines:
+                first_line = lines[0]
+                last_line = lines[-1]
+                ts_start_match = re.match(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})", first_line)
+                ts_end_match = re.match(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})", last_line)
+                if ts_start_match:
+                    data["start_time"] = ts_start_match.group(1)
+                if ts_end_match:
+                    data["end_time"] = ts_end_match.group(1)
 
-            if ts_start_match and ts_end_match:
-                try:
-                    t_start = datetime.strptime(ts_start_match.group(1), "%Y-%m-%d %H:%M:%S")
-                    t_end = datetime.strptime(ts_end_match.group(1), "%Y-%m-%d %H:%M:%S")
-                    sec = max(0, int((t_end - t_start).total_seconds()))
-                    h = sec // 3600
-                    m = (sec % 3600) // 60
-                    s = sec % 60
-                    data["duration"] = f"{h}h {m}m {s}s" if h > 0 else f"{m}m {s}s"
-                except Exception:
-                    pass
+                if ts_start_match and ts_end_match:
+                    try:
+                        t_start = datetime.strptime(ts_start_match.group(1), "%Y-%m-%d %H:%M:%S")
+                        t_end = datetime.strptime(ts_end_match.group(1), "%Y-%m-%d %H:%M:%S")
+                        sec = max(0, int((t_end - t_start).total_seconds()))
+                        h = sec // 3600
+                        m = (sec % 3600) // 60
+                        s = sec % 60
+                        data["duration"] = f"{h}h {m}m {s}s" if h > 0 else f"{m}m {s}s"
+                    except Exception:
+                        pass
 
         # 预期目标和限制
         limit_match = re.search(r"🛑 最大步数限制: (\d+) \| 最大时间: (\d+)分钟", text)
