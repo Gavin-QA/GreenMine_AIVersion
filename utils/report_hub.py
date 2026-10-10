@@ -1104,9 +1104,22 @@ class ReportHub:
       paginatedBugs.forEach(b => {{
         const screenshotUrl = b.rel_screenshot ? (b.rel_screenshot.startsWith('../') ? b.rel_screenshot.replace('../', './') : `./${{b.run_id}}/${{b.rel_screenshot}}`) : '';
         const imgHtml = screenshotUrl ? `<img src="${{screenshotUrl}}" style="max-width:80px;border-radius:4px;border:1px solid rgba(255,255,255,0.1);cursor:zoom-in;transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'" onclick="showImageFullscreen(this.src, event)"/>` : '<span style="color:#64748b;font-size:12px;">无截图</span>';
-        const statusBadge = (b.status === 'Open' || b.status === '激活')
-            ? `<span style="background:rgba(244,63,94,0.15);color:#f43f5e;padding:2px 8px;border-radius:99px;font-size:12px;font-weight:600;border:1px solid rgba(244,63,94,0.3)">激活</span>` 
-            : `<span style="background:rgba(16,185,129,0.15);color:#10b981;padding:2px 8px;border-radius:99px;font-size:12px;font-weight:600;border:1px solid rgba(16,185,129,0.3)">已关闭</span>`;
+        const options = ['Open', '已提单', '误报', '已解决'];
+        let optionsHtml = '';
+        options.forEach(opt => {{
+            const selected = (b.status === opt || (opt === 'Open' && b.status === '激活')) ? 'selected' : '';
+            optionsHtml += `<option value="${{opt}}" ${{selected}}>${{opt}}</option>`;
+        }});
+        
+        let selectColor = '#94a3b8';
+        if (b.status === 'Open' || b.status === '激活') selectColor = '#f43f5e';
+        else if (b.status === '已提单') selectColor = '#3b82f6';
+        else if (b.status === '已解决') selectColor = '#10b981';
+        else if (b.status === '误报') selectColor = '#64748b';
+
+        const statusBadge = `<select onchange="changeBugStatus('${{escapeHtml(b.id)}}', this)" style="background:rgba(255,255,255,0.05);color:${{selectColor}};padding:2px 8px;border-radius:4px;font-size:12px;font-weight:600;border:1px solid rgba(255,255,255,0.2);outline:none;cursor:pointer;appearance:none;text-align:center;">
+            ${{optionsHtml}}
+        </select>`;
 
         html += `
           <tr>
@@ -1207,6 +1220,36 @@ class ReportHub:
         document.getElementById('imageViewerOverlay').style.display = 'flex';
     }}
 
+    function changeBugStatus(bugId, selectEl) {{
+        if (location.protocol === 'file:') {{
+            alert('修改状态需要启动本地 Web 服务！请在终端运行: python utils/report_hub.py --serve');
+            // reset select
+            renderBugs();
+            return;
+        }}
+        
+        const newStatus = selectEl.value;
+        fetch('/api/update_bug_status', {{
+            method: 'POST',
+            headers: {{ 'Content-Type': 'application/json' }},
+            body: JSON.stringify({{ bug_id: bugId, status: newStatus }})
+        }}).then(res => res.json()).then(data => {{
+            if (data.success) {{
+                const bug = allBugs.find(b => b.id === bugId);
+                if(bug) bug.status = newStatus;
+                
+                selectEl.style.borderColor = '#10b981';
+                setTimeout(() => {{
+                    renderBugs(); // re-render to update color
+                }}, 500);
+            }} else {{
+                alert('更新失败: ' + (data.error || '未知错误'));
+            }}
+        }}).catch(err => {{
+            alert('网络请求失败: ' + err);
+        }});
+    }}
+
     document.addEventListener('DOMContentLoaded', () => {{
       renderRuns();
       renderBugs();
@@ -1230,11 +1273,47 @@ class ReportHub:
         """启动轻量本地/局域网 Web 门户服务"""
         import http.server
         import socketserver
+        import json
+        from pathlib import Path
 
         self.build_index_html()
         os.chdir(self.runs_dir)
 
-        Handler = http.server.SimpleHTTPRequestHandler
+        class APIHandler(http.server.SimpleHTTPRequestHandler):
+            def do_POST(self):
+                if self.path == "/api/update_bug_status":
+                    content_length = int(self.headers['Content-Length'])
+                    post_data = self.rfile.read(content_length)
+                    data = json.loads(post_data.decode('utf-8'))
+                    
+                    bug_id = data.get('bug_id')
+                    new_status = data.get('status')
+                    
+                    # 向上寻找 global_bugs.json (当前在 reports/runs)
+                    bug_file = Path('../../artifacts/bugs/global_bugs.json').resolve()
+                    success = False
+                    if bug_file.exists():
+                        with open(bug_file, 'r', encoding='utf-8') as f:
+                            bugs = json.load(f)
+                        
+                        for b in bugs:
+                            if b.get('id') == bug_id:
+                                b['status'] = new_status
+                                success = True
+                                break
+                                
+                        if success:
+                            with open(bug_file, 'w', encoding='utf-8') as f:
+                                json.dump(bugs, f, ensure_ascii=False, indent=2)
+                    
+                    self.send_response(200)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"success": success}).encode('utf-8'))
+                else:
+                    self.send_error(404, "Not Found")
+
+        Handler = APIHandler
         # 支持端口复用
         socketserver.TCPServer.allow_reuse_address = True
 
