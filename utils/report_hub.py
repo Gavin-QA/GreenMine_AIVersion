@@ -178,6 +178,15 @@ class ReportHub:
         all_bugs = list(all_bugs_dict.values())
         total_bugs = len(all_bugs)
 
+        # 4. 计算各个模式的数量
+        count_runs_explore = sum(1 for r in runs if r.get("run_id", "").startswith("explore_"))
+        count_runs_smoke = sum(1 for r in runs if r.get("run_id", "").startswith("smoke_"))
+        count_runs_yaml = total_runs - count_runs_explore - count_runs_smoke
+
+        count_bugs_explore = sum(1 for b in all_bugs if b.get("run_id", "").startswith("explore_"))
+        count_bugs_smoke = sum(1 for b in all_bugs if b.get("run_id", "").startswith("smoke_"))
+        count_bugs_yaml = total_bugs - count_bugs_explore - count_bugs_smoke
+
         runs_json = json.dumps(runs, ensure_ascii=False)
         bugs_json = json.dumps(all_bugs, ensure_ascii=False)
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -722,9 +731,9 @@ class ReportHub:
       <div class="filter-bar">
         <div class="filter-pills">
           <button class="filter-pill active" onclick="filterRuns('all', event)">全部模式 ({total_runs})</button>
-          <button class="filter-pill" onclick="filterRuns('explore', event)">自主探索</button>
-          <button class="filter-pill" onclick="filterRuns('smoke', event)">全量冒烟</button>
-          <button class="filter-pill" onclick="filterRuns('yaml', event)">回归测试</button>
+          <button class="filter-pill" onclick="filterRuns('explore', event)">自主探索 ({count_runs_explore})</button>
+          <button class="filter-pill" onclick="filterRuns('smoke', event)">全量冒烟 ({count_runs_smoke})</button>
+          <button class="filter-pill" onclick="filterRuns('yaml', event)">回归测试 ({count_runs_yaml})</button>
         </div>
 
         <input type="text" id="runSearch" class="search-box" placeholder="搜索 Run ID、宏观目标或日期..." oninput="handleSearch()">
@@ -739,9 +748,9 @@ class ReportHub:
       <div class="filter-bar">
         <div class="filter-pills">
           <button class="filter-pill active" onclick="filterBugs('all', event)">全部模式 ({total_bugs})</button>
-          <button class="filter-pill" onclick="filterBugs('explore', event)">自主探索</button>
-          <button class="filter-pill" onclick="filterBugs('smoke', event)">全量冒烟</button>
-          <button class="filter-pill" onclick="filterBugs('yaml', event)">回归测试</button>
+          <button class="filter-pill" onclick="filterBugs('explore', event)">自主探索 ({count_bugs_explore})</button>
+          <button class="filter-pill" onclick="filterBugs('smoke', event)">全量冒烟 ({count_bugs_smoke})</button>
+          <button class="filter-pill" onclick="filterBugs('yaml', event)">回归测试 ({count_bugs_yaml})</button>
         </div>
 
         <input type="text" id="bugSearch" class="search-box" placeholder="搜索 缺陷编号、标题或路径..." oninput="handleBugSearch()">
