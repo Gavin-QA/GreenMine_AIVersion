@@ -89,7 +89,8 @@ class VisionAgent:
 
         headers = {
             "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            "Connection": "close"
         }
         
         # 针对 Gemini / AI Studio 的 API 兼容路径调整（如果 base_url 没以 chat/completions 结尾）
@@ -129,13 +130,26 @@ class VisionAgent:
                 logger.debug(f"[VisionAgent] 原始响应:\n{clean_content}")
                 return json.loads(clean_content)
 
-            except (requests.exceptions.ProxyError, requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+            except requests.exceptions.RequestException as e:
                 last_exception = e
+                # Check for 400/401/403 which are usually not retryable
+                if isinstance(e, requests.exceptions.HTTPError) and e.response is not None:
+                    status = e.response.status_code
+                    if status in (400, 401, 403):
+                        logger.error(f"🧠 大模型请求遇到致命错误 ({status}): {e}")
+                        raise VisionAgentException(f"LLM API Fatal Error: {e}")
+                
                 logger.warning(f"⚠️ [VisionAgent] 大模型通信异常 ({type(e).__name__}): {e}")
-                # 若遇到本地代理异常 (如 Clash/梯子端口中断或断开)，自动降级切换为直连模式重试
-                if self.session.trust_env:
+                
+                # 重置 session 防连接池污染
+                self.session.close()
+                self.session = requests.Session()
+                
+                # 若遇到本地代理异常，自动降级切换为直连模式重试
+                if self.session.trust_env and isinstance(e, requests.exceptions.ProxyError):
                     logger.info("🔄 [VisionAgent] 检测到系统代理可能中断，自动降级为直连模式 (trust_env=False) 重试...")
                     self.session.trust_env = False
+                    
                 if attempt < max_retries:
                     time.sleep(1.5 * attempt)
             except Exception as e:
