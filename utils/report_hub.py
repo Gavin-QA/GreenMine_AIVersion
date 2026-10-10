@@ -870,6 +870,31 @@ class ReportHub:
       document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
       document.getElementById(tabId).classList.add('active');
       event.currentTarget.classList.add('active');
+      
+      // 切换 Tab 时重置筛选条件到“全部模式”
+      if (tabId === 'tab-runs') {{
+          currentFilter = 'all';
+          currentRunPage = 1;
+          searchQuery = '';
+          const searchInput = document.getElementById('runSearch');
+          if(searchInput) searchInput.value = '';
+          
+          document.querySelectorAll('#tab-runs .filter-pill').forEach(b => b.classList.remove('active'));
+          const firstPill = document.querySelector('#tab-runs .filter-pill');
+          if(firstPill) firstPill.classList.add('active');
+          renderRuns();
+      }} else if (tabId === 'tab-bugs') {{
+          currentBugFilter = 'all';
+          currentBugPage = 1;
+          bugSearchQuery = '';
+          const searchInput = document.getElementById('bugSearch');
+          if(searchInput) searchInput.value = '';
+          
+          document.querySelectorAll('#tab-bugs .filter-pill').forEach(b => b.classList.remove('active'));
+          const firstPill = document.querySelector('#tab-bugs .filter-pill');
+          if(firstPill) firstPill.classList.add('active');
+          renderBugs();
+      }}
     }}
 
     function filterRuns(type, event) {{
