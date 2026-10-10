@@ -453,6 +453,7 @@ class ReportGenerator:
         
         tab_topology_style = "display:none;" if is_yaml_mode else ""
         tab_yaml_style = "display:none;" if is_yaml_mode else ""
+        hero_meta_style = 'style="display:none;"' if is_yaml_mode else ''
         timeline_tab_name = "🎬 用例执行链路" if is_yaml_mode else "🎬 Planner-Worker 执行树"
         
         # 安全处理时间字符串
@@ -1467,7 +1468,7 @@ class ReportGenerator:
           </div>
         </div>
 
-        <div class="hero-meta">
+        <div class="hero-meta" {hero_meta_style}>
           <div class="meta-chip" style="background: rgba(99, 102, 241, 0.15); border-color: rgba(99, 102, 241, 0.3);">
             <span>🎯 预期最大步数:</span> <strong style="color: #a5b4fc;">{data['kpi'].get('max_steps', '-')}</strong>
           </div>
