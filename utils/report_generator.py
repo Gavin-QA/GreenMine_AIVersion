@@ -220,6 +220,10 @@ class ReportGenerator:
                 macro_match3 = re.search(r"▶️ 开始执行巡检用例: (.*?)(?=\n|\Z)", text)
                 if macro_match3:
                     data["macro_objective"] = macro_match3.group(1).strip()
+                else:
+                    smoke_match = re.search(r"🚀 启动【33个二级菜单全量冒烟巡检模式】", text)
+                    if smoke_match:
+                        data["macro_objective"] = "33个二级菜单全量冒烟巡检"
 
         # 统计 Planner 次数
         data["kpi"]["planner_phases"] = len(re.findall(r"🧠 \[Planner Phase\]", text))
@@ -376,6 +380,61 @@ class ReportGenerator:
                     "has_bug": has_bug,
                     "screenshot": shot_path,
                     "hover_screenshot": None,
+                    "after_screenshot": None,
+                })
+
+        if len(data["steps"]) == 0:
+            # 尝试提取 Smoke 单步
+            smoke_pattern = re.compile(
+                r"🎯 \[Smoke Tour \((\d+)/\d+\)\] 正在巡检模块: 【(.*?)】\n"
+                r"(.*?)(?=(?:🎯 \[Smoke Tour |\Z))",
+                re.DOTALL
+            )
+            for m in smoke_pattern.finditer(text):
+                step_num = int(m.group(1))
+                module_name = m.group(2)
+                block = m.group(3)
+                
+                has_bug = "❌ [Smoke Jump]" in block or "🐞 捕获到缺陷异常" in block or "⚠️ [Smoke Planner]" in block
+                
+                sub = f"冒烟巡检: {module_name}"
+                
+                th_m = re.search(r"💡 \[Smoke Planner\] 页面诊断与思考: (.*?)(?=\n)", block)
+                thought = th_m.group(1).strip() if th_m else "尚未完成规划或遭遇跳转失败"
+                
+                shot_path = None
+                hover_path = None
+                
+                if shots_dir.exists():
+                    jump_imgs = list(shots_dir.glob(f"smoke_jump_{step_num}_click.png"))
+                    if not jump_imgs:
+                        jump_imgs = list(shots_dir.glob(f"smoke_jump_{step_num}_hover.png"))
+                    if jump_imgs:
+                        shot_path = f"screenshots/{jump_imgs[0].name}"
+                        
+                    plan_imgs = list(shots_dir.glob(f"smoke_page_{step_num}_plan.png"))
+                    if plan_imgs:
+                        hover_path = f"screenshots/{plan_imgs[0].name}"
+                
+                # 寻找时间戳
+                ts_m = re.search(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})", block)
+                ts = ts_m.group(1) if ts_m else ""
+                
+                data["steps"].append({
+                    "step": step_num,
+                    "worker_step": step_num,
+                    "budget": 0,
+                    "timestamp": ts,
+                    "sub_objective": sub,
+                    "thought": thought,
+                    "action": "SMOKE_TOUR",
+                    "target": module_name,
+                    "ui_path": module_name,
+                    "element_type": "",
+                    "container": "",
+                    "has_bug": has_bug,
+                    "screenshot": shot_path,
+                    "hover_screenshot": hover_path,
                     "after_screenshot": None,
                 })
 
@@ -1512,7 +1571,7 @@ class ReportGenerator:
       </div>
       <div class="kpi-card bugs-card">
         <div class="kpi-label">🐞 捕获缺陷</div>
-        <div class="kpi-value">{data['kpi']['bugs_count']} <span class="sub">个已归档</span></div>
+        <div class="kpi-value">{data['kpi']['bugs_count']} <span class="sub">个</span></div>
       </div>
       <div class="kpi-card">
         <div class="kpi-label">🗺️ 触达业务页面</div>
