@@ -1572,7 +1572,7 @@ class ReportGenerator:
               框架静默拦截并归纳的 {data['kpi']['apis_count']} 个核心后端 API，涉及 {data['kpi']['page_scopes_count']} 个二级业务页面作用域。
             </p>
           </div>
-          <a href="./screenshots/api_registry.json" download="api_registry.json" class="copy-btn" style="text-decoration: none; display: inline-flex; align-items: center; justify-content: center;">⬇️ 下载 API 拦截大盘 JSON</a>
+          <button class="copy-btn" onclick="downloadApiJson()">⬇️ 下载 API 拦截大盘 JSON</button>
         </div>
         <table class="api-table">
           <thead>
@@ -1599,12 +1599,9 @@ class ReportGenerator:
               由本次探索中所有成功验证 (PASS) 的路径全自动编译而成，已过滤冗余与失败步骤。
             </p>
           </div>
-          <a href="./generated_cases/{data.get('generated_yaml_filename', '')}" download="{data.get('generated_yaml_filename', 'cases.yaml')}" class="copy-btn" style="text-decoration: none; display: inline-flex; align-items: center; justify-content: center;">⬇️ 下载 YAML 回归用例</a>
+          <button class="copy-btn" onclick="downloadYaml()">⬇️ 下载 YAML 回归用例</button>
         </div>
-        <div class="code-view" style="text-align:center; padding:40px; color:var(--text-dim);">
-          <div style="font-size:32px; margin-bottom:12px;">📄</div>
-          回归用例已作为独立文件保存在服务器上。<br>请点击右上角按钮直接在新标签页中查阅或下载源文件。
-        </div>
+        <div class="code-view" style="max-height: 400px; overflow-y: auto;">{html.escape(data.get('generated_yaml', '') or '# 暂无自动生成的用例')}</div>
       </div>
     </div>
 
@@ -1902,6 +1899,32 @@ class ReportGenerator:
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
+    }}
+
+    function downloadApiJson() {{
+      const code = JSON.stringify(apisData, null, 2);
+      const blob = new Blob([code], {{ type: 'application/json' }});
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = url;
+      a.download = 'api_registry.json';
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+    }}
+
+    function downloadYaml() {{
+      const content = {json.dumps(data.get('generated_yaml', ''))};
+      const blob = new Blob([content], {{ type: 'text/yaml' }});
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = url;
+      a.download = '{data.get("generated_yaml_filename", "auto_cases.yaml")}';
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
     }}
 
     // 页面初始化渲染第一页
