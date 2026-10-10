@@ -440,8 +440,8 @@ class ReportGenerator:
         hero_title = "⚡ Electron Vision AI · 自动化回归测试报告" if is_yaml_mode else "⚡ Electron Vision AI · 自主探索测试报告"
         badge_text = "YAML 强校验模式" if is_yaml_mode else "自主探索驱动"
         
-        planner_kpi_style = "display:none;" if is_yaml_mode else ""
-        pass_rate_kpi_style = "" if is_yaml_mode else "display:none;"
+        planner_kpi_style_attr = 'style="display:none;"' if is_yaml_mode else ''
+        pass_rate_kpi_style_attr = '' if is_yaml_mode else 'style="display:none;"'
         
         pass_count = data['kpi']['total_steps'] - data['kpi']['bugs_count']
         pass_rate = f"{int(pass_count / data['kpi']['total_steps'] * 100)}%" if data['kpi']['total_steps'] > 0 else "100%"
@@ -1427,6 +1427,9 @@ class ReportGenerator:
           <div class="run-id-pill">
             <span>🏷️ Run ID:</span> <strong>{data['run_id']}</strong>
           </div>
+          <div class="run-id-pill" style="margin-left: 12px; background: rgba(255,255,255,0.03); border-color: rgba(255,255,255,0.1);">
+            <span>🕒 起止时间:</span> <strong>{data['start_time'].split(' ')[1]} - {data['end_time'].split(' ')[1]} ({data['start_time'].split(' ')[0]})</strong>
+          </div>
         </div>
 
         <div class="hero-meta">
@@ -1446,26 +1449,22 @@ class ReportGenerator:
     </div>
 
     <!-- KPI Grid -->
-    <div class="kpi-grid" style="grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));">
-      <div class="kpi-card" style="background: rgba(16, 185, 129, 0.05); border-color: rgba(16, 185, 129, 0.2);">
-        <div class="kpi-label">⏱️ 实际耗时</div>
-        <div class="kpi-value" style="color:#6ee7b7; font-size:20px;">{data['duration']}</div>
-      </div>
+    <div class="kpi-grid">
       <div class="kpi-card">
-        <div class="kpi-label">📅 开始与结束</div>
-        <div class="kpi-value" style="font-size:14px; line-height:1.5; color:var(--text-muted);">起: {data['start_time']}<br>止: {data['end_time']}</div>
+        <div class="kpi-label">⏱️ 实际耗时</div>
+        <div class="kpi-value">{data['duration']}</div>
       </div>
       <div class="kpi-card">
         <div class="kpi-label">🎯 实际执行步数</div>
         <div class="kpi-value">{data['kpi']['total_steps']} <span class="sub">步</span></div>
       </div>
-      <div class="kpi-card" style="{planner_kpi_style}">
+      <div class="kpi-card" {planner_kpi_style_attr}>
         <div class="kpi-label">🧠 Planner 规划轮次</div>
         <div class="kpi-value">{data['kpi']['planner_phases']} <span class="sub">轮</span></div>
       </div>
-      <div class="kpi-card" style="{pass_rate_kpi_style}">
+      <div class="kpi-card" {pass_rate_kpi_style_attr}>
         <div class="kpi-label">✅ 测试断言通过率</div>
-        <div class="kpi-value" style="color: #34d399;">{pass_rate}</div>
+        <div class="kpi-value">{pass_rate}</div>
       </div>
       <div class="kpi-card bugs-card">
         <div class="kpi-label">🐞 捕获严重缺陷</div>
