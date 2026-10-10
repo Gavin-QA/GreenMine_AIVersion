@@ -1487,12 +1487,12 @@ class ReportGenerator:
         <div class="kpi-value">{pass_rate}</div>
       </div>
       <div class="kpi-card bugs-card">
-        <div class="kpi-label">🐞 捕获严重缺陷</div>
+        <div class="kpi-label">🐞 捕获缺陷</div>
         <div class="kpi-value">{data['kpi']['bugs_count']} <span class="sub">个已归档</span></div>
       </div>
       <div class="kpi-card">
         <div class="kpi-label">🗺️ 触达业务页面</div>
-        <div class="kpi-value">{data['kpi']['page_scopes_count']} <span class="sub">个二级菜单</span></div>
+        <div class="kpi-value">{data['kpi']['page_scopes_count']}<span style="font-size: 24px; color: #64748b; margin-left: 2px;">/33</span> <span class="sub" style="margin-left: 6px;">个二级菜单</span></div>
       </div>
       <div class="kpi-card">
         <div class="kpi-label">🌐 拦截业务接口</div>
