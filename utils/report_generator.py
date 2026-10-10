@@ -242,11 +242,15 @@ class ReportGenerator:
                     target_m = re.search(r"🎯 最终状态: (.*?)(?=\n|\Z)", p_block)
                 target = target_m.group(1).strip() if target_m else "未解析到明确目标"
                 
+                budget_m = re.search(r"预算步数[:：]\s*(\d+)", p_block)
+                budget = int(budget_m.group(1)) if budget_m else 0
+                
                 data["steps"].append({
                     "type": "planner",
                     "step": planner_phase_num,
                     "timestamp": ts,
                     "global_prog": global_prog,
+                    "budget": budget,
                     "thought": thought,
                     "target": target,
                     "action": "PLANNER",
@@ -1728,7 +1732,7 @@ class ReportGenerator:
                     </div>
                     <div class="step-main-info">
                       <div class="step-header-line">
-                        <span class="action-tag" style="background:var(--primary);">🎯 PLANNER 制定规划 ${{s.global_prog ? `(全局进度: ${{s.global_prog}})` : ''}}</span>
+                        <span class="action-tag" style="background:var(--primary);">🎯 PLANNER 制定规划 | 当前进度: ${{s.global_prog || '未知'}} | 预计步数: ${{s.budget || '-'}}</span>
                         <span style="font-size:11px;color:var(--text-dim);margin-left:auto;">${{(s.timestamp || '').split(' ')[1] || ''}}</span>
                       </div>
                       <div class="step-target-name" style="color: #c7d2fe; font-size: 15px;">👉 目标: ${{escapeHtml(s.target)}}</div>
