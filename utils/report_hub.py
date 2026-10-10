@@ -181,11 +181,11 @@ class ReportHub:
         # 4. 计算各个模式的数量
         count_runs_explore = sum(1 for r in runs if r.get("run_id", "").startswith("explore_"))
         count_runs_smoke = sum(1 for r in runs if r.get("run_id", "").startswith("smoke_"))
-        count_runs_yaml = total_runs - count_runs_explore - count_runs_smoke
+        count_runs_yaml = sum(1 for r in runs if r.get("run_id", "").startswith("yaml_"))
 
         count_bugs_explore = sum(1 for b in all_bugs if b.get("run_id", "").startswith("explore_"))
         count_bugs_smoke = sum(1 for b in all_bugs if b.get("run_id", "").startswith("smoke_"))
-        count_bugs_yaml = total_bugs - count_bugs_explore - count_bugs_smoke
+        count_bugs_yaml = sum(1 for b in all_bugs if b.get("run_id", "").startswith("yaml_"))
 
         runs_json = json.dumps(runs, ensure_ascii=False)
         bugs_json = json.dumps(all_bugs, ensure_ascii=False)
@@ -732,7 +732,7 @@ class ReportHub:
         <div class="filter-pills">
           <button class="filter-pill active" onclick="filterRuns('all', event)">全部模式 ({total_runs})</button>
           <button class="filter-pill" onclick="filterRuns('explore', event)">自主探索 ({count_runs_explore})</button>
-          <button class="filter-pill" onclick="filterRuns('smoke', event)">全量冒烟 ({count_runs_smoke})</button>
+          <button class="filter-pill" onclick="filterRuns('smoke', event)">冒烟测试 ({count_runs_smoke})</button>
           <button class="filter-pill" onclick="filterRuns('yaml', event)">回归测试 ({count_runs_yaml})</button>
         </div>
 
@@ -749,7 +749,7 @@ class ReportHub:
         <div class="filter-pills">
           <button class="filter-pill active" onclick="filterBugs('all', event)">全部模式 ({total_bugs})</button>
           <button class="filter-pill" onclick="filterBugs('explore', event)">自主探索 ({count_bugs_explore})</button>
-          <button class="filter-pill" onclick="filterBugs('smoke', event)">全量冒烟 ({count_bugs_smoke})</button>
+          <button class="filter-pill" onclick="filterBugs('smoke', event)">冒烟测试 ({count_bugs_smoke})</button>
           <button class="filter-pill" onclick="filterBugs('yaml', event)">回归测试 ({count_bugs_yaml})</button>
         </div>
 
@@ -904,7 +904,7 @@ class ReportHub:
         const runId = (r.run_id || '').toLowerCase();
         if (currentFilter === 'explore' && !runId.startsWith('explore_')) return false;
         if (currentFilter === 'smoke' && !runId.startsWith('smoke_')) return false;
-        if (currentFilter === 'yaml' && (runId.startsWith('explore_') || runId.startsWith('smoke_'))) return false;
+        if (currentFilter === 'yaml' && !runId.startsWith('yaml_')) return false;
 
         if (searchQuery) {{
           const matchId = runId.includes(searchQuery);
@@ -935,10 +935,10 @@ class ReportHub:
         let modeLabel = '自主探索';
         if (runId.startsWith('smoke_')) {{
           modeClass = 'smoke';
-          modeLabel = '全量冒烟';
-        }} else if (!runId.startsWith('explore_')) {{
+          modeLabel = '冒烟测试';
+        }} else if (runId.startsWith('yaml_')) {{
           modeClass = 'yaml';
-          modeLabel = '回归用例';
+          modeLabel = '回归测试';
         }}
 
         const kpi = r.kpi || {{}};
@@ -1048,7 +1048,7 @@ class ReportHub:
         const runId = (b.run_id || '').toLowerCase();
         if (currentBugFilter === 'explore' && !runId.startsWith('explore_')) return false;
         if (currentBugFilter === 'smoke' && !runId.startsWith('smoke_')) return false;
-        if (currentBugFilter === 'yaml' && (runId.startsWith('explore_') || runId.startsWith('smoke_'))) return false;
+        if (currentBugFilter === 'yaml' && !runId.startsWith('yaml_')) return false;
 
         if (bugSearchQuery) {{
           const matchId = (b.id || '').toLowerCase().includes(bugSearchQuery);
