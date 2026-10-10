@@ -633,7 +633,13 @@ class ReportGenerator:
       flex-wrap: nowrap;
       gap: 16px;
       margin-bottom: 36px;
+      padding: 12px 4px;
+      margin: -12px -4px 36px -4px;
       overflow-x: auto; /* Allow scrolling if screen is too narrow */
+      scrollbar-width: none; /* Firefox */
+    }}
+    .kpi-grid::-webkit-scrollbar {{
+      display: none; /* Chrome/Safari/Edge */
     }}
 
     .kpi-card {{
