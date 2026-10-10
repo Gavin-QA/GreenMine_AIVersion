@@ -369,7 +369,7 @@ class ReportGenerator:
 
         data["kpi"]["total_steps"] = len(data["steps"])
 
-    def generate_html(self, output_path: Optional[Path | str] = None) -> Path:
+    def generate_html(self, output_path: Optional[Path | str] = None, disable_push: bool = False) -> Path:
         """组装并导出美观的前端独立交互式报告"""
         data = self.parse_run_data()
         out = Path(output_path).resolve() if output_path else (self.run_dir / "report.html")
@@ -1906,7 +1906,8 @@ class ReportGenerator:
             logger.debug(f"更新全局门户 index.html 失败: {e}")
 
         # 发送飞书通知
-        self._send_feishu_webhook(data)
+        if not disable_push:
+            self._send_feishu_webhook(data)
 
         return out
 
@@ -1993,6 +1994,7 @@ def main():
     parser = argparse.ArgumentParser(description="Electron AI Vision 高颜值执行报告生成引擎")
     parser.add_argument("--run", type=str, help="指定要生成报告的运行目录名 (如 explore_20260928_182632)")
     parser.add_argument("--latest", action="store_true", help="自动对最新的运行目录生成报告")
+    parser.add_argument("--no-push", action="store_true", help="禁用生成报告时的飞书群通知推送")
     args = parser.parse_args()
 
     target_dir = None
@@ -2018,7 +2020,7 @@ def main():
 
     print(f"🚀 开始为运行目录生成视觉报告: {target_dir.name} ...")
     reporter = ReportGenerator(target_dir)
-    out_file = reporter.generate_html()
+    out_file = reporter.generate_html(disable_push=args.no_push)
     print(f"✅ 报告生成完毕！可以直接在浏览器中双击打开：\nfile:///{out_file.as_posix()}\n")
 
 
