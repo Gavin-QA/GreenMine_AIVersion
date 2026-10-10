@@ -200,7 +200,6 @@ def run_yaml_mode(driver: ElectronDriver, vision_agent: VisionAgent, cases_to_ru
         except Exception as e:
             logger.error(f"❌ 运行用例 {case_path} 失败: {e}")
             
-    LoggerManager().switch_file_handler("summary")
     logger.info("=" * 60)
     logger.info(f"🎯 巡检报告: 总计 {len(cases_to_run)} | 成功 {success_count} | 失败 {len(cases_to_run) - success_count}")
     logger.info("=" * 60)
