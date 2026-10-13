@@ -119,6 +119,8 @@ class ReportHub:
                 "step": gb.get("global_step") or gb.get("ui_path") or gb.get("step", ""),
                 "actual": gb.get("error_log") or gb.get("actual", ""),
                 "rel_screenshot": rel_shot,
+                "before_screenshot": "",
+                "step_num": None,
                 "report_link": f"./{r_id}/report.html" if r_id else "#",
                 "occurrences": gb.get("occurrences", 1),
                 "last_seen": gb.get("last_seen", gb.get("date") or ""),
@@ -138,19 +140,25 @@ class ReportHub:
             r_link = r.get("report_url", "#")
             for b in r.get("bugs", []):
                 b_id = b.get("id", "BUG")
+                rel_shot = b.get("rel_screenshot", "")
+                before_shot = b.get("before_screenshot", "")
+                step_num = b.get("step_num")
                 if b_id in all_bugs_dict:
-                    rel_shot = b.get("rel_screenshot", "")
                     if rel_shot:
                         if (self.runs_dir / r_id / rel_shot).exists():
                             all_bugs_dict[b_id]["rel_screenshot"] = rel_shot
                         else:
                             all_bugs_dict[b_id].pop("rel_screenshot", None)
+                    if before_shot and (self.runs_dir / r_id / before_shot).exists():
+                        all_bugs_dict[b_id]["before_screenshot"] = before_shot
+                    if step_num:
+                        all_bugs_dict[b_id]["step_num"] = step_num
                     all_bugs_dict[b_id]["report_link"] = r_link
                 else:
-                    rel_shot = b.get("rel_screenshot", "")
-                    if rel_shot:
-                        if not (self.runs_dir / r_id / rel_shot).exists():
-                            rel_shot = ""
+                    if rel_shot and not (self.runs_dir / r_id / rel_shot).exists():
+                        rel_shot = ""
+                    if before_shot and not (self.runs_dir / r_id / before_shot).exists():
+                        before_shot = ""
 
                     all_bugs_dict[b_id] = {
                         "id": b_id,
@@ -161,6 +169,8 @@ class ReportHub:
                         "step": (b.get("details") or {}).get("step", b.get("step", "")),
                         "actual": (b.get("details") or {}).get("actual", b.get("actual", "")),
                         "rel_screenshot": rel_shot,
+                        "before_screenshot": before_shot,
+                        "step_num": step_num,
                         "report_link": r_link,
                         "occurrences": 1,
                         "last_seen": b.get("creation_date", b.get("date", "")),
@@ -187,7 +197,21 @@ class ReportHub:
         count_bugs_smoke = sum(1 for b in all_bugs if b.get("run_id", "").startswith("smoke_"))
         count_bugs_yaml = sum(1 for b in all_bugs if b.get("run_id", "").startswith("yaml_"))
 
-        runs_json = json.dumps(runs, ensure_ascii=False)
+        # 轻量级投影：仅保留大盘卡片与侧边栏必需元数据，剔除占用高达 70MB+ 的底层 api_summary 与 steps 数据
+        summary_runs = []
+        for r in runs:
+            summary_runs.append({
+                "run_id": r.get("run_id"),
+                "duration": r.get("duration", "未知"),
+                "start_time": r.get("start_time", "未知"),
+                "end_time": r.get("end_time", "未知"),
+                "macro_objective": r.get("macro_objective", "常规测试"),
+                "kpi": r.get("kpi", {}),
+                "report_url": r.get("report_url", "#"),
+                "mtime": r.get("mtime", 0)
+            })
+
+        runs_json = json.dumps(summary_runs, ensure_ascii=False)
         bugs_json = json.dumps(all_bugs, ensure_ascii=False)
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -656,6 +680,68 @@ class ReportHub:
       text-decoration: underline;
     }}
 
+    .bug-screenshots-duo {{
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+    }}
+
+    .bug-thumb-box {{
+      flex: 1;
+      border: 1px solid var(--border-subtle);
+      border-radius: 10px;
+      overflow: hidden;
+      background: #000;
+      position: relative;
+      cursor: pointer;
+      transition: transform 0.2s, border-color 0.2s;
+    }}
+
+    .bug-thumb-box:hover {{
+      transform: scale(1.02);
+      border-color: var(--primary);
+    }}
+
+    .bug-thumb-box img {{
+      width: 100%;
+      height: 260px;
+      object-fit: contain;
+      display: block;
+      background: #000;
+    }}
+
+    .bug-thumb-tag {{
+      position: absolute;
+      top: 6px;
+      left: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 4px;
+      color: #fff;
+      backdrop-filter: blur(4px);
+      z-index: 2;
+    }}
+
+    .tag-before {{
+      background: rgba(16, 185, 129, 0.85);
+    }}
+
+    .tag-after {{
+      background: rgba(244, 63, 94, 0.85);
+    }}
+
+    .zoom-hint {{
+      position: absolute;
+      bottom: 8px; right: 8px;
+      background: rgba(0, 0, 0, 0.7);
+      color: #fff;
+      font-size: 11px;
+      padding: 4px 8px;
+      border-radius: 4px;
+      backdrop-filter: blur(4px);
+    }}
+
     .tab-pane {{
       display: none;
     }}
@@ -764,7 +850,7 @@ class ReportHub:
             <th style="width: 80px;">状态</th>
             <th style="width: 300px;">业务路径与目标</th>
             <th>异常详情</th>
-            <th style="width: 100px;">BUG截图</th>
+            <th style="width: 180px;">截图凭据 (操作前 vs 案发)</th>
             <th style="width: 100px;">操作</th>
           </tr>
         </thead>
@@ -776,15 +862,15 @@ class ReportHub:
   </div>
 
   <!-- Bug Modal Overlay -->
-  <div id="bugModalOverlay" style="display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.8);z-index:9998;align-items:center;justify-content:center;">
-    <div id="bugModalContent" style="background:var(--bg-base);width:85vw;max-width:1000px;max-height:90vh;border-radius:12px;border:1px solid rgba(255,255,255,0.1);display:flex;flex-direction:column;z-index:9999;box-shadow:0 25px 50px -12px rgba(0,0,0,0.8);">
-      <div style="padding:16px 24px;border-bottom:1px solid rgba(255,255,255,0.05);display:flex;justify-content:space-between;align-items:center;">
-         <div id="modalHeader" style="display:flex;gap:12px;align-items:center;">
-            <div id="modalBugId" style="font-family:var(--font-mono);font-size:16px;color:#f8fafc;font-weight:700;background:rgba(255,255,255,0.05);padding:6px 12px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);">BUG-XXX</div>
+  <div id="bugModalOverlay" style="display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.85);z-index:9998;align-items:center;justify-content:center;backdrop-filter:blur(6px);" onclick="if(event.target===this)this.style.display='none'">
+    <div id="bugModalContent" style="background:var(--bg-base);width:85vw;max-width:1050px;max-height:90vh;border-radius:14px;border:1px solid rgba(255,255,255,0.12);display:flex;flex-direction:column;z-index:9999;box-shadow:0 25px 50px -12px rgba(0,0,0,0.85);overflow:hidden;" onclick="event.stopPropagation()">
+      <div style="padding:16px 24px;border-bottom:1px solid rgba(255,255,255,0.08);background:var(--bg-surface);display:flex;justify-content:space-between;align-items:center;">
+         <div id="modalHeader" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+            <div id="modalBugId" style="font-family:var(--font-mono);font-size:16px;color:#f8fafc;font-weight:700;background:rgba(255,255,255,0.06);padding:6px 12px;border-radius:6px;border:1px solid rgba(255,255,255,0.12);">BUG-XXX</div>
             <div id="modalStatus"></div>
-            <div id="modalSeverity" style="background:rgba(245,158,11,0.1);color:#f59e0b;padding:6px 12px;border-radius:6px;font-weight:700;border:1px solid rgba(245,158,11,0.3);font-size:14px;">🔥 3</div>
+            <div id="modalSeverity" style="background:rgba(245,158,11,0.12);color:#f59e0b;padding:6px 12px;border-radius:6px;font-weight:700;border:1px solid rgba(245,158,11,0.3);font-size:14px;">🔥 3</div>
          </div>
-         <button onclick="document.getElementById('bugModalOverlay').style.display='none'" style="background:transparent;border:none;color:#94a3b8;font-size:28px;cursor:pointer;line-height:1;transition:color 0.2s;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#94a3b8'">&times;</button>
+         <button onclick="document.getElementById('bugModalOverlay').style.display='none'" style="background:transparent;border:none;color:#94a3b8;font-size:26px;cursor:pointer;line-height:1;transition:color 0.2s;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#94a3b8'">&times;</button>
       </div>
       <div id="modalBody" style="padding:24px;overflow-y:auto;display:flex;flex-direction:column;gap:16px;background:var(--bg-surface);">
         <!-- Metadata Grid -->
@@ -806,7 +892,7 @@ class ReportHub:
             <div id="modalLastSeen" style="color:#f8fafc;font-family:var(--font-mono);font-size:13px;">-</div>
           </div>
           <div style="background:var(--bg-card);padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.05);">
-            <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:6px;">▮ 全局步骤</div>
+            <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:6px;">▮ 全局步骤 / 本次步骤</div>
             <div id="modalGlobalStep" style="color:#f8fafc;font-family:var(--font-mono);font-size:13px;">-</div>
           </div>
           <div style="background:var(--bg-card);padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.05);">
@@ -845,8 +931,11 @@ class ReportHub:
           <div id="modalAnalysis" style="color:#cbd5e1;font-size:13px;line-height:1.6;white-space:pre-wrap;">-</div>
         </div>
         <div style="background:var(--bg-card);padding:16px;border-radius:8px;border:1px solid rgba(255,255,255,0.05);">
-          <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:8px;">▮ 现场截图</div>
+          <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:8px;">▮ 案发现场截图凭据 (操作前 vs 报错现场)</div>
           <div id="modalScreenshot" style="margin-top:8px;">-</div>
+        </div>
+
+        <div id="modalActionFooter" style="display:flex;justify-content:flex-end;gap:12px;margin-top:4px;">
         </div>
 
       </div>
@@ -971,6 +1060,8 @@ class ReportHub:
         const bugsCount = kpi.bugs_count || 0;
         const apisCount = kpi.apis_count || 0;
         const pagesCount = kpi.page_scopes_count || 0;
+        const totalMenus = kpi.total_menus_count || 33;
+        const coverageRate = (kpi.page_coverage_rate !== undefined && kpi.page_coverage_rate !== null) ? kpi.page_coverage_rate : ((pagesCount / totalMenus) * 100).toFixed(1);
 
         html += `
           <div class="run-card">
@@ -994,7 +1085,7 @@ class ReportHub:
                 <div class="metric-badge">🎯 ${{totalSteps}} 步轨迹</div>
                 <div class="metric-badge ${{bugsCount > 0 ? 'bugs' : ''}}">🐞 ${{bugsCount}} 个缺陷</div>
                 <div class="metric-badge">🌐 ${{apisCount}} 个业务接口</div>
-                <div class="metric-badge">🗺️ ${{pagesCount}} 个业务页面</div>
+                <div class="metric-badge">🗺️ ${{pagesCount}}/${{totalMenus}} 二级页面 (${{coverageRate}}%)</div>
               </div>
             </div>
 
@@ -1102,8 +1193,33 @@ class ReportHub:
 
       let html = '';
       paginatedBugs.forEach(b => {{
-        const screenshotUrl = b.rel_screenshot ? (b.rel_screenshot.startsWith('../') ? b.rel_screenshot.replace('../', './') : `./${{b.run_id}}/${{b.rel_screenshot}}`) : '';
-        const imgHtml = screenshotUrl ? `<img src="${{screenshotUrl}}" style="max-width:80px;border-radius:4px;border:1px solid rgba(255,255,255,0.1);cursor:zoom-in;transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'" onclick="showImageFullscreen(this.src, event)"/>` : '<span style="color:#64748b;font-size:12px;">无截图</span>';
+        const beforeShotUrl = b.before_screenshot ? (b.before_screenshot.startsWith('../') ? b.before_screenshot.replace('../', './') : `./${{b.run_id}}/${{b.before_screenshot}}`) : '';
+        const relShotUrl = b.rel_screenshot ? (b.rel_screenshot.startsWith('../') ? b.rel_screenshot.replace('../', './') : `./${{b.run_id}}/${{b.rel_screenshot}}`) : '';
+
+        let imgHtml = '';
+        if (beforeShotUrl && relShotUrl) {{
+          imgHtml = `
+            <div style="display:flex;gap:6px;align-items:center;justify-content:center;">
+              <div style="position:relative;display:inline-block;cursor:zoom-in;" title="点击放大操作前截图" onclick="showImageFullscreen('${{beforeShotUrl}}', event)">
+                <span style="position:absolute;top:2px;left:2px;font-size:9px;font-weight:700;padding:1px 4px;border-radius:3px;color:#fff;background:rgba(16,185,129,0.85);z-index:2;line-height:1.2;">前</span>
+                <img src="${{beforeShotUrl}}" style="width:68px;height:42px;object-fit:cover;border-radius:4px;border:1px solid rgba(16,185,129,0.4);display:block;transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.08)'" onmouseout="this.style.transform='scale(1)'"/>
+              </div>
+              <div style="position:relative;display:inline-block;cursor:zoom-in;" title="点击放大案发现场截图" onclick="showImageFullscreen('${{relShotUrl}}', event)">
+                <span style="position:absolute;top:2px;left:2px;font-size:9px;font-weight:700;padding:1px 4px;border-radius:3px;color:#fff;background:rgba(244,63,94,0.85);z-index:2;line-height:1.2;">案发</span>
+                <img src="${{relShotUrl}}" style="width:68px;height:42px;object-fit:cover;border-radius:4px;border:1px solid rgba(244,63,94,0.4);display:block;transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.08)'" onmouseout="this.style.transform='scale(1)'"/>
+              </div>
+            </div>`;
+        }} else if (relShotUrl) {{
+          imgHtml = `
+            <div style="display:flex;justify-content:center;">
+              <div style="position:relative;display:inline-block;cursor:zoom-in;" title="点击放大案发现场截图" onclick="showImageFullscreen('${{relShotUrl}}', event)">
+                <span style="position:absolute;top:2px;left:2px;font-size:9px;font-weight:700;padding:1px 4px;border-radius:3px;color:#fff;background:rgba(244,63,94,0.85);z-index:2;line-height:1.2;">案发</span>
+                <img src="${{relShotUrl}}" style="width:78px;height:46px;object-fit:cover;border-radius:4px;border:1px solid rgba(255,255,255,0.15);display:block;transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.08)'" onmouseout="this.style.transform='scale(1)'"/>
+              </div>
+            </div>`;
+        }} else {{
+          imgHtml = '<span style="color:#64748b;font-size:12px;">无截图</span>';
+        }}
         const options = ['Open', '已提单', '误报', '已解决'];
         let optionsHtml = '';
         options.forEach(opt => {{
@@ -1177,13 +1293,13 @@ class ReportHub:
       document.getElementById('modalStatus').innerHTML = (b.status === 'Open' || b.status === '激活')
           ? `<div style="background:rgba(244,63,94,0.15);color:#f43f5e;padding:6px 12px;border-radius:6px;font-size:14px;font-weight:700;border:1px solid rgba(244,63,94,0.3)">激活</div>`
           : `<div style="background:rgba(16,185,129,0.15);color:#10b981;padding:6px 12px;border-radius:6px;font-size:14px;font-weight:700;border:1px solid rgba(16,185,129,0.3)">已关闭</div>`;
-      document.getElementById('modalSeverity').innerText = `🔥 ${{b.severity || 3}}`;
+      document.getElementById('modalSeverity').innerText = `🔥 严重度: ${{b.severity || 3}}`;
       
       document.getElementById('modalRunId').innerText = b.run_id || '无';
       document.getElementById('modalDate').innerText = b.date || '无';
-      document.getElementById('modalOccurrences').innerText = b.occurrences || '1';
+      document.getElementById('modalOccurrences').innerText = (b.occurrences !== undefined && b.occurrences !== null) ? `${{b.occurrences}} 次` : '1 次';
       document.getElementById('modalLastSeen').innerText = b.last_seen || '无';
-      document.getElementById('modalGlobalStep').innerText = b.global_step || '无';
+      document.getElementById('modalGlobalStep').innerText = b.step_num ? `Step ${{b.step_num}} (本次)` : (b.global_step || '无');
       document.getElementById('modalActionType').innerText = b.action_type || '无';
       document.getElementById('modalTargetElement').innerText = b.target_element || '无';
       document.getElementById('modalAssignee').innerText = b.assignee || 'Unassigned';
@@ -1194,15 +1310,50 @@ class ReportHub:
       document.getElementById('modalActual').innerText = b.actual || '无详情';
       document.getElementById('modalAnalysis').innerText = b.analysis_notes || '无';
       
-      const screenshotUrl = b.rel_screenshot ? (b.rel_screenshot.startsWith('../') ? b.rel_screenshot.replace('../', './') : `./${{b.run_id}}/${{b.rel_screenshot}}`) : '';
-      if (screenshotUrl) {{
-          document.getElementById('modalScreenshot').innerHTML = `<img src="${{screenshotUrl}}" style="max-width:100%;max-height:400px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);cursor:zoom-in;" onclick="showImageFullscreen(this.src, event)"/>`;
+      const beforeShotUrl = b.before_screenshot ? (b.before_screenshot.startsWith('../') ? b.before_screenshot.replace('../', './') : `./${{b.run_id}}/${{b.before_screenshot}}`) : '';
+      const relShotUrl = b.rel_screenshot ? (b.rel_screenshot.startsWith('../') ? b.rel_screenshot.replace('../', './') : `./${{b.run_id}}/${{b.rel_screenshot}}`) : '';
+
+      if (beforeShotUrl && relShotUrl) {{
+          document.getElementById('modalScreenshot').innerHTML = `
+            <div class="bug-screenshots-duo">
+              <div class="bug-thumb-box" onclick="showImageFullscreen('${{beforeShotUrl}}', event)" title="点击放大操作前截图">
+                <span class="bug-thumb-tag tag-before">操作前 (目标位置)</span>
+                <img src="${{beforeShotUrl}}" alt="Before" loading="lazy">
+                <div class="zoom-hint">🔍 点击放大</div>
+              </div>
+              <div class="bug-thumb-box" onclick="showImageFullscreen('${{relShotUrl}}', event)" title="点击放大案发现场截图">
+                <span class="bug-thumb-tag tag-after">案发现场 (报错)</span>
+                <img src="${{relShotUrl}}" alt="Crash" loading="lazy">
+                <div class="zoom-hint">🔍 点击放大</div>
+              </div>
+            </div>`;
+      }} else if (relShotUrl) {{
+          document.getElementById('modalScreenshot').innerHTML = `
+            <div class="bug-thumb-box" style="max-width:550px;" onclick="showImageFullscreen('${{relShotUrl}}', event)" title="点击放大案发现场截图">
+              <span class="bug-thumb-tag tag-after">案发现场 (报错)</span>
+              <img src="${{relShotUrl}}" alt="Crash Screenshot" loading="lazy">
+              <div class="zoom-hint">🔍 点击放大核验</div>
+            </div>`;
       }} else {{
           document.getElementById('modalScreenshot').innerHTML = '<span style="color:#64748b;">无截图数据</span>';
       }}
       
+      let footerHtml = '';
+      if (b.report_link && b.report_link !== '#') {{
+        footerHtml += `<a href="${{b.report_link}}" target="_blank" style="background:var(--primary);color:#fff;text-decoration:none;font-size:12px;font-weight:600;padding:8px 16px;border-radius:6px;display:inline-flex;align-items:center;gap:6px;transition:all 0.2s;" onmouseover="this.style.background='#4f46e5'" onmouseout="this.style.background='var(--primary)'">🔗 打开对应完整测试报告 ➔</a>`;
+      }}
+      footerHtml += `<button style="background:var(--bg-card);border:1px solid rgba(255,255,255,0.1);color:var(--text-muted);font-size:12px;padding:8px 16px;border-radius:6px;cursor:pointer;" onclick="document.getElementById('bugModalOverlay').style.display='none'">关闭</button>`;
+      document.getElementById('modalActionFooter').innerHTML = footerHtml;
+
       document.getElementById('bugModalOverlay').style.display = 'flex';
     }}
+
+    document.addEventListener('keydown', (e) => {{
+      if (e.key === 'Escape') {{
+        document.getElementById('bugModalOverlay').style.display = 'none';
+        document.getElementById('imageViewerOverlay').style.display = 'none';
+      }}
+    }});
 
     function escapeHtml(str) {{
       if (!str) return '';
@@ -1261,8 +1412,8 @@ class ReportHub:
         out_file.write_text(html_content, encoding="utf-8")
         logger.info(f"🎉 统一巡检门户大盘已生成: {out_file}")
         
-        # 同时生成一份独立的 runs_data.js 供各个子报告的左侧边栏使用
-        js_content = f"window.GLOBAL_RUNS_LIST = {json.dumps(runs, ensure_ascii=False)};\n"
+        # 同时生成一份独立的 runs_data.js 供各个子报告的左侧边栏使用（轻量化数据源）
+        js_content = f"window.GLOBAL_RUNS_LIST = {runs_json};\n"
         js_file = self.runs_dir / "runs_data.js"
         js_file.write_text(js_content, encoding="utf-8")
         logger.info(f"✅ 生成全局数据源: {js_file}")

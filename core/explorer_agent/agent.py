@@ -679,7 +679,9 @@ class ExplorerAgent:
                 if bugs:
                     action_success = False
                     logger.error(f"🚨 [BUG FOUND] 在执行操作 [{action_type.upper()}] '{element_desc}' 时/后，系统捕获到 {len(bugs)} 个底层异常！")
-                    bug_report_file = self.log_dir / f"bug_report_{steps_taken}_{worker_step}.json"
+                    raw_bugs_dir = self.log_dir / "raw_bugs"
+                    raw_bugs_dir.mkdir(parents=True, exist_ok=True)
+                    bug_report_file = raw_bugs_dir / f"bug_report_{steps_taken}_{worker_step}.json"
                     with open(bug_report_file, "w", encoding="utf-8") as f:
                         json.dump(bugs, f, ensure_ascii=False, indent=2)
                     
@@ -687,7 +689,7 @@ class ExplorerAgent:
                     bug_img_path = str(self.explore_dir / f"bug_screenshot_{steps_taken}_{worker_step}.png")
                     self.driver.capture_screenshot(bug_img_path)
                     logger.error(f"📸 Bug 现场已保存至: {bug_img_path}")
-                    logger.error(f"📄 Bug 报告已存至: {bug_report_file}")
+                    logger.error(f"📄 原始异常已归档至: {bug_report_file}")
 
                     # 格式化报错详情并上报到全局 BugReporter (触发 LLM 语义查重并沉淀至全局 bugs/ 库)
                     error_lines = []

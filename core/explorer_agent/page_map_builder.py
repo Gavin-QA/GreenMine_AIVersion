@@ -16,7 +16,12 @@ class PageMapBuilder:
         """从 explore_rules.md 中提取预设的一、二级菜单，作为动态架构树的底座"""
         base_tree = {}
         try:
-            rules_path = Path("docs") / "explore_rules.md"
+            rules_path = DOCS_DIR / "explore_rules.md"
+            if not rules_path.exists():
+                rules_path = Path("docs") / "explore_rules.md"
+            if not rules_path.exists():
+                rules_path = Path(__file__).resolve().parent.parent.parent / "docs" / "explore_rules.md"
+
             if rules_path.exists():
                 content = rules_path.read_text(encoding="utf-8")
                 # 简单解析 Markdown 表格
@@ -36,6 +41,107 @@ class PageMapBuilder:
         except Exception as e:
             logger.warning(f"加载基准架构底座失败: {e}")
         return base_tree
+
+    @staticmethod
+    def normalize_page_scopes(raw_scopes: Any) -> Dict[str, Any]:
+        """
+        根据 docs/explore_rules.md 的权威基准菜单树，对探索过程中捕获的原始网络路径 (raw page_scopes)
+        进行确定性收敛与归一化：
+        1. 动态自适应 docs/explore_rules.md 中的总菜单数（支持从 33 扩展到 40 等任意数量）
+        2. 过滤系统保留项 (_global_shared) 与纯一级菜单悬停过渡项
+        3. 统计并映射匹配的标准二级业务菜单 (canonical_l2_pages)
+        4. 识别并归集深层功能弹窗与衍生组件 (sub_components)
+        """
+        base_tree = PageMapBuilder.parse_base_rules()
+        canonical_l2_map = {}  # l2_name -> l1_name
+        canonical_all_l2 = set()
+        for l1, sub in base_tree.items():
+            for l2 in sub.keys():
+                canonical_l2_map[l2] = l1
+                canonical_all_l2.add(f"{l1} -> {l2}")
+
+        total_canonical = len(canonical_all_l2)
+        if total_canonical == 0:
+            total_canonical = 33  # 兜底默认值
+
+        if isinstance(raw_scopes, dict):
+            scope_list = list(raw_scopes.keys())
+        elif isinstance(raw_scopes, (list, set, tuple)):
+            scope_list = list(raw_scopes)
+        else:
+            scope_list = []
+
+        matched_canonical = set()
+        sub_components = set()
+        l1_set = set(base_tree.keys())
+
+        for raw_scope in scope_list:
+            if not raw_scope or not isinstance(raw_scope, str):
+                continue
+            s = raw_scope.strip()
+
+            # 1. 过滤底层系统保留项与无意义标签
+            if s.startswith("_") or s in ["global", "default", "YAML 用例脚本", "无"]:
+                continue
+
+            # 2. 检查是否为弹窗/详情组件
+            if any(kw in s for kw in ["弹窗", "浮窗", "抽屉", "对话框", "详情弹窗", "modal", "dialog"]):
+                sub_components.add(s)
+                # 同时尝试提取其宿主二级页面并记为覆盖
+                for l2 in canonical_l2_map:
+                    if l2 in s:
+                        matched_canonical.add(f"{canonical_l2_map[l2]} -> {l2}")
+                continue
+
+            # 3. 完整精确匹配 (如 "生产管理 -> 矿仓监测")
+            if s in canonical_all_l2:
+                matched_canonical.add(s)
+                continue
+
+            # 4. 包含 "->" 分隔符的路径
+            if "->" in s:
+                parts = [p.strip() for p in s.split("->")]
+                l2_candidate = parts[1] if len(parts) > 1 else ""
+                if l2_candidate in canonical_l2_map:
+                    matched_canonical.add(f"{canonical_l2_map[l2_candidate]} -> {l2_candidate}")
+                    continue
+                if parts[0] in canonical_l2_map:
+                    matched_canonical.add(f"{canonical_l2_map[parts[0]]} -> {parts[0]}")
+                    sub_components.add(s)
+                    continue
+
+            # 5. 单个词名称匹配二级菜单 (如 "矿仓监测")
+            if s in canonical_l2_map:
+                matched_canonical.add(f"{canonical_l2_map[s]} -> {s}")
+                continue
+
+            # 6. 纯一级菜单项 (如 "生产管理", "首页")
+            if s in l1_set:
+                continue
+
+            # 7. 其他路径检查是否含有已知二级菜单关键字
+            matched_l2 = None
+            for l2 in canonical_l2_map:
+                if l2 in s:
+                    matched_l2 = l2
+                    break
+            if matched_l2:
+                matched_canonical.add(f"{canonical_l2_map[matched_l2]} -> {matched_l2}")
+                sub_components.add(s)
+            else:
+                sub_components.add(s)
+
+        visited_count = len(matched_canonical)
+        rate = (visited_count / total_canonical * 100.0) if total_canonical > 0 else 0.0
+
+        return {
+            "total_canonical_menus": total_canonical,
+            "visited_canonical_menus": sorted(list(matched_canonical)),
+            "visited_canonical_count": visited_count,
+            "coverage_rate": round(rate, 1),
+            "sub_components": sorted(list(sub_components)),
+            "sub_components_count": len(sub_components)
+        }
 
     @staticmethod
     def format_node_label(name: str, depth: int = 0) -> str:
@@ -200,6 +306,7 @@ class PageMapBuilder:
         nav_noise_keywords = ["顶部导航栏", "导航栏", "下拉菜单", "菜单栏"]
         wait_noise_keywords = ["等待", "wait", "加载完成", "完全加载", "完全可见", "渲染完成"]
         base_l1_keys = set(base_rules.keys()) if base_rules else set()
+        suffix_pattern = r'(?:数据卡片|卡片区域|卡片|模块|区域|容器|列表|表格|图表)$'
 
         sanitized = {}
         for key, subtree in tree.items():

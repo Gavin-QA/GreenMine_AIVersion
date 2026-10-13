@@ -59,10 +59,11 @@ class ScreenshotMixin:
                 logger.warning(f"视觉熄灯处理失败: {e}")
 
         # Electron 桌面应用通常为固定大屏尺寸，抓取当前 viewport
+        # 【极致优化】从 type="png" 改为 type="jpeg", quality=60，使体积从 6MB 暴降至 300KB
         if crop_box:
-            png_bytes = self.page.screenshot(type="png", full_page=False, clip=crop_box)
+            png_bytes = self.page.screenshot(type="jpeg", quality=60, full_page=False, clip=crop_box)
         else:
-            png_bytes = self.page.screenshot(type="png", full_page=False)
+            png_bytes = self.page.screenshot(type="jpeg", quality=60, full_page=False)
 
         if dim_background:
             restore_script = """

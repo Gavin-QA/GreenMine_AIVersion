@@ -88,7 +88,27 @@ class ReportGenerator:
         if main_log and main_log.exists():
             self._parse_log_file(main_log, data)
 
-        # 2. 解析缺陷库 bugs/
+        # 2. 解析缺陷库 bugs/ 并关联对应执行树步骤
+        bug_json_to_step = {}
+        for s in data["steps"]:
+            if s.get("bug_card_id"):
+                bug_json_to_step[f"{s['bug_card_id']}.json"] = s["step"]
+
+        # 读取全局缺陷库 global_bugs.json 用于补充复现次数、最后出现、归因分析等元数据
+        global_bugs_map = {}
+        global_bugs_path = Path(__file__).resolve().parent.parent / "artifacts" / "bugs" / "global_bugs.json"
+        if global_bugs_path.exists():
+            try:
+                with open(global_bugs_path, "r", encoding="utf-8") as f:
+                    gb_list = json.load(f)
+                    if isinstance(gb_list, list):
+                        for gb in gb_list:
+                            if "id" in gb:
+                                global_bugs_map[gb["id"]] = gb
+            except Exception as e:
+                logger.debug(f"加载 global_bugs.json 失败: {e}")
+
+        shots_dir = self.run_dir / "screenshots"
         bugs_dir = self.run_dir / "bugs"
         if bugs_dir.exists():
             for bug_json in sorted(bugs_dir.glob("*.json")):
@@ -98,13 +118,36 @@ class ReportGenerator:
                     
                     # 匹配截图相对路径
                     bug_id = b_info.get("id", bug_json.stem)
-                    img_cand = bugs_dir / f"{bug_id}.png"
+                    img_cand = bugs_dir / f"{bug_json.stem}.png"
+                    if not img_cand.exists():
+                        img_cand = bugs_dir / f"{bug_id}.png"
                     if not img_cand.exists():
                         img_cands = list(bugs_dir.glob(f"{bug_id}*.png"))
                         if img_cands:
                             img_cand = img_cands[0]
                     
                     b_info["rel_screenshot"] = f"bugs/{img_cand.name}" if img_cand.exists() else None
+                    b_info["card_id"] = bug_json.stem
+                    b_info.setdefault("run_id", data["run_id"])
+                    b_info.setdefault("date", b_info.get("creation_date", data.get("start_time", "").split(" ")[0] if data.get("start_time") else ""))
+
+                    # 关联执行树步骤与执行前截图
+                    matched_step = bug_json_to_step.get(bug_json.name)
+                    if not matched_step:
+                        matched_step = bug_json_to_step.get(f"{b_info['card_id']}.json")
+                    if matched_step:
+                        b_info["step_num"] = matched_step
+                        before_file = f"explore_step_{matched_step}.png"
+                        if (shots_dir / before_file).exists():
+                            b_info["before_screenshot"] = f"screenshots/{before_file}"
+
+                    # 注入全局缺陷库元数据 (occurrences, last_seen, assignee, tags, analysis_notes, etc.)
+                    if bug_id in global_bugs_map:
+                        gb = global_bugs_map[bug_id]
+                        for k in ["occurrences", "last_seen", "status", "severity", "action_type", "ui_path", "target_element", "assignee", "tags", "analysis_notes", "date"]:
+                            if k in gb and (k not in b_info or not b_info[k] or b_info[k] == "Medium"):
+                                b_info[k] = gb[k]
+
                     data["bugs"].append(b_info)
                 except Exception as e:
                     logger.warning(f"读取 Bug 文件 {bug_json.name} 失败: {e}")
@@ -145,8 +188,9 @@ class ReportGenerator:
                 except Exception as e:
                     logger.warning(f"读取生成的用例失败: {e}")
 
-        # 5. 解析接口大盘
+        # 5. 解析接口大盘与业务页面覆盖度
         api_file = self.run_dir / "screenshots" / "api_registry.json"
+        raw_scopes = set()
         if api_file.exists():
             try:
                 with open(api_file, "r", encoding="utf-8") as f:
@@ -154,9 +198,30 @@ class ReportGenerator:
                 data["api_summary"] = api_data
                 summary_meta = api_data.get("summary", {})
                 data["kpi"]["apis_count"] = summary_meta.get("total_unique_endpoints", len(api_data.get("global_flat_apis", {})))
-                data["kpi"]["page_scopes_count"] = summary_meta.get("total_page_scopes", len(api_data.get("page_scopes", {})))
+                raw_scopes.update(api_data.get("page_scopes", {}).keys())
             except Exception as e:
                 logger.warning(f"读取 api_registry 失败: {e}")
+
+        # 结合 steps 中的 ui_path 补充页面触达记录
+        for s in data["steps"]:
+            p = s.get("ui_path")
+            if p and p not in ["YAML 用例脚本", "无"]:
+                raw_scopes.add(p)
+
+        # 执行权威基准归一化 (以 docs/explore_rules.md 实时解析为真值 SSOT)
+        try:
+            from core.explorer_agent.page_map_builder import PageMapBuilder
+            norm_result = PageMapBuilder.normalize_page_scopes(raw_scopes)
+            data["kpi"]["page_scopes_count"] = norm_result["visited_canonical_count"]
+            data["kpi"]["total_menus_count"] = norm_result["total_canonical_menus"]
+            data["kpi"]["sub_components_count"] = norm_result["sub_components_count"]
+            data["kpi"]["page_coverage_rate"] = norm_result["coverage_rate"]
+            data["visited_menus"] = norm_result["visited_canonical_menus"]
+        except Exception as e:
+            logger.warning(f"页面作用域归一化失败: {e}")
+            data["kpi"]["page_scopes_count"] = len(raw_scopes)
+            data["kpi"]["total_menus_count"] = 33
+            data["kpi"]["page_coverage_rate"] = 0.0
 
         return data
 
@@ -295,6 +360,8 @@ class ReportGenerator:
                     path_m = re.search(r"📍 \[Worker\] 当前推断路径: (\[.*?\])", block)
                     ui_path = path_m.group(1) if path_m else "[]"
                     has_bug = "🚨 [" in block
+                    bug_report_m = re.search(r"缺陷报告固化完毕:.*?bugs[\\/](.*?\.json)", block)
+                    bug_card_id = Path(bug_report_m.group(1)).stem if bug_report_m else None
                     
                     shot_file = f"explore_step_{g_step}.png"
                     shot_path = f"screenshots/{shot_file}" if (shots_dir / shot_file).exists() else None
@@ -315,6 +382,7 @@ class ReportGenerator:
                         "target": w_target,
                         "ui_path": ui_path,
                         "has_bug": has_bug,
+                        "bug_card_id": bug_card_id,
                         "screenshot": shot_path,
                         "hover_screenshot": hover_path,
                         "after_screenshot": after_path
@@ -452,46 +520,7 @@ class ReportGenerator:
         apis_json = json.dumps(data["api_summary"], ensure_ascii=False)
         mermaid_raw = data["mermaid_str"]
 
-        # 预先构建 Bug 列表 HTML，避免在庞大外层 f-string 中嵌套表达式语法冲突
-        bugs_html_list = []
-        for b in data.get("bugs", []):
-            b_id = html.escape(str(b.get("id", "BUG")))
-            b_title = html.escape(str(b.get("title", "")))
-            b_date = html.escape(str(b.get("creation_date", "")))
-            details = b.get("details") or {}
-            b_step = html.escape(str(details.get("step", "")))
-            b_actual = html.escape(str(details.get("actual", "")))
-            rel_shot = b.get("rel_screenshot") or ""
-            bugs_html_list.append(f"""
-        <div class="bug-card">
-          <div class="bug-card-header">
-            <div class="bug-id-group">
-              <span class="bug-badge">{b_id}</span>
-              <span class="bug-title">{b_title}</span>
-            </div>
-            <div style="font-size:12px;color:#fca5a5;">发现日期: {b_date}</div>
-          </div>
-          <div class="bug-body">
-            <div>
-              <div class="bug-field">
-                <div class="bug-field-label">触发步骤与路径</div>
-                <div class="bug-step-text">{b_step}</div>
-              </div>
-              <div class="bug-field">
-                <div class="bug-field-label">异常堆栈 / 接口报错详情</div>
-                <div class="bug-error-box">{b_actual}</div>
-              </div>
-            </div>
-            <div>
-              <div class="bug-field-label">案发现场截图凭据</div>
-              <div class="bug-screenshot-preview" onclick="openLightbox('{rel_shot}', '{b_id} 案发现场')">
-                <img src="{rel_shot}" alt="Crash Screenshot" loading="lazy">
-                <div class="zoom-hint">🔍 点击放大核验</div>
-              </div>
-            </div>
-          </div>
-        </div>""")
-        bugs_cards_html = "".join(bugs_html_list) if bugs_html_list else '<div style="text-align:center;padding:60px;color:var(--text-dim);">🎉 本次巡检未发现任何崩溃或接口异常，100% 完美通过！</div>'
+        # 缺陷卡片改为前端 JS 基于 allBugs 动态分页渲染，支持双图对比与双向跳转定位
 
         # 预先构建 API 列表 HTML
         api_rows_list = []
@@ -924,7 +953,7 @@ class ReportGenerator:
     .bug-body {{
       padding: 24px;
       display: grid;
-      grid-template-columns: 1fr 340px;
+      grid-template-columns: 1fr 480px;
       gap: 24px;
     }}
 
@@ -966,6 +995,112 @@ class ReportGenerator:
       word-break: break-all;
       max-height: 220px;
       overflow-y: auto;
+    }}
+
+    .bug-screenshots-duo {{
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+    }}
+
+    .bug-thumb-box {{
+      flex: 1;
+      border: 1px solid var(--border-subtle);
+      border-radius: 10px;
+      overflow: hidden;
+      background: #000;
+      position: relative;
+      cursor: pointer;
+      transition: transform 0.2s, border-color 0.2s;
+    }}
+
+    .bug-thumb-box:hover {{
+      transform: scale(1.02);
+      border-color: var(--primary);
+    }}
+
+    .bug-thumb-box img {{
+      width: 100%;
+      height: 140px;
+      object-fit: cover;
+      display: block;
+    }}
+
+    .bug-thumb-tag {{
+      position: absolute;
+      top: 6px;
+      left: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 4px;
+      color: #fff;
+      backdrop-filter: blur(4px);
+      z-index: 2;
+    }}
+
+    .tag-before {{
+      background: rgba(16, 185, 129, 0.85);
+    }}
+
+    .tag-after {{
+      background: rgba(244, 63, 94, 0.85);
+    }}
+
+    .jump-btn {{
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 7px 14px;
+      border-radius: 8px;
+      border: 1px solid rgba(99, 102, 241, 0.4);
+      background: rgba(99, 102, 241, 0.15);
+      color: #c7d2fe;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-top: 10px;
+    }}
+
+    .jump-btn:hover {{
+      background: var(--primary);
+      color: #fff;
+      box-shadow: 0 4px 12px var(--primary-glow);
+      transform: translateY(-1px);
+    }}
+
+    .jump-bug-btn {{
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 5px;
+      border: 1px solid rgba(244, 63, 94, 0.4);
+      background: rgba(244, 63, 94, 0.15);
+      color: #fca5a5;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-left: 8px;
+      vertical-align: middle;
+    }}
+
+    .jump-bug-btn:hover {{
+      background: #f43f5e;
+      color: #fff;
+    }}
+
+    @keyframes pulseHighlight {{
+      0% {{ box-shadow: 0 0 0 0 rgba(244, 63, 94, 0.8); border-color: #f43f5e; }}
+      50% {{ box-shadow: 0 0 0 14px rgba(244, 63, 94, 0); border-color: #f43f5e; }}
+      100% {{ box-shadow: 0 0 0 0 rgba(244, 63, 94, 0); }}
+    }}
+
+    .highlight-pulse {{
+      animation: pulseHighlight 1.2s ease-in-out 3 !important;
+      border-color: #f43f5e !important;
     }}
 
     .bug-screenshot-preview {{
@@ -1080,33 +1215,66 @@ class ReportGenerator:
 
     .pagination-bar {{
       display: flex;
-      justify-content: space-between;
+      justify-content: flex-end;
       align-items: center;
+      gap: 16px;
       margin-top: 24px;
-      padding-top: 16px;
+      padding: 16px 0;
       border-top: 1px solid var(--border-subtle);
       color: var(--text-muted);
-      font-size: 13px;
+      font-size: 12px;
+      flex-wrap: wrap;
     }}
 
-    .pagination-controls {{
-      display: flex;
-      gap: 8px;
+    .pagination-bar select, .pagination-bar input {{
+      background: var(--bg-surface);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: var(--text-muted);
+      border-radius: 4px;
+      padding: 4px 8px;
+      font-size: 12px;
+      outline: none;
     }}
 
-    .pg-btn {{
-      background: rgba(255, 255, 255, 0.06);
-      border: 1px solid var(--border-subtle);
-      color: #fff;
-      padding: 6px 14px;
-      border-radius: 6px;
-      font-size: 13px;
+    .pagination-bar select {{
       cursor: pointer;
     }}
 
-    .pg-btn:disabled {{
-      opacity: 0.3;
+    .pagination-bar input[type="number"] {{
+      width: 50px;
+      text-align: center;
+    }}
+
+    .pagination-bar .pg-btn {{
+      background: var(--bg-surface);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: var(--text-muted);
+      border-radius: 4px;
+      padding: 4px 8px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }}
+
+    .pagination-bar .pg-btn:disabled {{
+      opacity: 0.5;
       cursor: not-allowed;
+    }}
+
+    .pagination-bar .jump-btn-action {{
+      background: var(--bg-surface);
+      border: 1px solid var(--primary);
+      color: var(--primary);
+      border-radius: 4px;
+      padding: 4px 8px;
+      cursor: pointer;
+      font-size: 12px;
+      transition: all 0.2s;
+    }}
+
+    .pagination-bar .jump-btn-action:hover {{
+      background: var(--primary);
+      color: #fff;
     }}
 
     .steps-list {{
@@ -1397,7 +1565,8 @@ class ReportGenerator:
     /* Layout wrapper for Sidebar */
     .layout-wrapper {{
       display: flex;
-      min-height: 100vh;
+      height: 100vh;
+      overflow: hidden;
     }}
 
     .sidebar {{
@@ -1575,7 +1744,7 @@ class ReportGenerator:
       </div>
       <div class="kpi-card">
         <div class="kpi-label">🗺️ 触达业务页面</div>
-        <div class="kpi-value">{data['kpi']['page_scopes_count']}<span style="font-size: 24px; color: #64748b; margin-left: 2px;">/33</span> <span class="sub" style="margin-left: 6px;">个二级菜单</span></div>
+        <div class="kpi-value">{data['kpi']['page_scopes_count']}<span style="font-size: 24px; color: #64748b; margin-left: 2px;">/{data['kpi'].get('total_menus_count', 33)}</span> <span class="sub" style="margin-left: 6px;">({data['kpi'].get('page_coverage_rate', 0):.1f}%)</span></div>
       </div>
       <div class="kpi-card">
         <div class="kpi-label">🌐 拦截业务接口</div>
@@ -1614,20 +1783,21 @@ class ReportGenerator:
 
       <div id="stepsContainer" class="steps-list"></div>
 
-      <div class="pagination-bar">
-        <div id="pageInfo">显示第 1 至 50 步</div>
-        <div class="pagination-controls">
-          <button class="pg-btn" id="prevBtn" onclick="prevPage()">上一页</button>
-          <button class="pg-btn" id="nextBtn" onclick="nextPage()">下一页</button>
-        </div>
-      </div>
+      <div id="stepsPaginationControls" class="pagination-bar"></div>
     </div>
 
     <!-- Tab 2: Bugs Locker -->
     <div id="tab-bugs" class="tab-pane">
-      <div class="bugs-container">
-        {bugs_cards_html}
+      <div class="timeline-filter-bar">
+        <div class="filter-btn-group">
+          <button class="filter-pill active" onclick="filterBugs('all', event)">全部缺陷 ({data['kpi']['bugs_count']})</button>
+        </div>
+        <input type="text" id="bugSearch" class="search-box" placeholder="搜索 缺陷编号、标题、报错详情或步骤..." oninput="handleBugSearch()">
       </div>
+
+      <div id="bugsContainer" class="bugs-container"></div>
+
+      <div id="bugsPaginationControls" class="pagination-bar"></div>
     </div>
 
     <!-- Tab 3: Pure Markdown Topology -->
@@ -1647,7 +1817,7 @@ class ReportGenerator:
           <div>
             <h3 style="font-size:16px;margin-bottom:8px;color:#fff;">🌐 底层网络接口拦截池</h3>
             <p style="font-size:13px;color:var(--text-dim);margin-bottom:0;">
-              框架静默拦截并归纳的 {data['kpi']['apis_count']} 个核心后端 API，涉及 {data['kpi']['page_scopes_count']} 个二级业务页面作用域。
+              框架静默拦截并归纳的 {data['kpi']['apis_count']} 个核心后端 API，涉及 {data['kpi']['page_scopes_count']}/{data['kpi'].get('total_menus_count', 33)} 个二级业务页面作用域。
             </p>
           </div>
           <button class="copy-btn" onclick="downloadApiJson()">⬇️ 下载 API 拦截池 </button>
@@ -1683,6 +1853,86 @@ class ReportGenerator:
       </div>
     </div>
 
+  <!-- Bug Detail Modal Overlay -->
+  <div id="bugModalOverlay" style="display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.85);z-index:9990;align-items:center;justify-content:center;backdrop-filter:blur(6px);" onclick="closeBugModal(event)">
+    <div id="bugModalContent" style="background:var(--bg-base);width:85vw;max-width:1050px;max-height:90vh;border-radius:14px;border:1px solid rgba(255,255,255,0.12);display:flex;flex-direction:column;z-index:9991;box-shadow:0 25px 50px -12px rgba(0,0,0,0.85);overflow:hidden;" onclick="event.stopPropagation()">
+      <div style="padding:16px 24px;border-bottom:1px solid rgba(255,255,255,0.08);background:var(--bg-surface);display:flex;justify-content:space-between;align-items:center;">
+         <div id="modalHeader" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+            <div id="modalBugId" style="font-family:var(--font-mono);font-size:16px;color:#f8fafc;font-weight:700;background:rgba(255,255,255,0.06);padding:6px 12px;border-radius:6px;border:1px solid rgba(255,255,255,0.12);">BUG-XXX</div>
+            <div id="modalStatus"></div>
+            <div id="modalSeverity" style="background:rgba(245,158,11,0.12);color:#f59e0b;padding:6px 12px;border-radius:6px;font-weight:700;border:1px solid rgba(245,158,11,0.3);font-size:14px;">🔥 3</div>
+         </div>
+         <button onclick="closeBugModal()" style="background:transparent;border:none;color:#94a3b8;font-size:26px;cursor:pointer;line-height:1;transition:color 0.2s;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#94a3b8'">&times;</button>
+      </div>
+      <div id="modalBody" style="padding:24px;overflow-y:auto;display:flex;flex-direction:column;gap:16px;background:var(--bg-surface);">
+        <!-- Metadata Grid -->
+        <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:14px;">
+          <div style="background:var(--bg-card);padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);">
+            <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:6px;">▮ 所属运行 (RUN ID)</div>
+            <div id="modalRunId" style="color:#f8fafc;font-family:var(--font-mono);font-size:13px;">-</div>
+          </div>
+          <div style="background:var(--bg-card);padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);">
+            <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:6px;">▮ 发现日期</div>
+            <div id="modalDate" style="color:#f8fafc;font-family:var(--font-mono);font-size:13px;">-</div>
+          </div>
+          <div style="background:var(--bg-card);padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);">
+            <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:6px;">▮ 历史累计复现</div>
+            <div id="modalOccurrences" style="color:#f8fafc;font-family:var(--font-mono);font-size:13px;">-</div>
+          </div>
+          <div style="background:var(--bg-card);padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);">
+            <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:6px;">▮ 最近一次出现</div>
+            <div id="modalLastSeen" style="color:#f8fafc;font-family:var(--font-mono);font-size:13px;">-</div>
+          </div>
+          <div style="background:var(--bg-card);padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);">
+            <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:6px;">▮ 本次对应步骤</div>
+            <div id="modalStepNum" style="color:#f8fafc;font-family:var(--font-mono);font-size:13px;">-</div>
+          </div>
+          <div style="background:var(--bg-card);padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);">
+            <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:6px;">▮ 操作类型</div>
+            <div id="modalActionType" style="color:#f8fafc;font-family:var(--font-mono);font-size:13px;">-</div>
+          </div>
+          <div style="background:var(--bg-card);padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);">
+            <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:6px;">▮ 目标元素</div>
+            <div id="modalTargetElement" style="color:#f8fafc;font-size:13px;">-</div>
+          </div>
+          <div style="background:var(--bg-card);padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);">
+            <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:6px;">▮ 缺陷处理人</div>
+            <div id="modalAssignee" style="color:#f8fafc;font-size:13px;">-</div>
+          </div>
+          <div style="background:var(--bg-card);padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);">
+            <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:6px;">▮ 业务标签</div>
+            <div id="modalTags" style="color:#f8fafc;font-size:13px;">-</div>
+          </div>
+        </div>
+
+        <!-- Full Width Fields -->
+        <div style="background:var(--bg-card);padding:16px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);">
+          <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:8px;">▮ 缺陷标题 (TITLE)</div>
+          <div id="modalTitleText" style="color:#f8fafc;font-size:14px;line-height:1.5;">-</div>
+        </div>
+        <div style="background:var(--bg-card);padding:16px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);">
+          <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:8px;">▮ 业务路径 / 触发步骤</div>
+          <div id="modalUiPath" style="color:#cbd5e1;font-size:13px;line-height:1.5;">-</div>
+        </div>
+        <div style="background:var(--bg-card);padding:16px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);">
+          <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:8px;">▮ 异常诊断结果 / 堆栈</div>
+          <div id="modalActual" style="color:#fca5a5;font-family:var(--font-mono);font-size:13px;line-height:1.6;white-space:pre-wrap;word-break:break-word;max-height:220px;overflow-y:auto;background:rgba(0,0,0,0.25);padding:10px;border-radius:6px;">-</div>
+        </div>
+        <div id="modalAnalysisBox" style="background:var(--bg-card);padding:16px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);">
+          <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:8px;">▮ 归因分析备注</div>
+          <div id="modalAnalysis" style="color:#cbd5e1;font-size:13px;line-height:1.6;white-space:pre-wrap;">-</div>
+        </div>
+
+        <div style="background:var(--bg-card);padding:16px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);">
+          <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:8px;">▮ 案发现场截图凭据</div>
+          <div id="modalScreenshots" style="margin-top:8px;">-</div>
+        </div>
+
+        <div id="modalActionFooter" style="display:flex;justify-content:flex-end;gap:12px;margin-top:4px;">
+        </div>
+
+      </div>
+    </div>
   </div>
 
   <!-- Lightbox Modal -->
@@ -1699,12 +1949,18 @@ class ReportGenerator:
   <script>
     // 原始数据注入
     const allSteps = {steps_json};
+    const allBugs = {bugs_json};
     const apisData = {apis_json};
     
     let currentFilter = 'all';
     let searchQuery = '';
     let currentPage = 1;
-    const pageSize = 50;
+    let stepsPerPage = 10;
+
+    let currentBugPage = 1;
+    let bugsPerPage = 10;
+    let currentBugFilter = 'all';
+    let bugSearchQuery = '';
 
     function switchTab(tabId) {{
       document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
@@ -1712,7 +1968,9 @@ class ReportGenerator:
       
       const targetPane = document.getElementById(tabId);
       if (targetPane) targetPane.classList.add('active');
-      event.currentTarget.classList.add('active');
+      
+      const targetBtn = document.querySelector(`.tab-btn[onclick*="${{tabId}}"]`);
+      if (targetBtn) targetBtn.classList.add('active');
 
       if (tabId === 'tab-topology' && typeof window.mermaidRenderer === 'function') {{
         window.mermaidRenderer();
@@ -1722,8 +1980,9 @@ class ReportGenerator:
     function filterSteps(type) {{
       currentFilter = type;
       currentPage = 1;
-      document.querySelectorAll('.filter-pill').forEach(btn => btn.classList.remove('active'));
-      event.currentTarget.classList.add('active');
+      document.querySelectorAll('#tab-timeline .filter-pill').forEach(btn => btn.classList.remove('active'));
+      const activeBtn = Array.from(document.querySelectorAll('#tab-timeline .filter-pill')).find(b => b.getAttribute('onclick')?.includes(type));
+      if (activeBtn) activeBtn.classList.add('active');
       renderSteps();
     }}
 
@@ -1731,6 +1990,18 @@ class ReportGenerator:
       searchQuery = document.getElementById('stepSearch').value.toLowerCase().trim();
       currentPage = 1;
       renderSteps();
+    }}
+
+    function changeStepsPerPage(size) {{
+      stepsPerPage = parseInt(size);
+      currentPage = 1;
+      renderSteps();
+    }}
+
+    function changeStepPage(page) {{
+      currentPage = page;
+      renderSteps();
+      window.scrollTo({{ top: 350, behavior: 'smooth' }});
     }}
 
     function getFilteredSteps() {{
@@ -1766,6 +2037,27 @@ class ReportGenerator:
       return allSteps.filter((s, i) => passFilter[i]);
     }}
 
+    function getPlannerGroups(filtered) {{
+      const groups = [];
+      let currentGroup = null;
+      filtered.forEach(s => {{
+        if (s.type === 'planner') {{
+          currentGroup = {{ planner: s, workers: [] }};
+          groups.push(currentGroup);
+        }} else if (s.type === 'worker') {{
+          if (!currentGroup) {{
+            currentGroup = {{
+              planner: {{ type: 'planner', step: 0, target: '前置探索阶段', thought: '', global_prog: '', timestamp: s.timestamp }},
+              workers: []
+            }};
+            groups.push(currentGroup);
+          }}
+          currentGroup.workers.push(s);
+        }}
+      }});
+      return groups;
+    }}
+
     function togglePlanner(id) {{
         const el = document.getElementById(id);
         if(el) {{
@@ -1778,130 +2070,156 @@ class ReportGenerator:
       const filtered = getFilteredSteps();
       
       const container = document.getElementById('stepsContainer');
+      const pageControls = document.getElementById('stepsPaginationControls');
       if (filtered.length === 0) {{
         container.innerHTML = '<div style="text-align:center;padding:60px;color:var(--text-dim);">没有符合条件的步骤</div>';
-        document.getElementById('pageInfo').innerText = '显示 0 步';
-        if(document.getElementById('prevBtn')) document.getElementById('prevBtn').disabled = true;
-        if(document.getElementById('nextBtn')) document.getElementById('nextBtn').disabled = true;
+        if (pageControls) pageControls.innerHTML = '';
         return;
       }}
 
       let html = '';
       
       if (!isYamlMode && allSteps.some(s => s.type === 'planner')) {{
-          // --- Explore Mode (Nested Rendering) ---
-          const pgBar = document.querySelector('.pagination-bar');
-          if (pgBar) pgBar.style.display = 'none';
-          
-          let currentPlannerHtml = '';
-          let currentWorkersHtml = '';
-          let plannerCount = 0;
-          let displayCount = 0;
-          
+          // --- Explore Mode (Nested Rendering with Pagination) ---
+          const groups = getPlannerGroups(filtered);
+          const totalGroups = groups.length;
+          const totalPages = Math.ceil(totalGroups / stepsPerPage) || 1;
+          currentPage = Math.max(1, Math.min(currentPage, totalPages));
+
+          const startIdx = (currentPage - 1) * stepsPerPage;
+          const endIdx = Math.min(startIdx + stepsPerPage, totalGroups);
+          const pageGroups = groups.slice(startIdx, endIdx);
+
           const isFilterActive = (currentFilter !== 'all' || searchQuery !== '');
           const initialDisplay = isFilterActive ? 'block' : 'none';
-          
-          filtered.forEach(s => {{
-              if (s.type === 'planner') {{
-                  // Flush previous planner
-                  if (currentPlannerHtml !== '') {{
-                      html += currentPlannerHtml;
-                      html += `<div id="planner-workers-${{plannerCount}}" style="display:${{initialDisplay}}; padding-left: 40px; border-left: 2px solid rgba(99,102,241,0.3); margin-left: 20px;">${{currentWorkersHtml}}</div>`;
-                  }}
-                  plannerCount = s.step;
-                  currentWorkersHtml = ''; // reset
-                  
-                  currentPlannerHtml = `
-                  <div class="step-card" style="border: 1px solid var(--primary); background: rgba(99, 102, 241, 0.05); cursor: pointer; margin-top: 16px;" onclick="togglePlanner('planner-workers-${{plannerCount}}')">
-                    <div class="step-index-badge" style="background: var(--primary);">
-                      <span class="num">P${{s.step}}</span>
-                    </div>
-                    <div class="step-main-info">
-                      <div class="step-header-line">
-                        <span class="action-tag" style="background:var(--primary);">🎯 PLANNER 制定规划 | 当前进度: ${{s.global_prog || '未知'}} | 预计步数: ${{s.budget || '-'}}</span>
-                        <span style="font-size:11px;color:var(--text-dim);margin-left:auto;">${{(s.timestamp || '').split(' ')[1] || ''}}</span>
-                      </div>
-                      <div class="step-target-name" style="color: #c7d2fe; font-size: 15px;">👉 目标: ${{escapeHtml(s.target)}}</div>
-                      <div class="step-thought-text expanded" onclick="event.stopPropagation(); this.classList.toggle('expanded')" title="思考过程">
-                        🧠 <strong>Planner思考:</strong> ${{escapeHtml(s.thought || '')}}
-                      </div>
-                    </div>
-                    <div>
-                      ${{s.screenshot ? `
-                        <div class="step-thumb-wrapper" onclick="event.stopPropagation(); openLightbox('${{s.screenshot}}', 'Planner 阶段 #${{s.step}}')">
-                          <img src="${{s.screenshot}}" alt="Plan Screenshot" loading="lazy">
-                        </div>
-                      ` : ''}}
-                    </div>
-                  </div>`;
-                  displayCount++;
-              }} else if (s.type === 'worker') {{
-                  const bugClass = s.has_bug ? 'is-bug' : '';
-                  const actClass = (s.action || '').toLowerCase();
-                  const displayImg = s.hover_screenshot || s.screenshot;
-                  
-                  currentWorkersHtml += `
-                  <div class="step-card ${{bugClass}}" style="transform: scale(0.98); margin-bottom: 8px;">
+
+          pageGroups.forEach(g => {{
+              const p = g.planner;
+              const hasBugInGroup = g.workers.some(w => w.has_bug);
+              const pBadgeBg = hasBugInGroup ? '#f43f5e' : 'var(--primary)';
+              const pCardBorder = hasBugInGroup ? '1px solid rgba(244, 63, 94, 0.4)' : '1px solid var(--primary)';
+              const pCardBg = hasBugInGroup ? 'rgba(244, 63, 94, 0.05)' : 'rgba(99, 102, 241, 0.05)';
+              
+              let workersHtml = '';
+              g.workers.forEach(w => {{
+                  const bugClass = w.has_bug ? 'is-bug' : '';
+                  const actClass = (w.action || '').toLowerCase();
+                  const bugJumpBtn = (w.has_bug && w.bug_card_id) ? `
+                    <button class="jump-bug-btn" onclick="event.stopPropagation(); jumpToBug('${{w.bug_card_id}}')" title="跳转到缺陷证据库核验详情">
+                      🐞 查看缺陷证据
+                    </button>
+                  ` : '';
+
+                  workersHtml += `
+                  <div class="step-card ${{bugClass}}" id="step-card-${{w.step}}" style="transform: scale(0.98); margin-bottom: 8px;">
                     <div class="step-index-badge">
-                      <span class="num">${{s.worker_step}}</span>
-                      <span class="sub">/ ${{s.budget}}</span>
+                      <span class="num">${{w.worker_step}}</span>
+                      <span class="sub">/ ${{w.budget}}</span>
                     </div>
                     <div class="step-main-info">
                       <div class="step-header-line">
-                        <span class="action-tag ${{actClass}}">${{s.action}}</span>
-                        <span class="path-crumb">📍 ${{escapeHtml(s.ui_path)}}</span>
-                        <span style="font-size:11px;color:var(--text-dim);margin-left:auto;">${{(s.timestamp || '').split(' ')[1] || ''}}</span>
+                        <span class="action-tag ${{actClass}}">${{w.action}}</span>
+                        <span class="path-crumb">📍 ${{escapeHtml(w.ui_path)}}</span>
+                        ${{bugJumpBtn}}
+                        <span style="font-size:11px;color:var(--text-dim);margin-left:auto;">${{(w.timestamp || '').split(' ')[1] || ''}}</span>
                       </div>
-                      <div class="step-target-name">${{escapeHtml(s.target || '(子目标达成)')}}</div>
+                      <div class="step-target-name">${{escapeHtml(w.target || '(子目标达成)')}}</div>
                       <div class="step-thought-text" onclick="event.stopPropagation(); this.classList.toggle('expanded')">
-                        💡 <strong>Worker思考:</strong> ${{escapeHtml(s.thought || '无思考过程')}}
+                        💡 <strong>Worker思考:</strong> ${{escapeHtml(w.thought || '无思考过程')}}
                       </div>
                     </div>
                     <div style="display: flex; gap: 8px;">
-                      ${{s.screenshot ? `
-                        <div class="step-thumb-wrapper" onclick="event.stopPropagation(); openLightbox('${{s.screenshot}}', '执行前 #${{s.step}}')" title="执行前截图">
+                      ${{w.screenshot ? `
+                        <div class="step-thumb-wrapper" onclick="event.stopPropagation(); openLightbox('${{w.screenshot}}', '执行前 #${{w.step}}')" title="执行前截图">
                           <div style="position:absolute; top:4px; left:4px; background:rgba(0,0,0,0.6); color:#fff; font-size:10px; padding:2px 4px; border-radius:4px; pointer-events:none;">执行前</div>
-                          <img src="${{s.screenshot}}" alt="Before" loading="lazy">
+                          <img src="${{w.screenshot}}" alt="Before" loading="lazy">
                         </div>
                       ` : ''}}
-                      ${{(s.after_screenshot || s.hover_screenshot) ? `
-                        <div class="step-thumb-wrapper" onclick="event.stopPropagation(); openLightbox('${{s.after_screenshot || s.hover_screenshot}}', '执行后 #${{s.step}}')" title="执行后截图">
+                      ${{(w.after_screenshot || w.hover_screenshot) ? `
+                        <div class="step-thumb-wrapper" onclick="event.stopPropagation(); openLightbox('${{w.after_screenshot || w.hover_screenshot}}', '执行后 #${{w.step}}')" title="执行后截图">
                           <div style="position:absolute; top:4px; left:4px; background:rgba(0,0,0,0.6); color:#fff; font-size:10px; padding:2px 4px; border-radius:4px; pointer-events:none;">执行后</div>
-                          <img src="${{s.after_screenshot || s.hover_screenshot}}" alt="After" loading="lazy">
+                          <img src="${{w.after_screenshot || w.hover_screenshot}}" alt="After" loading="lazy">
                         </div>
                       ` : ''}}
                     </div>
                   </div>`;
-              }}
+              }});
+
+              html += `
+              <div class="step-card" id="planner-card-${{p.step}}" style="border: ${{pCardBorder}}; background: ${{pCardBg}}; cursor: pointer; margin-top: 16px;" onclick="togglePlanner('planner-workers-${{p.step}}')">
+                <div class="step-index-badge" style="background: ${{pBadgeBg}};">
+                  <span class="num">P${{p.step}}</span>
+                </div>
+                <div class="step-main-info">
+                  <div class="step-header-line">
+                    <span class="action-tag" style="background:${{pBadgeBg}};">🎯 PLANNER 规划轮次 #${{p.step}} | 包含 ${{g.workers.length}} 步执行 | 进度: ${{p.global_prog || '未知'}}</span>
+                    <span style="font-size:11px;color:var(--text-dim);margin-left:auto;">${{(p.timestamp || '').split(' ')[1] || ''}}</span>
+                  </div>
+                  <div class="step-target-name" style="color: #c7d2fe; font-size: 15px;">👉 目标: ${{escapeHtml(p.target)}}</div>
+                  <div class="step-thought-text expanded" onclick="event.stopPropagation(); this.classList.toggle('expanded')" title="思考过程">
+                    🧠 <strong>Planner思考:</strong> ${{escapeHtml(p.thought || '')}}
+                  </div>
+                </div>
+                <div>
+                  ${{p.screenshot ? `
+                    <div class="step-thumb-wrapper" onclick="event.stopPropagation(); openLightbox('${{p.screenshot}}', 'Planner 阶段 #${{p.step}}')">
+                      <img src="${{p.screenshot}}" alt="Plan Screenshot" loading="lazy">
+                    </div>
+                  ` : ''}}
+                </div>
+              </div>
+              <div id="planner-workers-${{p.step}}" style="display:${{initialDisplay}}; padding-left: 36px; border-left: 2px solid rgba(99,102,241,0.3); margin-left: 20px; margin-top: 10px;">
+                ${{workersHtml}}
+              </div>`;
           }});
-          
-          // Flush the last one
-          if (currentPlannerHtml !== '') {{
-              html += currentPlannerHtml;
-              html += `<div id="planner-workers-${{plannerCount}}" style="display:${{typeof initialDisplay !== 'undefined' ? initialDisplay : 'none'}}; padding-left: 40px; border-left: 2px solid rgba(99,102,241,0.3); margin-left: 20px;">${{currentWorkersHtml}}</div>`;
-          }}
-          
+
           container.innerHTML = html;
-          document.getElementById('pageInfo').innerText = `显示共 ${{displayCount}} 个 Planner 规划轮次 (点击展开对应 Worker 步骤)`;
+          const totalWorkersCount = filtered.filter(s => s.type === 'worker').length;
+          if (pageControls) {{
+            pageControls.innerHTML = `
+              <div style="color:var(--text-dim);font-size:12px;">共 ${{totalGroups}} 轮 Planner (${{totalWorkersCount}} 步 Worker)</div>
+              <select onchange="changeStepsPerPage(this.value)">
+                <option value="10" ${{stepsPerPage===10?'selected':''}}>10 轮/页</option>
+                <option value="20" ${{stepsPerPage===20?'selected':''}}>20 轮/页</option>
+                <option value="50" ${{stepsPerPage===50?'selected':''}}>50 轮/页</option>
+                <option value="100" ${{stepsPerPage===100?'selected':''}}>100 轮/页</option>
+              </select>
+              
+              <div style="display:flex;gap:4px;align-items:center;">
+                <button class="pg-btn" onclick="changeStepPage(${{currentPage - 1}})" ${{currentPage === 1 ? 'disabled' : ''}}>上一页</button>
+                <span style="color:var(--text-muted);font-size:12px;margin:0 4px;">${{currentPage}} / ${{totalPages}}</span>
+                <button class="pg-btn" onclick="changeStepPage(${{currentPage + 1}})" ${{currentPage === totalPages ? 'disabled' : ''}}>下一页</button>
+              </div>
+              
+              <div style="display:flex;gap:4px;align-items:center;margin-left:8px;">
+                <span style="color:var(--text-dim);font-size:12px;">跳至</span>
+                <input type="number" id="stepPageJumpInput" min="1" max="${{totalPages}}">
+                <span style="color:var(--text-dim);font-size:12px;">页</span>
+                <button class="jump-btn-action" onclick="const p=parseInt(document.getElementById('stepPageJumpInput').value);if(!isNaN(p)&&p>=1&&p<=${{totalPages}})changeStepPage(p);">跳转</button>
+              </div>
+            `;
+          }}
       }} else {{
           // --- YAML Mode (Flat Rendering) ---
-          const pgBar = document.querySelector('.pagination-bar');
-          if (pgBar) pgBar.style.display = 'flex';
           const total = filtered.length;
-          const totalPages = Math.ceil(total / pageSize) || 1;
+          const totalPages = Math.ceil(total / stepsPerPage) || 1;
           currentPage = Math.max(1, Math.min(currentPage, totalPages));
 
-          const startIdx = (currentPage - 1) * pageSize;
-          const endIdx = Math.min(startIdx + pageSize, total);
+          const startIdx = (currentPage - 1) * stepsPerPage;
+          const endIdx = Math.min(startIdx + stepsPerPage, total);
           const pageSteps = filtered.slice(startIdx, endIdx);
 
           pageSteps.forEach(s => {{
             const bugClass = s.has_bug ? 'is-bug' : '';
             const actClass = (s.action || '').toLowerCase();
-            const displayImg = s.hover_screenshot || s.screenshot;
+            const bugJumpBtn = (s.has_bug && s.bug_card_id) ? `
+              <button class="jump-bug-btn" onclick="event.stopPropagation(); jumpToBug('${{s.bug_card_id}}')" title="跳转到缺陷证据库核验详情">
+                🐞 查看缺陷证据
+              </button>
+            ` : '';
 
             html += `
-              <div class="step-card ${{bugClass}}">
+              <div class="step-card ${{bugClass}}" id="step-card-${{s.step}}">
                 <div class="step-index-badge">
                   <span class="num">${{s.step}}</span>
                 </div>
@@ -1909,6 +2227,7 @@ class ReportGenerator:
                   <div class="step-header-line">
                     <span class="action-tag ${{actClass}}">${{s.action}}</span>
                     <span class="path-crumb">📍 ${{escapeHtml(s.ui_path)}}</span>
+                    ${{bugJumpBtn}}
                     <span style="font-size:11px;color:var(--text-dim);margin-left:auto;">${{(s.timestamp || '').split(' ')[1] || ''}}</span>
                   </div>
                   <div class="step-target-name">${{escapeHtml(s.target || '(子目标达成)')}}</div>
@@ -1936,26 +2255,302 @@ class ReportGenerator:
           }});
 
           container.innerHTML = html;
-          document.getElementById('pageInfo').innerText = `显示第 ${{startIdx + 1}} 至 ${{endIdx}} 步 (共 ${{total}} 步)`;
-          if(document.getElementById('prevBtn')) document.getElementById('prevBtn').disabled = currentPage <= 1;
-          if(document.getElementById('nextBtn')) document.getElementById('nextBtn').disabled = currentPage >= totalPages;
-      }}
-    }}
-    function prevPage() {{
-      if (currentPage > 1) {{
-        currentPage--;
-        renderSteps();
-        window.scrollTo({{ top: 400, behavior: 'smooth' }});
+          if (pageControls) {{
+            pageControls.innerHTML = `
+              <div style="color:var(--text-dim);font-size:12px;">共 ${{total}} 步执行</div>
+              <select onchange="changeStepsPerPage(this.value)">
+                <option value="10" ${{stepsPerPage===10?'selected':''}}>10 步/页</option>
+                <option value="20" ${{stepsPerPage===20?'selected':''}}>20 步/页</option>
+                <option value="50" ${{stepsPerPage===50?'selected':''}}>50 步/页</option>
+                <option value="100" ${{stepsPerPage===100?'selected':''}}>100 步/页</option>
+              </select>
+              
+              <div style="display:flex;gap:4px;align-items:center;">
+                <button class="pg-btn" onclick="changeStepPage(${{currentPage - 1}})" ${{currentPage === 1 ? 'disabled' : ''}}>上一页</button>
+                <span style="color:var(--text-muted);font-size:12px;margin:0 4px;">${{currentPage}} / ${{totalPages}}</span>
+                <button class="pg-btn" onclick="changeStepPage(${{currentPage + 1}})" ${{currentPage === totalPages ? 'disabled' : ''}}>下一页</button>
+              </div>
+              
+              <div style="display:flex;gap:4px;align-items:center;margin-left:8px;">
+                <span style="color:var(--text-dim);font-size:12px;">跳至</span>
+                <input type="number" id="stepPageJumpInput" min="1" max="${{totalPages}}">
+                <span style="color:var(--text-dim);font-size:12px;">页</span>
+                <button class="jump-btn-action" onclick="const p=parseInt(document.getElementById('stepPageJumpInput').value);if(!isNaN(p)&&p>=1&&p<=${{totalPages}})changeStepPage(p);">跳转</button>
+              </div>
+            `;
+          }}
       }}
     }}
 
+    function prevPage() {{
+      if (currentPage > 1) changeStepPage(currentPage - 1);
+    }}
+
     function nextPage() {{
-      const totalPages = Math.ceil(getFilteredSteps().length / pageSize);
-      if (currentPage < totalPages) {{
-        currentPage++;
-        renderSteps();
-        window.scrollTo({{ top: 400, behavior: 'smooth' }});
+      const isYamlMode = (allSteps.length > 0 && allSteps[0].type !== 'planner' && allSteps[0].type !== 'worker');
+      const filtered = getFilteredSteps();
+      const totalPages = isYamlMode 
+        ? (Math.ceil(filtered.length / stepsPerPage) || 1)
+        : (Math.ceil(getPlannerGroups(filtered).length / stepsPerPage) || 1);
+      if (currentPage < totalPages) changeStepPage(currentPage + 1);
+    }}
+
+    function filterBugs(type, event) {{
+      currentBugFilter = type;
+      currentBugPage = 1;
+      document.querySelectorAll('#tab-bugs .filter-pill').forEach(b => b.classList.remove('active'));
+      if (event && event.currentTarget) event.currentTarget.classList.add('active');
+      renderBugs();
+    }}
+
+    function handleBugSearch() {{
+      bugSearchQuery = document.getElementById('bugSearch').value.toLowerCase().trim();
+      currentBugPage = 1;
+      renderBugs();
+    }}
+
+    function changeBugsPerPage(size) {{
+      bugsPerPage = parseInt(size);
+      currentBugPage = 1;
+      renderBugs();
+    }}
+
+    function changeBugPage(page) {{
+      currentBugPage = page;
+      renderBugs();
+      window.scrollTo({{ top: 350, behavior: 'smooth' }});
+    }}
+
+    function renderBugs() {{
+      const container = document.getElementById('bugsContainer');
+      const pageControls = document.getElementById('bugsPaginationControls');
+      if (!container) return;
+
+      const filtered = allBugs.filter(b => {{
+        if (bugSearchQuery) {{
+          const matchId = (b.id || '').toLowerCase().includes(bugSearchQuery);
+          const matchTitle = (b.title || '').toLowerCase().includes(bugSearchQuery);
+          const details = b.details || {{}};
+          const matchStep = (details.step || b.step || '').toLowerCase().includes(bugSearchQuery);
+          const matchActual = (details.actual || b.actual || '').toLowerCase().includes(bugSearchQuery);
+          if (!matchId && !matchTitle && !matchStep && !matchActual) return false;
+        }}
+        return true;
+      }});
+
+      if (filtered.length === 0) {{
+        container.innerHTML = '<div style="text-align:center;padding:60px;color:var(--text-dim);">' +
+          (allBugs.length === 0 ? '🎉 本次巡检未发现任何崩溃或接口异常，100% 完美通过！' : '没有符合搜索条件的缺陷记录') +
+          '</div>';
+        if (pageControls) pageControls.innerHTML = '';
+        return;
       }}
+
+      const totalPages = Math.ceil(filtered.length / bugsPerPage) || 1;
+      if (currentBugPage > totalPages) currentBugPage = totalPages;
+      if (currentBugPage < 1) currentBugPage = 1;
+
+      const startIndex = (currentBugPage - 1) * bugsPerPage;
+      const paginatedBugs = filtered.slice(startIndex, startIndex + bugsPerPage);
+
+      let html = '';
+      paginatedBugs.forEach(b => {{
+        const b_id = escapeHtml(b.id || 'BUG');
+        const b_title = escapeHtml(b.title || '');
+        const b_date = escapeHtml(b.creation_date || b.date || '');
+        const card_id = escapeHtml(b.card_id || b.id || 'BUG');
+        const details = b.details || {{}};
+        const b_step = escapeHtml(details.step || b.step || '');
+        const b_actual = escapeHtml(details.actual || b.actual || '');
+        const rel_shot = b.rel_screenshot || '';
+        const before_shot = b.before_screenshot || '';
+        const b_step_num = b.step_num;
+
+        let screenshotsHtml = '';
+        if (before_shot && rel_shot) {{
+          screenshotsHtml = `
+            <div class="bug-screenshots-duo">
+              <div class="bug-thumb-box" onclick="openLightbox('${{before_shot}}', '${{b_id}} 操作前 (目标位置)')" title="点击放大操作前截图">
+                <span class="bug-thumb-tag tag-before">操作前 (目标)</span>
+                <img src="${{before_shot}}" alt="Before" loading="lazy">
+                <div class="zoom-hint">🔍 操作前</div>
+              </div>
+              <div class="bug-thumb-box" onclick="openLightbox('${{rel_shot}}', '${{b_id}} 案发现场 (报错)')" title="点击放大案发现场截图">
+                <span class="bug-thumb-tag tag-after">案发现场 (报错)</span>
+                <img src="${{rel_shot}}" alt="Crash" loading="lazy">
+                <div class="zoom-hint">🔍 案发现场</div>
+              </div>
+            </div>`;
+        }} else if (rel_shot) {{
+          screenshotsHtml = `
+            <div class="bug-screenshot-preview" onclick="openLightbox('${{rel_shot}}', '${{b_id}} 案发现场')">
+              <img src="${{rel_shot}}" alt="Crash Screenshot" loading="lazy">
+              <div class="zoom-hint">🔍 点击放大核验</div>
+            </div>`;
+        }} else {{
+          screenshotsHtml = '<div style="font-size:12px;color:var(--text-dim);padding:20px;text-align:center;">无现场截图凭据</div>';
+        }}
+
+        const viewDetailBtn = `
+          <button class="jump-btn" style="background:rgba(99,102,241,0.15);border:1px solid var(--primary);color:#c7d2fe;" onclick="showBugModal('${{card_id}}')">
+            🔍 查看 Bug 详情
+          </button>`;
+
+        const jumpBtnHtml = b_step_num ? `
+          <button class="jump-btn" onclick="jumpToStep(${{b_step_num}})">
+            🎬 查看执行树对应步骤 (Step ${{b_step_num}}) ➔
+          </button>` : '';
+
+        html += `
+          <div class="bug-card" id="bug-card-${{card_id}}">
+            <div class="bug-card-header">
+              <div class="bug-id-group">
+                <span class="bug-badge">${{b_id}}</span>
+                <span class="bug-title">${{b_title}}</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;">
+                <div style="font-size:12px;color:#fca5a5;">发现日期: ${{b_date}}</div>
+                <button class="jump-btn" style="padding:4px 10px;font-size:11px;background:rgba(99,102,241,0.2);border:1px solid var(--primary);color:#c7d2fe;" onclick="showBugModal('${{card_id}}')">🔍 Bug 详情</button>
+              </div>
+            </div>
+            <div class="bug-body">
+              <div>
+                <div class="bug-field">
+                  <div class="bug-field-label">触发步骤与路径</div>
+                  <div class="bug-step-text">${{b_step}}</div>
+                </div>
+                <div class="bug-field">
+                  <div class="bug-field-label">异常堆栈 / 接口报错详情</div>
+                  <div class="bug-error-box">${{b_actual}}</div>
+                </div>
+                <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;">
+                  ${{viewDetailBtn}}
+                  ${{jumpBtnHtml}}
+                </div>
+              </div>
+              <div>
+                <div class="bug-field-label">案发现场截图凭据 (操作前 vs 报错现场)</div>
+                ${{screenshotsHtml}}
+              </div>
+            </div>
+          </div>
+        `;
+      }});
+
+      container.innerHTML = html;
+
+      if (pageControls) {{
+        pageControls.innerHTML = `
+          <div style="color:var(--text-dim);font-size:12px;">共 ${{filtered.length}} 条缺陷</div>
+          <select onchange="changeBugsPerPage(this.value)">
+              <option value="10" ${{bugsPerPage===10?'selected':''}}>10 条/页</option>
+              <option value="20" ${{bugsPerPage===20?'selected':''}}>20 条/页</option>
+              <option value="50" ${{bugsPerPage===50?'selected':''}}>50 条/页</option>
+              <option value="100" ${{bugsPerPage===100?'selected':''}}>100 条/页</option>
+          </select>
+          
+          <div style="display:flex;gap:4px;align-items:center;">
+              <button class="pg-btn" onclick="changeBugPage(${{currentBugPage - 1}})" ${{currentBugPage === 1 ? 'disabled' : ''}}>上一页</button>
+              <span style="color:var(--text-muted);font-size:12px;margin:0 4px;">${{currentBugPage}} / ${{totalPages}}</span>
+              <button class="pg-btn" onclick="changeBugPage(${{currentBugPage + 1}})" ${{currentBugPage === totalPages ? 'disabled' : ''}}>下一页</button>
+          </div>
+          
+          <div style="display:flex;gap:4px;align-items:center;margin-left:8px;">
+            <span style="color:var(--text-dim);font-size:12px;">跳至</span>
+            <input type="number" id="bugPageJumpInput" min="1" max="${{totalPages}}">
+            <span style="color:var(--text-dim);font-size:12px;">页</span>
+            <button class="jump-btn-action" onclick="const p=parseInt(document.getElementById('bugPageJumpInput').value);if(!isNaN(p)&&p>=1&&p<=${{totalPages}})changeBugPage(p);">跳转</button>
+          </div>
+        `;
+      }}
+    }}
+
+    function jumpToStep(stepNum) {{
+      switchTab('tab-timeline');
+      if (currentFilter !== 'all' || searchQuery !== '') {{
+        currentFilter = 'all';
+        searchQuery = '';
+        const searchInput = document.getElementById('stepSearch');
+        if (searchInput) searchInput.value = '';
+        document.querySelectorAll('#tab-timeline .filter-pill').forEach(btn => btn.classList.remove('active'));
+        const allBtn = document.querySelector('#tab-timeline .filter-pill');
+        if (allBtn) allBtn.classList.add('active');
+      }}
+
+      const filtered = getFilteredSteps();
+      const isYamlMode = (allSteps.length > 0 && allSteps[0].type !== 'planner' && allSteps[0].type !== 'worker');
+
+      if (!isYamlMode) {{
+        const groups = getPlannerGroups(filtered);
+        let targetGroupIdx = -1;
+        let targetPlannerStep = -1;
+        for (let i = 0; i < groups.length; i++) {{
+          if (groups[i].workers.some(w => w.step === stepNum)) {{
+            targetGroupIdx = i;
+            targetPlannerStep = groups[i].planner.step;
+            break;
+          }}
+        }}
+
+        if (targetGroupIdx !== -1) {{
+          const targetPage = Math.floor(targetGroupIdx / stepsPerPage) + 1;
+          currentPage = targetPage;
+          renderSteps();
+
+          const drawer = document.getElementById('planner-workers-' + targetPlannerStep);
+          if (drawer) drawer.style.display = 'block';
+
+          setTimeout(() => {{
+            const stepEl = document.getElementById('step-card-' + stepNum);
+            if (stepEl) {{
+              stepEl.scrollIntoView({{ behavior: 'smooth', block: 'center' }});
+              stepEl.classList.add('highlight-pulse');
+              setTimeout(() => stepEl.classList.remove('highlight-pulse'), 3500);
+            }}
+          }}, 150);
+          return;
+        }}
+      }} else {{
+        const stepIdx = filtered.findIndex(s => s.step === stepNum);
+        if (stepIdx !== -1) {{
+          currentPage = Math.floor(stepIdx / stepsPerPage) + 1;
+          renderSteps();
+          setTimeout(() => {{
+            const stepEl = document.getElementById('step-card-' + stepNum);
+            if (stepEl) {{
+              stepEl.scrollIntoView({{ behavior: 'smooth', block: 'center' }});
+              stepEl.classList.add('highlight-pulse');
+              setTimeout(() => stepEl.classList.remove('highlight-pulse'), 3500);
+            }}
+          }}, 150);
+        }}
+      }}
+    }}
+
+    function jumpToBug(cardId) {{
+      switchTab('tab-bugs');
+      if (bugSearchQuery !== '') {{
+        bugSearchQuery = '';
+        const searchInput = document.getElementById('bugSearch');
+        if (searchInput) searchInput.value = '';
+      }}
+
+      const bugIdx = allBugs.findIndex(b => (b.card_id === cardId || b.id === cardId));
+      if (bugIdx !== -1) {{
+        const targetPage = Math.floor(bugIdx / bugsPerPage) + 1;
+        currentBugPage = targetPage;
+        renderBugs();
+      }}
+
+      setTimeout(() => {{
+        const targetId = (bugIdx !== -1 ? (allBugs[bugIdx].card_id || cardId) : cardId);
+        const bugEl = document.getElementById('bug-card-' + targetId);
+        if (bugEl) {{
+          bugEl.scrollIntoView({{ behavior: 'smooth', block: 'center' }});
+          bugEl.classList.add('highlight-pulse');
+          setTimeout(() => bugEl.classList.remove('highlight-pulse'), 3500);
+        }}
+      }}, 150);
     }}
 
     function openLightbox(imgSrc, title) {{
@@ -1968,6 +2563,97 @@ class ReportGenerator:
     function closeLightbox(event) {{
       document.getElementById('lightboxModal').classList.remove('active');
     }}
+
+    function showBugModal(cardId) {{
+      const b = allBugs.find(x => x.card_id === cardId || x.id === cardId);
+      if (!b) return;
+      
+      const b_id = b.id || cardId || 'BUG';
+      document.getElementById('modalBugId').innerText = b_id;
+      
+      const status = b.status || '激活';
+      document.getElementById('modalStatus').innerHTML = (status === 'Open' || status === '激活')
+          ? `<div style="background:rgba(244,63,94,0.15);color:#f43f5e;padding:6px 12px;border-radius:6px;font-size:13px;font-weight:700;border:1px solid rgba(244,63,94,0.3)">激活</div>`
+          : `<div style="background:rgba(16,185,129,0.15);color:#10b981;padding:6px 12px;border-radius:6px;font-size:13px;font-weight:700;border:1px solid rgba(16,185,129,0.3)">已关闭</div>`;
+      
+      const sev = b.severity || 3;
+      document.getElementById('modalSeverity').innerText = `🔥 严重度: ${{sev}}`;
+      
+      document.getElementById('modalRunId').innerText = b.run_id || "{data['run_id']}";
+      document.getElementById('modalDate').innerText = b.creation_date || b.date || '无';
+      document.getElementById('modalOccurrences').innerText = (b.occurrences !== undefined && b.occurrences !== null) ? `${{b.occurrences}} 次` : '1 次';
+      document.getElementById('modalLastSeen').innerText = b.last_seen || b.creation_date || b.date || '无';
+      document.getElementById('modalStepNum').innerText = b.step_num ? `Step ${{b.step_num}}` : (b.global_step ? `全局 Step ${{b.global_step}}` : '无对应步骤');
+      document.getElementById('modalActionType').innerText = b.action_type || '无';
+      document.getElementById('modalTargetElement').innerText = b.target_element || '无';
+      document.getElementById('modalAssignee').innerText = b.assignee || 'Unassigned';
+      
+      const tags = Array.isArray(b.tags) ? b.tags.join(', ') : (b.tags || '无');
+      document.getElementById('modalTags').innerText = tags;
+      
+      document.getElementById('modalTitleText').innerText = b.title || '无标题';
+      
+      const details = b.details || {{}};
+      const uiPath = b.ui_path || details.step || b.step || '无路径';
+      document.getElementById('modalUiPath').innerText = uiPath;
+      
+      const actualError = details.actual || b.actual || b.error_log || '无诊断详情';
+      document.getElementById('modalActual').innerText = actualError;
+      
+      const analysis = b.analysis_notes || '暂无归因分析备注';
+      document.getElementById('modalAnalysis').innerText = analysis;
+      
+      // 现场截图渲染 (支持双图对比：操作前 vs 报错现场)
+      const rel_shot = b.rel_screenshot || '';
+      const before_shot = b.before_screenshot || '';
+      let shotsHtml = '';
+      if (before_shot && rel_shot) {{
+        shotsHtml = `
+          <div class="bug-screenshots-duo">
+            <div class="bug-thumb-box" onclick="openLightbox('${{before_shot}}', '${{escapeHtml(b_id)}} 操作前 (目标位置)')" title="点击放大操作前截图">
+              <span class="bug-thumb-tag tag-before">操作前 (目标)</span>
+              <img src="${{before_shot}}" alt="Before" loading="lazy">
+              <div class="zoom-hint">🔍 点击放大</div>
+            </div>
+            <div class="bug-thumb-box" onclick="openLightbox('${{rel_shot}}', '${{escapeHtml(b_id)}} 案发现场 (报错)')" title="点击放大案发现场截图">
+              <span class="bug-thumb-tag tag-after">案发现场 (报错)</span>
+              <img src="${{rel_shot}}" alt="Crash" loading="lazy">
+              <div class="zoom-hint">🔍 点击放大</div>
+            </div>
+          </div>`;
+      }} else if (rel_shot) {{
+        shotsHtml = `
+          <div class="bug-screenshot-preview" onclick="openLightbox('${{rel_shot}}', '${{escapeHtml(b_id)}} 案发现场')">
+            <img src="${{rel_shot}}" alt="Crash Screenshot" loading="lazy">
+            <div class="zoom-hint">🔍 点击放大核验</div>
+          </div>`;
+      }} else {{
+        shotsHtml = '<span style="color:var(--text-dim);font-size:12px;">无现场截图凭据</span>';
+      }}
+      document.getElementById('modalScreenshots').innerHTML = shotsHtml;
+      
+      // 底部操作栏: 跳转至执行树步骤
+      let footerHtml = '';
+      if (b.step_num) {{
+        footerHtml += `<button class="jump-btn" onclick="closeBugModal(); jumpToStep(${{b.step_num}});">🎬 跳转至执行树对应步骤 (Step ${{b.step_num}}) ➔</button>`;
+      }}
+      footerHtml += `<button class="jump-btn" style="background:var(--bg-card);border:1px solid var(--border-subtle);color:var(--text-muted);" onclick="closeBugModal()">关闭</button>`;
+      document.getElementById('modalActionFooter').innerHTML = footerHtml;
+      
+      document.getElementById('bugModalOverlay').style.display = 'flex';
+    }}
+
+    function closeBugModal(event) {{
+      if (event && event.target && event.target.id !== 'bugModalOverlay') return;
+      document.getElementById('bugModalOverlay').style.display = 'none';
+    }}
+
+    document.addEventListener('keydown', (e) => {{
+      if (e.key === 'Escape') {{
+        closeBugModal();
+        closeLightbox();
+      }}
+    }});
 
     function escapeHtml(str) {{
       if (!str) return '';
@@ -2046,6 +2732,7 @@ class ReportGenerator:
 
     document.addEventListener('DOMContentLoaded', () => {{
       renderSteps();
+      renderBugs();
       renderSidebar();
     }});
   </script>
@@ -2111,7 +2798,7 @@ class ReportGenerator:
                         "tag": "div",
                         "text": {
                             "tag": "lark_md",
-                            "content": f"**🏷️ Run ID:** {data.get('run_id')}\n**🎯 宏观目标:** {data.get('macro_objective')}\n\n**📉 预期步数:** {data['kpi'].get('max_steps', '-')} | **预期耗时:** {data['kpi'].get('max_time', '-')}\n**📈 实际执行:** {data['kpi'].get('total_steps')} 步 | **实际耗时:** {data.get('duration')}\n\n**🐞 捕获严重缺陷:** {bugs_count} 个\n**🗺️ 触达二级页面:** {data['kpi'].get('page_scopes_count', 0)} 个"
+                            "content": f"**🏷️ Run ID:** {data.get('run_id')}\n**🎯 宏观目标:** {data.get('macro_objective')}\n\n**📉 预期步数:** {data['kpi'].get('max_steps', '-')} | **预期耗时:** {data['kpi'].get('max_time', '-')}\n**📈 实际执行:** {data['kpi'].get('total_steps')} 步 | **实际耗时:** {data.get('duration')}\n\n**🐞 捕获严重缺陷:** {bugs_count} 个\n**🗺️ 触达二级页面:** {data['kpi'].get('page_scopes_count', 0)}/{data['kpi'].get('total_menus_count', 33)} 个 (覆盖率 {data['kpi'].get('page_coverage_rate', 0):.1f}%)"
                         }
                     },
                     {
