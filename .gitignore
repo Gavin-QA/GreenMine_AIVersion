@@ -68,4 +68,5 @@ scratch_*.json
 *.swp
 *.swo
 
-
+# 本地大模型权重目录（体积达数 GB，严禁提交到 git）
+models/

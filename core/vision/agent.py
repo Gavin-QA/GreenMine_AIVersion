@@ -292,11 +292,9 @@ class VisionAgent:
                 
         # Fallback: 纯视觉预测模式
         logger.info("👀 启用纯视觉坐标预测模式 (Fallback)")
-        result = self._call_llm(
-            system_prompt=ACTION_SYSTEM_PROMPT,
-            user_prompt=f"当前页面截图如附图所示。指令：{instruction}",
-            base64_image=base64_image
-        )
+        # Use LocateAnything visual grounding model for pure visual prediction
+        from utils.locate_anything import locate_anything
+        result = locate_anything(base64_image, instruction)
         
         thought = result.get("thought", "")
         logger.info(f"💡 AI 思考链 (纯视觉): {thought}")
