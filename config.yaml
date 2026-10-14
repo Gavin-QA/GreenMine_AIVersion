@@ -1,16 +1,44 @@
-app:
-  exe_path: "D:\\LargeScreen\\zhaiwan2\\project\\se-launcher-zhaiwan\\se-launcher-zhaiwan.exe"
-  debug_port: 9223
-  ue_process_name: "zhaiwan.exe"       # 伴生 UE 进程镜像名 (若不设或为空则不检测)
-  expected_page_url: "main.html"       # 目标大屏主页面 URL 关键字
-  expected_page_title: "主界面"         # 目标大屏主页面标题关键字
-  startup_timeout: 40.0                # UE 启动与页面跳转最大容忍时间(秒)
-  start_delay: 15.0                    # 页面就绪后的 UI 稳定缓冲时间(秒)
-  no_proxy: "127.0.0.1,localhost,192.168.1.97,221.234.48.197,::1" # 代理白名单
-  viewport:
-    width: 2560
-    height: 1440
-    device_pixel_ratio: 1.5
+# ==============================================================================
+# 被测应用环境配置 (Multi-App Configuration)
+# 支持方式 1: 直接修改 active_app 为 "zhaiwan" 或 "liwutong" (极简无感秒切)
+# 支持方式 2: 使用下方的 apps 列表，或者注释/解开注释对应的配置块
+# ==============================================================================
+active_app: "zhaiwan"   # 当前激活测试的目标软件: "zhaiwan" (寨湾) 或 "liwutong" (礼五通)
+
+apps:
+  # ----------------------------------------------------------------------------
+  # 方案一：寨湾矿山大屏项目 (Zhaiwan)
+  # ----------------------------------------------------------------------------
+  zhaiwan:
+    exe_path: "D:\\LargeScreen\\zhaiwan2\\project\\se-launcher-zhaiwan\\se-launcher-zhaiwan.exe"
+    debug_port: 9223
+    ue_process_name: "zhaiwan.exe"       # 伴生 UE 进程镜像名 (若不设或为空则不检测)
+    expected_page_url: "main.html"       # 目标大屏主页面 URL 关键字
+    expected_page_title: "主界面"         # 目标大屏主页面标题关键字
+    startup_timeout: 40.0                # UE 启动与页面跳转最大容忍时间(秒)
+    start_delay: 15.0                    # 页面就绪后的 UI 稳定缓冲时间(秒)
+    no_proxy: "127.0.0.1,localhost,192.168.1.97,221.234.48.197,::1" # 代理白名单
+    viewport:
+      width: 2560
+      height: 1440
+      device_pixel_ratio: 1.5
+
+  # ----------------------------------------------------------------------------
+  # 方案二：礼五通矿山大屏项目 (Liwutong)
+  # ----------------------------------------------------------------------------
+  liwutong:
+    exe_path: "D:\\LargeScreen\\liwutong\\se-launcher-liwutong\\se-launcher-liwutong.exe"
+    debug_port: 9223
+    ue_process_name: "liwutong.exe"      # 伴生 UE 进程镜像名
+    expected_page_url: "main.html"       # 目标大屏主页面 URL 关键字 (端口 9529)
+    expected_page_title: "主界面"         # 目标大屏主页面标题关键字
+    startup_timeout: 40.0                # UE 启动与页面跳转最大容忍时间(秒)
+    start_delay: 15.0                    # 页面就绪后的 UI 稳定缓冲时间(秒)
+    no_proxy: "127.0.0.1,localhost,192.168.1.97,221.234.48.197,::1" # 代理白名单
+    viewport:
+      width: 2560
+      height: 1440
+      device_pixel_ratio: 1.5
 
 llm:
   provider: "openai" # 使用 OpenAI 兼容模式

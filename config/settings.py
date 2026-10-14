@@ -28,10 +28,22 @@ class Settings:
             except Exception as e:
                 print(f"Warning: 读取 config.yaml 失败: {e}")
 
-        app_cfg = self._yaml_config.get("app", {})
+        # 2. 解析被测应用配置 (支持多应用切换 active_app + apps，同时完全向后兼容原有 app 节点与注释法)
+        active_app_key = os.getenv("ACTIVE_APP") or self._yaml_config.get("active_app")
+        apps_dict = self._yaml_config.get("apps", {})
+
+        if active_app_key and active_app_key in apps_dict:
+            app_cfg = apps_dict[active_app_key]
+        elif "app" in self._yaml_config:
+            app_cfg = self._yaml_config.get("app", {})
+        elif apps_dict:
+            app_cfg = next(iter(apps_dict.values()))
+        else:
+            app_cfg = {}
+
         llm_cfg = self._yaml_config.get("llm", {})
 
-        # 2. 核心应用与调试配置（优先 .env，其次 yaml）
+        # 核心应用与调试配置（优先 .env，其次 yaml）
         self.app_path: str = os.getenv("APP_PATH") or app_cfg.get("exe_path", "")
         
         # 端口可以从 yaml 拿，环境变量优先级更高
