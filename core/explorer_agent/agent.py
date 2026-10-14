@@ -133,6 +133,8 @@ class ExplorerAgent:
                 json.dump(self.page_tree, f, ensure_ascii=False, indent=2)
 
         recent_sub_objectives = []
+        consecutive_planner_failures = 0
+        MAX_PLANNER_FAILURES = 8
 
         while steps_taken < max_steps:
             elapsed_mins = (time.time() - exploration_start_time) / 60.0
@@ -199,8 +201,40 @@ class ExplorerAgent:
                 logger.info(f"💡 [Planner] 思考链: {thought}")
                 logger.info(f"🎯 [Planner] 下达新任务: '{sub_objective}', 预算步数: {budget}")
                 
+                # 规划成功，清零连续失败计数器
+                consecutive_planner_failures = 0
+                
             except Exception as e:
-                logger.error(f"❌ Planner 规划失败: {e}")
+                consecutive_planner_failures += 1
+                logger.error(f"❌ Planner 规划失败 ({consecutive_planner_failures}/{MAX_PLANNER_FAILURES}): {e}")
+
+                # 防死锁熔断判定 (达到8次上限直接熔断收工)
+                if consecutive_planner_failures >= MAX_PLANNER_FAILURES:
+                    logger.critical("=" * 70)
+                    logger.critical(
+                        f"🚨 [防死锁熔断] Planner 连续失败已达 {MAX_PLANNER_FAILURES} 次上限！\n"
+                        f"   判定被测客户端进程已崩溃退出或 CDP 调试通道彻底断开，主动触发紧急收工与产物归档！\n"
+                        f"   最后捕获致命异常: {e}"
+                    )
+                    logger.critical("=" * 70)
+
+                    # 自动上报崩溃缺陷至全局缺陷库
+                    try:
+                        self.bug_reporter.report_bug(
+                            run_id=self.run_id,
+                            title=f"[{self.run_id}] 客户端异常崩溃/调试连接断开 (防死锁熔断)",
+                            step_prompt=f"自动化探索 Planner 阶段连续 {MAX_PLANNER_FAILURES} 次无法捕获界面，CDP 调试通道已断开",
+                            actual_result=f"致命异常: 目标页面或客户端进程已关闭。\n底层报错堆栈: {e}",
+                            action_type="crash_circuit_breaker",
+                            target_element="Electron客户端主窗口",
+                            global_step=f"GlobalStep_{steps_taken}",
+                            ui_path=" -> ".join(self.current_path) if hasattr(self, "current_path") and self.current_path else "应用主界面"
+                        )
+                    except Exception as report_err:
+                        logger.warning(f"熔断时自动上报崩溃缺陷异常: {report_err}")
+
+                    break
+
                 logger.info("⏳ 休息 5 秒后重试 Planner...")
                 time.sleep(5.0)
                 continue
