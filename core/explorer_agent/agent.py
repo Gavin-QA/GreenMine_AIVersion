@@ -134,7 +134,8 @@ class ExplorerAgent:
 
         recent_sub_objectives = []
         consecutive_planner_failures = 0
-        MAX_PLANNER_FAILURES = 8
+        from config.settings import settings
+        MAX_PLANNER_FAILURES = getattr(settings, "max_planner_failures", 8)
 
         while steps_taken < max_steps:
             elapsed_mins = (time.time() - exploration_start_time) / 60.0
@@ -879,14 +880,14 @@ class ExplorerAgent:
 
     def start_smoke_tour(self, context: str = ""):
         """
-        全量 33 个二级菜单冒烟巡检模式 (Full Menu Smoke Tour):
-        单次启动 Electron 进程，按顺序遍历 6 个一级模块下的全部 33 个二级菜单：
+        全量二级业务菜单冒烟巡检模式 (Full Menu Smoke Tour):
+        单次启动 Electron 进程，按顺序遍历一级模块下的全部二级业务菜单：
         1. 验证两级菜单跳转：悬停对应一级菜单展开下拉框 -> 点击二级菜单进入目标页面；
         2. 页面就绪后，由 Planner 进行 1 步宏观规划，Worker 执行 1 步页面内业务操作；
         3. 纯日志记录，不生成/修改 Mermaid 架构图（仅作为一条全量冒烟测试用例），单次启动零重启完成全屏巡检。
         """
         logger.info("=" * 60)
-        logger.info(f"🚀 启动【33个二级菜单全量冒烟巡检模式】(Smoke Tour) | Run ID: {self.run_id}")
+        logger.info(f"🚀 启动【全量二级菜单冒烟巡检模式】(Smoke Tour) | Run ID: {self.run_id}")
         logger.info("=" * 60)
 
         base_tree = PageMapBuilder.parse_base_rules()
@@ -1041,7 +1042,7 @@ class ExplorerAgent:
         # -----------------------------------------------------------------
         elapsed = time.time() - start_time
         logger.info("\n" + "=" * 70)
-        logger.info("🏁 【33 个二级菜单全量冒烟巡检完成报告】")
+        logger.info(f"🏁 【全量二级菜单冒烟巡检完成报告】(共遍历 {total_menus} 个菜单)")
         logger.info("=" * 70)
         logger.info(f"⏱️ 巡检总耗时: {elapsed:.1f} 秒 ({elapsed/60:.1f} 分钟)")
         logger.info(f"📊 二级菜单跳转覆盖率: {jump_success_count}/{total_menus} ({(jump_success_count/total_menus)*100:.1f}%)")

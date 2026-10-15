@@ -220,7 +220,7 @@ class ReportGenerator:
         except Exception as e:
             logger.warning(f"页面作用域归一化失败: {e}")
             data["kpi"]["page_scopes_count"] = len(raw_scopes)
-            data["kpi"]["total_menus_count"] = 33
+            data["kpi"]["total_menus_count"] = len(raw_scopes) if len(raw_scopes) > 0 else 1
             data["kpi"]["page_coverage_rate"] = 0.0
 
         # 加载 Launcher 客户端环境快照 (env_info.json)
@@ -296,9 +296,9 @@ class ReportGenerator:
                 if macro_match3:
                     data["macro_objective"] = macro_match3.group(1).strip()
                 else:
-                    smoke_match = re.search(r"🚀 启动【33个二级菜单全量冒烟巡检模式】", text)
+                    smoke_match = re.search(r"🚀 启动【(.*?)全量冒烟巡检模式】", text)
                     if smoke_match:
-                        data["macro_objective"] = "33个二级菜单全量冒烟巡检"
+                        data["macro_objective"] = "全量二级业务菜单冒烟巡检"
 
         # 统计 Planner 次数
         data["kpi"]["planner_phases"] = len(re.findall(r"🧠 \[Planner Phase\]", text))

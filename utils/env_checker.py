@@ -22,15 +22,26 @@ KNOWN_ENVIRONMENTS = {
 CURRENT_LAUNCHER_ENV: Dict[str, Any] = {}
 
 
-def detect_environment_type(nplusone_url: str) -> Tuple[str, str]:
+def detect_environment_type(nplusone_url: str, custom_environments: Optional[Dict[str, str]] = None) -> Tuple[str, str]:
     """
     根据 nplusoneUrl 判定当前环境类型
+    优先匹配 config.yaml 中配置的 custom_environments，其次匹配内置字典
     返回: (env_key, env_display_name)
     """
     if not nplusone_url:
         return "unknown", "未配置后端地址 (Unknown)"
 
     clean_url = nplusone_url.strip().rstrip("/")
+    
+    # 1. 优先根据当前应用配置中的 environments 匹配
+    if custom_environments and isinstance(custom_environments, dict):
+        for env_k, env_val in custom_environments.items():
+            if env_val and (env_val.rstrip("/") in clean_url or clean_url in env_val.rstrip("/")):
+                name_map = {"prod": "生产环境 (Production)", "test": "测试环境 (Testing)"}
+                display_name = name_map.get(env_k.lower(), f"{env_k.upper()} 环境")
+                return env_k.lower(), display_name
+
+    # 2. 兜底已知环境映射表
     for url, info in KNOWN_ENVIRONMENTS.items():
         if url.rstrip("/") in clean_url or clean_url in url.rstrip("/"):
             return info["key"], info["name"]
@@ -110,7 +121,8 @@ def check_launcher_environment(settings: Any, ignore_check: bool = False, custom
     ue_name = str(data.get("UEName", active_app)).strip()
     start_port = data.get("startPort", "")
 
-    env_key, env_name = detect_environment_type(nplusone_url)
+    custom_envs = env_check_cfg.get("environments", {})
+    env_key, env_name = detect_environment_type(nplusone_url, custom_envs)
 
     CURRENT_LAUNCHER_ENV = {
         "app_name": active_app,
@@ -165,8 +177,12 @@ def check_launcher_environment(settings: Any, ignore_check: bool = False, custom
         return True
 
     # 未通过处理
-    expected_name_map = {"prod": "生产环境 (http://221.234.48.197:8808)", "test": "测试环境 (http://121.43.58.203:8783)"}
-    exp_display = expected_name_map.get(expected_env, expected_env)
+    exp_url = custom_envs.get(expected_env, "")
+    expected_name_map = {
+        "prod": f"生产环境 ({exp_url})" if exp_url else "生产环境 (Production)",
+        "test": f"测试环境 ({exp_url})" if exp_url else "测试环境 (Testing)"
+    }
+    exp_display = expected_name_map.get(expected_env, f"{expected_env} 环境 ({exp_url})" if exp_url else expected_env)
 
     err_msgs = []
     if not env_matches:

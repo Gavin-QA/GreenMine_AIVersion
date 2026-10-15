@@ -92,7 +92,13 @@ class Settings:
         self.rules_file: str = os.getenv("RULES_FILE") or app_cfg.get("rules_file", default_rules)
         self.env_check_cfg: dict = app_cfg.get("env_check", {})
 
-        # 7. 日志与报告配置
+        # 7. 探索模式与大模型微调配置
+        explorer_cfg = self._yaml_config.get("explorer", {})
+        self.max_planner_failures: int = int(os.getenv("MAX_PLANNER_FAILURES") or explorer_cfg.get("max_planner_failures", 8))
+        self.llm_max_tokens: int = int(os.getenv("LLM_MAX_TOKENS") or explorer_cfg.get("max_tokens", 1024))
+        self.llm_max_retries: int = int(os.getenv("LLM_MAX_RETRIES") or explorer_cfg.get("max_retries", 3))
+
+        # 8. 日志与报告配置
         self.log_level: str = os.getenv("LOG_LEVEL", "INFO")
         self.log_to_console: bool = os.getenv("LOG_TO_CONSOLE", "true").lower() == "true"
         self.log_to_file: bool = os.getenv("LOG_TO_FILE", "true").lower() == "true"

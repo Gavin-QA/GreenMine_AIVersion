@@ -41,6 +41,10 @@ class VisionAgent:
         self.base_url = settings.llm_base_url.rstrip("/")
         self.model = settings.llm_model
         self.provider = settings.llm_provider
+        self.temperature = float(getattr(settings, "llm_temperature", 0.1))
+        self.timeout = float(getattr(settings, "llm_timeout", 60.0))
+        self.max_tokens = int(getattr(settings, "llm_max_tokens", 1024))
+        self.max_retries = int(getattr(settings, "llm_max_retries", 3))
         self.session = requests.Session()
 
         if not self.api_key:
@@ -104,12 +108,12 @@ class VisionAgent:
         payload = {
             "model": self.model,
             "messages": messages,
-            "temperature": 0.1,  # 视觉识别需要低温度以保证稳定性
-            "max_tokens": 1024,
+            "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
             "response_format": {"type": "json_object"} if self.provider == "openai" else None
         }
 
-        max_retries = 3
+        max_retries = self.max_retries
         last_exception = None
 
         for attempt in range(1, max_retries + 1):
@@ -119,7 +123,7 @@ class VisionAgent:
                 else:
                     logger.info(f"🧠 [VisionAgent] 请求大模型重试 ({attempt}/{max_retries}): {self.model} ...")
 
-                resp = self.session.post(endpoint, json=payload, headers=headers, timeout=60)
+                resp = self.session.post(endpoint, json=payload, headers=headers, timeout=self.timeout)
                 resp.raise_for_status()
                 
                 data = resp.json()

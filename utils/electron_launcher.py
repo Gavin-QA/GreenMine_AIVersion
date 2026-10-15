@@ -191,11 +191,18 @@ class ElectronLauncher:
             pass
         return False
 
-    def wait_for_ue_process(self, process_name: str = "zhaiwan.exe", timeout: float = 40.0, min_memory_mb: float = 100.0) -> dict:
+    def wait_for_ue_process(self, process_name: Optional[str] = None, timeout: float = 40.0, min_memory_mb: float = 100.0) -> dict:
         """
         等待伴生 UE 进程启动并进入正常运行状态。
         若超时未拉起或发生持续卡死，则抛出明确异常实现快速失败。
         """
+        if not process_name:
+            try:
+                from config.settings import settings
+                process_name = getattr(settings, "ue_process_name", "") or f"{getattr(settings, 'active_app', 'app')}.exe"
+            except Exception:
+                process_name = "app.exe"
+
         logger.info(f"⏳ [UE Process Probe] 正在监听伴生 UE 进程 ({process_name}) 运行状态 (超时: {timeout}s)...")
         start_t = time.time()
         consecutive_hung = 0
@@ -433,7 +440,7 @@ class ElectronLauncher:
             except Exception as e:
                 logger.warning(f"等待进程退出时发生异常: {e}")
             
-            # 启动器关闭时，UE 引擎 (zhaiwan.exe) 会随之正常退出，不需要再用 taskkill 暴力强杀，避免导致显卡驱动蓝屏 (BSOD)。
+            # 启动器关闭时，伴生 UE 引擎会随之正常退出，不需要再用 taskkill 暴力强杀，避免导致显卡驱动蓝屏 (BSOD)。
 
             time.sleep(1.5)  # 物理等待 1.5s 确保 Windows 回收 9222 端口，防止连抽用例时端口死锁
 

@@ -30,7 +30,7 @@ def parse_args():
     parser.add_argument("--all", action="store_true", help="运行 test_cases 目录下的所有用例")
     parser.add_argument("--ignore-errors", action="store_true", help="全局忽略步骤报错，继续执行后续步骤")
     parser.add_argument("--explore", type=str, help="开启自主探索模式，并指定宏观探索目标")
-    parser.add_argument("--tour", "--smoke", dest="tour", action="store_true", help="33个二级菜单全量冒烟巡检模式：单次启动依次遍历所有二级菜单，验证两级跳转与页面轻量交互（纯日志，不生成Mermaid架构图）")
+    parser.add_argument("--tour", "--smoke", dest="tour", action="store_true", help="二级菜单全量冒烟巡检模式：单次启动依次遍历当前软件的全部二级业务菜单，验证两级跳转与页面轻量交互（纯日志，不生成Mermaid架构图）")
     parser.add_argument("--explore-context", type=str, action="append", help="指定针对探索模式的项目背景知识或交互规则，可多次使用，支持纯文本或文件路径")
     parser.add_argument("--resume-from", type=str, help="指定上一次探索的运行目录（如 reports/runs/explore_xxx 或旧 logs/xxx），以实现断点续传（继承记忆与页面架构树）")
     parser.add_argument("--reexplore", type=str, nargs="?", const="auto", help="强制重新探索指定模块（即使已在架构树中存在）。可指定模块名（如 智能通风），若不带参数则自动从 --explore 提示词中提取")
@@ -183,7 +183,7 @@ def run_explore_mode(driver: ElectronDriver, vision_agent: VisionAgent, args):
 
 
 def run_smoke_tour_mode(driver: ElectronDriver, vision_agent: VisionAgent, args):
-    """运行 33 个二级菜单全量冒烟巡检模式"""
+    """运行二级业务菜单全量冒烟巡检模式"""
     LoggerManager().switch_file_handler("smoke_tour")
     explorer = ExplorerAgent(driver, vision_agent)
     
@@ -291,7 +291,7 @@ def main():
         sys.exit(0)
 
     if getattr(args, "tour", False):
-        mode_name = "33个二级菜单全量冒烟巡检 (Smoke Tour)"
+        mode_name = "全量二级业务菜单冒烟巡检 (Smoke Tour)"
     elif args.explore:
         mode_name = "自主探索"
     else:

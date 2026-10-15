@@ -79,7 +79,7 @@ class PageMapBuilder:
 
         total_canonical = len(canonical_all_l2)
         if total_canonical == 0:
-            total_canonical = 33  # 兜底默认值
+            total_canonical = sum(len(sub) for sub in base_tree.values()) if base_tree else (len(base_tree) or 1)
 
         if isinstance(raw_scopes, dict):
             scope_list = list(raw_scopes.keys())

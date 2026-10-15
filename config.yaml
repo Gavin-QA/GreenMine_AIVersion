@@ -3,7 +3,7 @@
 # 支持方式 1: 直接修改 active_app 为 "zhaiwan" 或 "liwutong" (极简无感秒切)
 # 支持方式 2: 使用下方的 apps 列表，或者注释/解开注释对应的配置块
 # ==============================================================================
-active_app: "zhaiwan"   # 当前激活测试的目标软件: "zhaiwan" (寨湾) 或 "liwutong" (礼五通)
+active_app: "zhaiwan"   # 当前激活测试的目标软件: "zhaiwan" (寨湾) 或 "liwutong" (里伍铜)
 
 apps:
   # ----------------------------------------------------------------------------
@@ -26,16 +26,19 @@ apps:
     # 前置环境准入巡检 (防止在旧测试环境或过期前端包跑通宵)
     env_check:
       enabled: true
-      expected_env: "prod"     # 期望环境: "prod" (221.234.48.197:8808) 或 "test" (121.43.58.203:8783)
+      expected_env: "prod"     # 期望环境: "prod" 或 "test"
       strict: true             # true: 环境不匹配时直接阻断退出；false: 仅打印告警
       # expected_frontend: ""  # 可选: 校验前端包目录是否包含指定关键字 (例如 "dist(9-21)")
+      environments:
+        prod: "http://221.234.48.197:8808"
+        test: "http://121.43.58.203:8783"
 
   # ----------------------------------------------------------------------------
-  # 方案二：礼五通矿山大屏项目 (Liwutong)
+  # 方案二：里伍铜矿山大屏项目 (Liwutong)
   # ----------------------------------------------------------------------------
   liwutong:
     exe_path: "D:\\LargeScreen\\liwutong\\se-launcher-liwutong\\se-launcher-liwutong.exe"
-    rules_file: "docs/explore_rules_liwutong.md" # 👈 礼五通矿山大屏专属探索规矩与菜单基准
+    rules_file: "docs/explore_rules_liwutong.md" # 👈 里伍铜矿山大屏专属探索规矩与菜单基准
     debug_port: 9223
     ue_process_name: "liwutong.exe"      # 伴生 UE 进程镜像名
     expected_page_url: "main.html"       # 目标大屏主页面 URL 关键字 (端口 9529)
@@ -52,6 +55,13 @@ apps:
       enabled: false           # 里伍铜 默认暂不强制开启，可按需启用
       expected_env: "prod"
       strict: false
+      environments:
+        prod: "http://10.126.126.2:8809"
+
+explorer:
+  max_planner_failures: 8    # Planner 连续规划失败安全熔断上限 (防止死锁)
+  max_tokens: 1024           # 视觉规划单次输出 Token 上限
+  max_retries: 3             # 大模型通信异常自动重试次数
 
 llm:
   provider: "openai" # 使用 OpenAI 兼容模式
