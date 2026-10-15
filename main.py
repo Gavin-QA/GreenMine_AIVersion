@@ -139,10 +139,10 @@ def run_explore_mode(driver: ElectronDriver, vision_agent: VisionAgent, args):
         context_str = "\n".join(contexts)
     else:
         # 自动加载当前激活应用的 rules_file
-        rules_path_str = getattr(settings, "rules_file", "docs/explore_rules.md")
+        rules_path_str = getattr(settings, "rules_file", "docs/explore_rules_zhaiwan.md")
         default_rules = Path(rules_path_str)
         if not default_rules.exists():
-            default_rules = Path("docs") / "explore_rules.md"
+            default_rules = Path("docs") / "explore_rules_zhaiwan.md"
         if default_rules.exists():
             try:
                 context_str = default_rules.read_text(encoding="utf-8").strip()
@@ -200,10 +200,10 @@ def run_smoke_tour_mode(driver: ElectronDriver, vision_agent: VisionAgent, args)
                 contexts.append(ctx.strip())
         context_str = "\n".join(contexts)
     else:
-        rules_path_str = getattr(settings, "rules_file", "docs/explore_rules.md")
+        rules_path_str = getattr(settings, "rules_file", "docs/explore_rules_zhaiwan.md")
         default_rules = Path(rules_path_str)
         if not default_rules.exists():
-            default_rules = Path("docs") / "explore_rules.md"
+            default_rules = Path("docs") / "explore_rules_zhaiwan.md"
         if default_rules.exists():
             try:
                 context_str = default_rules.read_text(encoding="utf-8").strip()

@@ -26,9 +26,9 @@ class PageMapBuilder:
                     Path("docs") / Path(configured_rules).name
                 ])
             candidates.extend([
-                DOCS_DIR / "explore_rules.md",
-                Path("docs") / "explore_rules.md",
-                Path(__file__).resolve().parent.parent.parent / "docs" / "explore_rules.md"
+                DOCS_DIR / "explore_rules_zhaiwan.md",
+                Path("docs") / "explore_rules_zhaiwan.md",
+                Path(__file__).resolve().parent.parent.parent / "docs" / "explore_rules_zhaiwan.md"
             ])
             rules_path = None
             for cand in candidates:
