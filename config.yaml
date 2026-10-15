@@ -11,6 +11,7 @@ apps:
   # ----------------------------------------------------------------------------
   zhaiwan:
     exe_path: "D:\\LargeScreen\\zhaiwan2\\project\\se-launcher-zhaiwan\\se-launcher-zhaiwan.exe"
+    rules_file: "docs/explore_rules_zhaiwan.md"  # 👈 寨湾矿山大屏专属探索规矩与菜单基准
     debug_port: 9223
     ue_process_name: "zhaiwan.exe"       # 伴生 UE 进程镜像名 (若不设或为空则不检测)
     expected_page_url: "main.html"       # 目标大屏主页面 URL 关键字
@@ -28,6 +29,7 @@ apps:
   # ----------------------------------------------------------------------------
   liwutong:
     exe_path: "D:\\LargeScreen\\liwutong\\se-launcher-liwutong\\se-launcher-liwutong.exe"
+    rules_file: "docs/explore_rules_liwutong.md" # 👈 礼五通矿山大屏专属探索规矩与菜单基准
     debug_port: 9223
     ue_process_name: "liwutong.exe"      # 伴生 UE 进程镜像名
     expected_page_url: "main.html"       # 目标大屏主页面 URL 关键字 (端口 9529)

@@ -123,7 +123,7 @@ def run_explore_mode(driver: ElectronDriver, vision_agent: VisionAgent, args):
     LoggerManager().switch_file_handler("explorer")
     explorer = ExplorerAgent(driver, vision_agent)
     
-    # 解析并拼接探索模式的先验知识
+    # 解析并拼接探索模式的先验知识 (若未指定，默认自动挂载当前激活应用的 rules_file)
     context_str = ""
     if args.explore_context:
         contexts = []
@@ -137,6 +137,18 @@ def run_explore_mode(driver: ElectronDriver, vision_agent: VisionAgent, args):
             else:
                 contexts.append(ctx.strip())
         context_str = "\n".join(contexts)
+    else:
+        # 自动加载当前激活应用的 rules_file
+        rules_path_str = getattr(settings, "rules_file", "docs/explore_rules.md")
+        default_rules = Path(rules_path_str)
+        if not default_rules.exists():
+            default_rules = Path("docs") / "explore_rules.md"
+        if default_rules.exists():
+            try:
+                context_str = default_rules.read_text(encoding="utf-8").strip()
+                logging.getLogger("main").info(f"📘 [Context] 已自动挂载当前被测软件业务规则库: {default_rules}")
+            except Exception as e:
+                logging.getLogger("main").warning(f"读取规则库失败: {e}")
         
     reexplore_module = None
     # 1. 显式传入了 --reexplore 参数
@@ -188,10 +200,14 @@ def run_smoke_tour_mode(driver: ElectronDriver, vision_agent: VisionAgent, args)
                 contexts.append(ctx.strip())
         context_str = "\n".join(contexts)
     else:
-        default_rules = Path("docs") / "explore_rules.md"
+        rules_path_str = getattr(settings, "rules_file", "docs/explore_rules.md")
+        default_rules = Path(rules_path_str)
+        if not default_rules.exists():
+            default_rules = Path("docs") / "explore_rules.md"
         if default_rules.exists():
             try:
                 context_str = default_rules.read_text(encoding="utf-8").strip()
+                logging.getLogger("main").info(f"📘 [Smoke] 已自动挂载当前被测软件业务规则库: {default_rules}")
             except Exception:
                 pass
             

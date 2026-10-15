@@ -16,11 +16,25 @@ class PageMapBuilder:
         """从 explore_rules.md 中提取预设的一、二级菜单，作为动态架构树的底座"""
         base_tree = {}
         try:
-            rules_path = DOCS_DIR / "explore_rules.md"
-            if not rules_path.exists():
-                rules_path = Path("docs") / "explore_rules.md"
-            if not rules_path.exists():
-                rules_path = Path(__file__).resolve().parent.parent.parent / "docs" / "explore_rules.md"
+            from config.settings import settings
+            configured_rules = getattr(settings, "rules_file", None)
+            candidates = []
+            if configured_rules:
+                candidates.extend([
+                    Path(configured_rules),
+                    DOCS_DIR / Path(configured_rules).name,
+                    Path("docs") / Path(configured_rules).name
+                ])
+            candidates.extend([
+                DOCS_DIR / "explore_rules.md",
+                Path("docs") / "explore_rules.md",
+                Path(__file__).resolve().parent.parent.parent / "docs" / "explore_rules.md"
+            ])
+            rules_path = None
+            for cand in candidates:
+                if cand and cand.exists() and cand.is_file():
+                    rules_path = cand
+                    break
 
             if rules_path.exists():
                 content = rules_path.read_text(encoding="utf-8")
