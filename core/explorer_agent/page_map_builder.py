@@ -25,11 +25,14 @@ class PageMapBuilder:
                     DOCS_DIR / Path(configured_rules).name,
                     Path("docs") / Path(configured_rules).name
                 ])
-            candidates.extend([
-                DOCS_DIR / "explore_rules_zhaiwan.md",
-                Path("docs") / "explore_rules_zhaiwan.md",
-                Path(__file__).resolve().parent.parent.parent / "docs" / "explore_rules_zhaiwan.md"
-            ])
+            active_app = getattr(settings, "active_app", "")
+            if active_app and active_app != "default":
+                app_rules_name = f"explore_rules_{active_app}.md"
+                candidates.extend([
+                    DOCS_DIR / app_rules_name,
+                    Path("docs") / app_rules_name,
+                    Path(__file__).resolve().parent.parent.parent / "docs" / app_rules_name
+                ])
             rules_path = None
             for cand in candidates:
                 if cand and cand.exists() and cand.is_file():

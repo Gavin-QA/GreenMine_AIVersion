@@ -37,11 +37,12 @@ class Settings:
         elif "app" in self._yaml_config:
             app_cfg = self._yaml_config.get("app", {})
         elif apps_dict:
-            app_cfg = next(iter(apps_dict.values()))
+            active_app_key = next(iter(apps_dict.keys()))
+            app_cfg = apps_dict[active_app_key]
         else:
             app_cfg = {}
 
-        self.active_app: str = active_app_key or "zhaiwan"
+        self.active_app: str = active_app_key or "default"
         llm_cfg = self._yaml_config.get("llm", {})
 
         # 核心应用与调试配置（优先 .env，其次 yaml）
@@ -80,13 +81,15 @@ class Settings:
         self.launch_args: list = []
 
         # 6. UE 伴生进程与页面跳转健康探测配置
-        self.ue_process_name: str = os.getenv("UE_PROCESS_NAME") or app_cfg.get("ue_process_name", "zhaiwan.exe")
+        default_ue_name = f"{self.active_app}.exe" if self.active_app and self.active_app != "default" else "app.exe"
+        self.ue_process_name: str = os.getenv("UE_PROCESS_NAME") or app_cfg.get("ue_process_name", default_ue_name)
         self.expected_page_url: str = os.getenv("EXPECTED_PAGE_URL") or app_cfg.get("expected_page_url", "main.html")
         self.expected_page_title: str = os.getenv("EXPECTED_PAGE_TITLE") or app_cfg.get("expected_page_title", "主界面")
         self.startup_timeout: float = float(os.getenv("STARTUP_TIMEOUT") or app_cfg.get("startup_timeout", 40.0))
         self.start_delay: float = float(os.getenv("START_DELAY") or app_cfg.get("start_delay", 15.0))
         self.no_proxy: str = os.getenv("NO_PROXY") or app_cfg.get("no_proxy", "127.0.0.1,localhost,192.168.1.97,221.234.48.197,::1")
-        self.rules_file: str = os.getenv("RULES_FILE") or app_cfg.get("rules_file", "docs/explore_rules_zhaiwan.md")
+        default_rules = f"docs/explore_rules_{self.active_app}.md" if self.active_app and self.active_app != "default" else "docs/explore_rules.md"
+        self.rules_file: str = os.getenv("RULES_FILE") or app_cfg.get("rules_file", default_rules)
         self.env_check_cfg: dict = app_cfg.get("env_check", {})
 
         # 7. 日志与报告配置
