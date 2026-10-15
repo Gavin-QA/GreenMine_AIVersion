@@ -51,6 +51,8 @@ class ExplorerAgent:
         self.last_l2_route = None  # 记录当前所处的二级路由元组 (L1, L2)，用于严格判定跨页跃迁并重置状态
         self.failed_counts = {}  # 记录各目标的失败/报错次数，用于触发熔断保护 (Fault Circuit Breaker)
         self.chart_data_buffer = {}  # 缓存图表全量节点数据，用于集中断言与跨弹窗数据暂存 (Batch Chart Inspector)
+        self.is_panel_hidden = False  # 记录大屏 2D 业务面板是否被“一键隐藏/收起”
+        self.mailing_dialog_open = False  # 记录顶部“迈灵”AI 助手底部对话弹窗是否处于打开状态
 
 
     def start_exploration(self, objective: str, max_steps: int = 20, max_time_mins: int = 10, context: str = "", resume_from: Optional[str] = None, reexplore_module: Optional[str] = None):
@@ -152,11 +154,18 @@ class ExplorerAgent:
                 planner_img_path = self.explore_dir / f"plan_step_{steps_taken+1}.png"
                 base64_img = self.driver.capture_screenshot_base64(str(planner_img_path), dim_background=True)
                 
+                # 动态注入闭环状态与警报 (一键隐藏与迈灵弹窗)
+                planner_context = context
+                if self.is_panel_hidden:
+                    planner_context += "\n⚠️【极度紧急：大屏处于一键隐藏状态】当前页面 2D 业务面板已被收起/隐藏！画面仅剩三维场景！必须优先规划子目标为：'点击右上角【一键展开/一键显示】按钮（含 << 图标）恢复大屏面板显示'！绝对严禁规划任何其他业务操作！\n"
+                if self.mailing_dialog_open or any("迈灵" in m for m in self.container_stack):
+                    planner_context += "\n⚠️【极度紧急：【迈灵】助手对话弹窗处于打开状态】当前屏幕底部悬浮着【迈灵】AI助手对话窗，遮挡了底部业务区！必须优先规划子目标为：'再次点击顶部【迈灵】图标或点击底部对话框关闭按钮将其关闭'！严禁在对话窗未关闭时操作其他组件！\n"
+
                 plan = self.vision.plan_sub_objective(
                     macro_objective=objective,
                     base64_image=base64_img,
                     global_history=global_history,
-                    context=context,
+                    context=planner_context,
                     current_page_tree=self.page_tree,
                     reexplore_module=reexplore_module,
                     recent_sub_objectives=recent_sub_objectives,
@@ -264,10 +273,17 @@ class ExplorerAgent:
 
                 # 3. 将截图与子目标送给 Worker 决策
                 try:
+                    # 动态注入闭环状态与警报 (一键隐藏与迈灵弹窗)
+                    worker_context = context
+                    if self.is_panel_hidden:
+                        worker_context += "\n⚠️【极度紧急：大屏处于一键隐藏状态】当前页面 2D 业务面板已被收起/隐藏！下一步必须且只能执行：点击右上角【一键展开/一键显示】按钮（含 << 图标，如 class_foldBarRightunfold）恢复大屏面板显示！\n"
+                    if self.mailing_dialog_open or any("迈灵" in m for m in self.container_stack):
+                        worker_context += "\n⚠️【极度紧急：【迈灵】助手对话弹窗处于打开状态】当前屏幕底部悬浮着【迈灵】AI助手对话窗！下一步必须立即将其关闭：可再次点击顶部【迈灵】图标，或点击底部对话框右上角关闭按钮❌！\n"
+
                     decision = self.vision.execute_sub_objective(
                         sub_objective=sub_objective,
                         base64_image=base64_img,
-                        context=context,
+                        context=worker_context,
                         history=action_history,
                         global_history=global_history,
                         current_page_tree=self.page_tree,
@@ -301,6 +317,8 @@ class ExplorerAgent:
                         logger.info(f"🧭 [Navigation] 跨二级页面路由跃迁: {self.last_l2_route} -> {current_l2}，强行重置 active_tab 与容器栈！")
                         self.container_stack.clear()
                         self.active_tab = None
+                        self.is_panel_hidden = False
+                        self.mailing_dialog_open = False
                     self.last_l2_route = current_l2
                     self.driver.set_page_scope(f"{current_ui_path[0]} -> {current_ui_path[1]}")
                 elif current_ui_path and isinstance(current_ui_path, list) and len(current_ui_path) == 1:
@@ -337,6 +355,8 @@ class ExplorerAgent:
                             logger.info(f"🧭 [Navigation] 检测到全局路由跃迁: 前往 [{l1} -> {clean_target}]")
                             self.container_stack.clear()
                             self.active_tab = None
+                            self.is_panel_hidden = False
+                            self.mailing_dialog_open = False
                             self.last_l2_route = (l1, clean_target)
                             break
 
@@ -431,26 +451,48 @@ class ExplorerAgent:
                     action_success = True
 
                 elif action_type in ("click", "hover"):
-                    # 模态逃逸防御：如果当前处于模态弹窗中，但试图与顶部导航栏交互，自动定位并物理点击右上角关闭按钮解除遮罩阻断
+                    # 模态逃逸防御：如果当前处于模态弹窗/迈灵对话框中，但试图与顶部导航栏或页面其他非弹窗区域交互，自动解除阻断
+                    should_escape = False
                     if is_nav_interaction and self.container_stack:
-                        logger.warning(f"🛡️ [Modal Escape] 检测到页面仍有模态遮罩/查看器未关闭 ({self.container_stack})，将阻断顶部导航栏交互！自动定位并物理点击右上角关闭按钮【❌】...")
+                        should_escape = True
+                    elif (self.mailing_dialog_open or any("迈灵" in m for m in self.container_stack)) and not any(k in (element_desc or "") for k in ["迈灵", "close", "关闭", "❌", "收起"]):
+                        should_escape = True
+
+                    if should_escape and self.container_stack:
+                        logger.warning(f"🛡️ [Modal Escape] 检测到页面仍有模态遮罩/浮层未关闭 ({self.container_stack})，将阻断其他交互！自动定位并物理点击关闭按钮解除阻断...")
                         try:
                             dom_elements = self.driver.extract_interactive_elements()
-                            cx, cy = self.vision.find_element(
-                                instruction="当前弹窗或查看器右上角的关闭按钮(❌图标或关闭按钮)",
-                                base64_image=base64_img,
-                                viewport_width=width,
-                                viewport_height=height,
-                                dom_elements=dom_elements
-                            )
+                            if self.mailing_dialog_open or any("迈灵" in m for m in self.container_stack):
+                                cx, cy = self.vision.find_element(
+                                    instruction="顶部右上角‘迈灵’圆形功能按钮，或者底部对话框右上角的关闭按钮❌(如 class_teleportbox-close)",
+                                    base64_image=base64_img,
+                                    viewport_width=width,
+                                    viewport_height=height,
+                                    dom_elements=dom_elements
+                                )
+                            else:
+                                cx, cy = self.vision.find_element(
+                                    instruction="当前弹窗或查看器右上角的关闭按钮(❌图标或关闭按钮)",
+                                    base64_image=base64_img,
+                                    viewport_width=width,
+                                    viewport_height=height,
+                                    dom_elements=dom_elements
+                                )
                             self.driver.click(cx, cy, delay_after=1.5)
-                            popped = self.container_stack.pop()
-                            logger.info(f"📤 [Container Stack] 成功点击关闭按钮，模态弹窗已出栈: {popped} | 剩余栈: {self.container_stack}")
+                            if self.container_stack:
+                                popped = self.container_stack.pop()
+                                logger.info(f"📤 [Container Stack] 成功点击关闭按钮，模态弹窗已出栈: {popped} | 剩余栈: {self.container_stack}")
+                            self.mailing_dialog_open = False
                             # 重新捕获快照
                             step_img_path = self.explore_dir / f"explore_step_{steps_taken}.png"
                             base64_img = self.driver.capture_screenshot_base64(str(step_img_path))
                         except Exception as esc_err:
                             logger.warning(f"⚠️ 自动点击关闭按钮逃逸异常: {esc_err}")
+
+                    # 一键隐藏主动拦截与重定向防死锁
+                    if self.is_panel_hidden and not any(k in (element_desc or "") for k in ["展开", "显示", "unfold", "foldbar"]):
+                        logger.warning(f"🛡️ [Hide-Show Guard] 检测到大屏面板当前处于隐藏状态，拦截了非恢复指令 '{element_desc}'！强制重定向为恢复大屏面板操作...")
+                        element_desc = "右上角‘一键展开’或‘一键显示’按钮（含 << 图标，如 class_foldBarRightunfold）"
 
                     # 记录动作前可见的模态层 (用于 Post-Click Diff)
                     before_modals = PostClickDetector.get_current_modals(self.driver)
@@ -614,6 +656,41 @@ class ExplorerAgent:
                                         if self.container_stack:
                                             logger.info(f"🔄 [Container Stack] 检测到路由跳转，清空模态栈: {self.container_stack}")
                                             self.container_stack.clear()
+                                        self.is_panel_hidden = False
+                                        self.mailing_dialog_open = False
+
+                                    # 状态机实时追踪：一键隐藏与展开
+                                    desc_lower = (element_desc or "").lower()
+                                    if any(k in desc_lower for k in ["一键隐藏", "收起面板", "class_foldbarright"]) and not any(k in desc_lower for k in ["unfold", "展开", "显示"]):
+                                        self.is_panel_hidden = True
+                                        logger.warning("👁️ [Hide-Show Guard] 检测到触发【一键隐藏/收起】！大屏 2D 业务面板已隐藏。")
+                                    elif any(k in desc_lower for k in ["一键展开", "一键显示", "class_foldbarrightunfold", "展开面板", "展开"]):
+                                        self.is_panel_hidden = False
+                                        logger.info("👁️ [Hide-Show Guard] 检测到触发【一键展开/显示】！大屏 2D 业务面板已恢复展示。")
+
+                                    # 状态机实时追踪：迈灵助手弹窗
+                                    if "迈灵" in desc_lower or "mailing" in desc_lower:
+                                        if any(k in desc_lower for k in ["close", "关闭", "❌", "收起"]):
+                                            self.mailing_dialog_open = False
+                                            if "“迈灵”AI助手对话框" in self.container_stack:
+                                                self.container_stack.remove("“迈灵”AI助手对话框")
+                                            logger.info("🤖 [Mailing Guard] 点击了关闭按钮，【迈灵】助手对话弹窗已关闭出栈。")
+                                        else:
+                                            # 切换开/关状态
+                                            self.mailing_dialog_open = not self.mailing_dialog_open
+                                            if self.mailing_dialog_open:
+                                                if "“迈灵”AI助手对话框" not in self.container_stack:
+                                                    self.container_stack.append("“迈灵”AI助手对话框")
+                                                logger.info("🤖 [Mailing Guard] 点击了顶部【迈灵】图标，底部对话弹窗激活入栈。")
+                                            else:
+                                                if "“迈灵”AI助手对话框" in self.container_stack:
+                                                    self.container_stack.remove("“迈灵”AI助手对话框")
+                                                logger.info("🤖 [Mailing Guard] 再次点击了顶部【迈灵】图标，底部对话弹窗已关闭出栈。")
+                                    elif any(k in desc_lower for k in ["teleportbox-close", "关闭“迈灵”"]):
+                                        self.mailing_dialog_open = False
+                                        if "“迈灵”AI助手对话框" in self.container_stack:
+                                            self.container_stack.remove("“迈灵”AI助手对话框")
+                                        logger.info("🤖 [Mailing Guard] 点击了【迈灵】关闭按钮，对话弹窗已关闭出栈。")
                                 except Exception as e:
                                     logger.warning(f"⚠️ Post-Click Diff 检测执行异常: {e}")
                                     
@@ -978,6 +1055,8 @@ class ExplorerAgent:
                     self.last_l2_route = (l1, l2)
                     self.container_stack.clear()
                     self.active_tab = None
+                    self.is_panel_hidden = False
+                    self.mailing_dialog_open = False
                     jump_ok = True
                     jump_success_count += 1
                     logger.info(f"✅ [Smoke Jump] 成功跳转进入业务页面: 【{l1} -> {l2}】！")

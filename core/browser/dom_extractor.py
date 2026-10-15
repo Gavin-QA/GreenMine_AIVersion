@@ -171,7 +171,11 @@ class DomExtractorMixin:
                 '.ant-drawer:not(.ant-drawer-hidden)',
                 '[role="dialog"]:not([style*="display: none"])',
                 '.modal.show',
-                '.modal:not([style*="display: none"])'
+                '.modal:not([style*="display: none"])',
+                '.class_teleportbox:not([style*="display: none"])',
+                '[class*="teleportbox"]:not([style*="display: none"])',
+                '[class*="mailing"]:not([style*="display: none"])',
+                '[class*="ai-dialog"]:not([style*="display: none"])'
             ];
             
             const modals = [];
@@ -194,6 +198,14 @@ class DomExtractorMixin:
                             const headerEl = el.querySelector('.el-dialog__header, .ant-modal-header, [class*="header"]');
                             if (headerEl && headerEl.innerText) {
                                 title = headerEl.innerText.trim().split('\\n')[0];
+                            }
+                        }
+
+                        // 针对迈灵/智能助手定制弹窗补充语义标题
+                        const classStr = typeof el.className === 'string' ? el.className : '';
+                        if (classStr.includes('teleportbox') || classStr.includes('mailing') || classStr.includes('ai-dialog')) {
+                            if (!title || title === '未知弹窗') {
+                                title = '“迈灵”AI助手对话框';
                             }
                         }
                         
