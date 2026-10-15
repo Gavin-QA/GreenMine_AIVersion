@@ -39,6 +39,7 @@ def parse_args():
     parser.add_argument("--start-delay", type=float, default=getattr(settings, "start_delay", 15.0), help="启动应用后的等待时间(秒)，确保引擎和UI完全加载（默认从 config.yaml 读取）")
     parser.add_argument("--wait-ready", type=str, help="【智能视觉等待】指定自然语言条件，持续轮询截屏直到满足条件")
     parser.add_argument("--wait-timeout", type=float, default=60.0, help="智能视觉等待的最大超时时间(秒) (默认: 60.0)")
+    parser.add_argument("--ignore-env-check", action="store_true", help="忽略 Launcher 客户端环境前置校验，即使环境不匹配也强制执行")
     return parser.parse_args()
 
 
@@ -295,6 +296,11 @@ def main():
         mode_name = f"YAML 用例 (共 {len(cases_to_run)} 个)"
     logger.info(f"🚀 初始化 Electron 视觉巡检引擎 | 模式: {mode_name}")
     
+    # 0. 执行客户端前置环境准入巡检 (Pre-flight Environment Check)
+    from utils.env_checker import check_launcher_environment
+    if not check_launcher_environment(settings, ignore_check=getattr(args, "ignore_env_check", False), custom_logger=logger):
+        sys.exit(1)
+
     vision_agent = VisionAgent()
     
     with ElectronDriver() as driver:

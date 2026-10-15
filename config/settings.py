@@ -41,6 +41,7 @@ class Settings:
         else:
             app_cfg = {}
 
+        self.active_app: str = active_app_key or "zhaiwan"
         llm_cfg = self._yaml_config.get("llm", {})
 
         # 核心应用与调试配置（优先 .env，其次 yaml）
@@ -86,6 +87,7 @@ class Settings:
         self.start_delay: float = float(os.getenv("START_DELAY") or app_cfg.get("start_delay", 15.0))
         self.no_proxy: str = os.getenv("NO_PROXY") or app_cfg.get("no_proxy", "127.0.0.1,localhost,192.168.1.97,221.234.48.197,::1")
         self.rules_file: str = os.getenv("RULES_FILE") or app_cfg.get("rules_file", "docs/explore_rules_zhaiwan.md")
+        self.env_check_cfg: dict = app_cfg.get("env_check", {})
 
         # 7. 日志与报告配置
         self.log_level: str = os.getenv("LOG_LEVEL", "INFO")

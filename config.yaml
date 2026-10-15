@@ -23,6 +23,12 @@ apps:
       width: 2560
       height: 1440
       device_pixel_ratio: 1.5
+    # 前置环境准入巡检 (防止在旧测试环境或过期前端包跑通宵)
+    env_check:
+      enabled: true
+      expected_env: "prod"     # 期望环境: "prod" (221.234.48.197:8808) 或 "test" (121.43.58.203:8783)
+      strict: true             # true: 环境不匹配时直接阻断退出；false: 仅打印告警
+      # expected_frontend: ""  # 可选: 校验前端包目录是否包含指定关键字 (例如 "dist(9-21)")
 
   # ----------------------------------------------------------------------------
   # 方案二：礼五通矿山大屏项目 (Liwutong)
@@ -41,6 +47,11 @@ apps:
       width: 2560
       height: 1440
       device_pixel_ratio: 1.5
+    # 前置环境准入巡检
+    env_check:
+      enabled: false           # 里伍铜 默认暂不强制开启，可按需启用
+      expected_env: "prod"
+      strict: false
 
 llm:
   provider: "openai" # 使用 OpenAI 兼容模式

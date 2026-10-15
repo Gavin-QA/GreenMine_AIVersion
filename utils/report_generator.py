@@ -223,6 +223,16 @@ class ReportGenerator:
             data["kpi"]["total_menus_count"] = 33
             data["kpi"]["page_coverage_rate"] = 0.0
 
+        # 加载 Launcher 客户端环境快照 (env_info.json)
+        env_file = self.run_dir / "env_info.json"
+        if env_file.exists():
+            try:
+                data["env_info"] = json.loads(env_file.read_text(encoding="utf-8"))
+            except Exception:
+                data["env_info"] = {}
+        else:
+            data["env_info"] = {}
+
         return data
 
     def _parse_log_file(self, log_path: Path, data: Dict[str, Any]):
@@ -561,6 +571,21 @@ class ReportGenerator:
             time_display_html = f"{start_hour} - {end_hour} <span style='color:var(--text-dim);font-weight:normal;font-size:12px;margin-left:4px;'>({start_date})</span>"
         else:
             time_display_html = f"{start_t} - {end_t}"
+
+        # 客户端环境信息挂件
+        env_info = data.get("env_info", {})
+        if env_info and env_info.get("env_name"):
+            env_name = env_info.get("env_name", "未知环境")
+            env_color = "#34d399" if env_info.get("env_key") == "prod" else "#38bdf8"
+            env_dist = env_info.get("big_screen_dist", "")
+            dist_tag = f" <span style='color:var(--text-dim);font-size:11px;font-weight:normal;'>({Path(env_dist).name})</span>" if env_dist else ""
+            tooltip_txt = f"后端: {env_info.get('nplusone_url', '')} | 前端: {env_dist} | UE: {env_info.get('ue_dist', '')}"
+            env_pill_html = f"""
+            <div class="run-id-pill" title="{html.escape(tooltip_txt)}" style="cursor:help;">
+              <span>🌐 被测环境:</span> <strong style="color: {env_color};">{html.escape(env_name)}</strong>{dist_tag}
+            </div>"""
+        else:
+            env_pill_html = ""
         # ==========================
 
         html_content = f"""<!DOCTYPE html>
@@ -1701,6 +1726,7 @@ class ReportGenerator:
             <div class="run-id-pill">
               <span>🕒 起止时间:</span> <strong style="color: #cbd5e1;">{time_display_html}</strong>
             </div>
+            {env_pill_html}
           </div>
         </div>
 
