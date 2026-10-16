@@ -31,8 +31,8 @@ class BugReporter:
             except Exception as e:
                 logger.error(f"无法读取全局 Bug 库: {e}")
 
-    def report_bug(self, run_id: str, title: str, step_prompt: str, actual_result: str, crash_image_path: str = None):
-        """记录一个新的崩溃现场，自动查重并保存。"""
+    def report_bug(self, run_id: str, title: str, step_prompt: str, actual_result: str, crash_image_path: str = None, **kwargs):
+        """记录一个新的崩溃现场，自动查重并保存。支持扩展参数。"""
         logger.info("=" * 60)
         logger.info(f"🐞 捕获到缺陷异常，开始生成 Bug 报告...")
         

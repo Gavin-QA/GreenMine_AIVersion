@@ -494,6 +494,21 @@ class ExplorerAgent:
                         logger.warning(f"🛡️ [Hide-Show Guard] 检测到大屏面板当前处于隐藏状态，拦截了非恢复指令 '{element_desc}'！强制重定向为恢复大屏面板操作...")
                         element_desc = "右上角‘一键展开’或‘一键显示’按钮（含 << 图标，如 class_foldBarRightunfold）"
 
+                    # 退出应用主动拦截与反向保护防线
+                    desc_s = (element_desc or "").lower()
+                    thought_s = (thought or "").lower()
+                    is_exit_confirm = (
+                        ("退出" in thought_s or "退出" in desc_s) and 
+                        any(k in desc_s for k in ["ok", "确定", "确认", "退出"]) and
+                        not any(k in desc_s for k in ["取消", "cancel"])
+                    )
+                    if is_exit_confirm:
+                        logger.warning(f"🛡️ [Anti-Exit Guard] 侦测到致命误杀风险！拦截了针对退出确认的点击指令 '{element_desc}'！强制转换为点击【Cancel/取消】按钮以保护应用常驻运行！")
+                        element_desc = "提示框中的‘Cancel’或‘取消’按钮(或右上角❌)"
+                    elif any(k in desc_s for k in ["退出按钮", "退出应用", "关闭系统"]) and not any(k in desc_s for k in ["取消", "cancel"]):
+                        logger.warning(f"🛡️ [Anti-Exit Guard] 侦测到点击系统退出按钮 '{element_desc}'！为防止客户端被杀，直接跳过此危险操作。")
+                        continue
+
                     # 记录动作前可见的模态层 (用于 Post-Click Diff)
                     before_modals = PostClickDetector.get_current_modals(self.driver)
 
