@@ -11,9 +11,15 @@ from utils.paths import TOPOLOGY_DIR, TOPOLOGY_SNAPSHOTS_DIR, DOCS_DIR
 logger = logging.getLogger("explorer_agent.page_map")
 
 class PageMapBuilder:
-    @staticmethod
-    def parse_base_rules() -> dict:
-        """从 explore_rules.md 中提取预设的一、二级菜单，作为动态架构树的底座"""
+    _cached_base_tree: Dict[str, Any] = None
+
+    @classmethod
+    def parse_base_rules(cls, reload: bool = False) -> dict:
+        """从 explore_rules.md 中提取预设的一、二级菜单，作为动态架构树的底座（带类级内存单例缓存）"""
+        import copy
+        if cls._cached_base_tree is not None and not reload:
+            return copy.deepcopy(cls._cached_base_tree)
+
         base_tree = {}
         try:
             from config.settings import settings
@@ -39,7 +45,7 @@ class PageMapBuilder:
                     rules_path = cand
                     break
 
-            if rules_path.exists():
+            if rules_path and rules_path.exists():
                 content = rules_path.read_text(encoding="utf-8")
                 # 简单解析 Markdown 表格
                 for line in content.splitlines():
@@ -54,10 +60,11 @@ class PageMapBuilder:
                                     base_tree[lvl1] = {}
                                 if lvl2 not in base_tree[lvl1]:
                                     base_tree[lvl1][lvl2] = {}
+                cls._cached_base_tree = base_tree
                 logger.info(f"🌳 成功加载基准架构底座！共包含 {len(base_tree)} 个一级模块与 {sum(len(v) for v in base_tree.values())} 个二级业务菜单。")
         except Exception as e:
             logger.warning(f"加载基准架构底座失败: {e}")
-        return base_tree
+        return copy.deepcopy(base_tree)
 
     @staticmethod
     def normalize_page_scopes(raw_scopes: Any) -> Dict[str, Any]:
