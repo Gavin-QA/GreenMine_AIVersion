@@ -43,6 +43,41 @@ logger = logging.getLogger("report_hub")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] [%(name)s] %(message)s")
 
 
+def extract_ui_path_from_step(step_str: Any, default: str = "首页") -> str:
+    """从 step 描述中智能提炼业务路径，例如从 '(路径: 生产管理 -> 能耗监测)' 中提取"""
+    if not step_str:
+        return default
+    s = str(step_str).strip()
+    m = re.search(r'\(?(?:页面)?路径[:：]\s*([^)]+)\)?', s)
+    if m:
+        extracted = m.group(1).strip()
+        if extracted and extracted != "无":
+            return extracted
+    return default
+
+
+def normalize_severity(val: Any) -> int:
+    """与禅道标准对齐：1(致命), 2(严重), 3(一般,默认), 4(轻微)"""
+    if val is None or val == "" or val == "无":
+        return 3
+    s = str(val).lower().strip()
+    if s in ["1", "critical", "fatal", "blocker", "致命"]:
+        return 1
+    if s in ["2", "high", "major", "严重"]:
+        return 2
+    if s in ["3", "medium", "normal", "一般"]:
+        return 3
+    if s in ["4", "low", "minor", "trivial", "轻微"]:
+        return 4
+    try:
+        num = int(s)
+        if 1 <= num <= 4:
+            return num
+    except Exception:
+        pass
+    return 3
+
+
 class ReportHub:
     def __init__(self, runs_dir: Optional[Path | str] = None):
         self.runs_dir = Path(runs_dir).resolve() if runs_dir else RUNS_DIR.resolve()
@@ -110,13 +145,26 @@ class ReportHub:
             if r_id and not (self.runs_dir / r_id / rel_shot).exists():
                 rel_shot = ""
 
+            step_text = gb.get("global_step") or gb.get("ui_path") or gb.get("step", "")
+            raw_ui_path = gb.get("ui_path", "")
+            if not raw_ui_path or raw_ui_path == "无":
+                raw_ui_path = extract_ui_path_from_step(step_text, default="首页")
+
+            status_val = gb.get("status", "激活")
+            if status_val == "Open" or not status_val:
+                status_val = "激活"
+
+            raw_analysis = gb.get("analysis_notes", "")
+            if raw_analysis == "无":
+                raw_analysis = ""
+
             all_bugs_dict[b_id] = {
                 "id": b_id,
                 "title": gb.get("title", ""),
                 "run_id": r_id,
                 "date": gb.get("date", ""),
-                "status": gb.get("status", "Open"),
-                "step": gb.get("global_step") or gb.get("ui_path") or gb.get("step", ""),
+                "status": status_val,
+                "step": step_text,
                 "actual": gb.get("error_log") or gb.get("actual", ""),
                 "rel_screenshot": rel_shot,
                 "before_screenshot": "",
@@ -129,9 +177,9 @@ class ReportHub:
                 "target_element": gb.get("target_element", "无"),
                 "assignee": gb.get("assignee", "Unassigned"),
                 "tags": ", ".join(gb.get("tags", [])) if isinstance(gb.get("tags"), list) else (gb.get("tags") or "无"),
-                "severity": gb.get("severity", 3),
-                "ui_path": gb.get("ui_path", "无"),
-                "analysis_notes": gb.get("analysis_notes", "无")
+                "severity": normalize_severity(gb.get("severity", 3)),
+                "ui_path": raw_ui_path,
+                "analysis_notes": raw_analysis
             }
 
         # 2. 从当前存在的 runs 中补充截图等确切数据，或新增尚未并入 global 的 bug
@@ -154,19 +202,38 @@ class ReportHub:
                     if step_num:
                         all_bugs_dict[b_id]["step_num"] = step_num
                     all_bugs_dict[b_id]["report_link"] = r_link
+                    
+                    # 若已有的 ui_path 缺失或为首页，尝试用 run 中的数据补充
+                    if (all_bugs_dict[b_id]["ui_path"] in ("", "无", "首页")) and b.get("ui_path"):
+                        all_bugs_dict[b_id]["ui_path"] = b.get("ui_path")
+                    if not all_bugs_dict[b_id].get("analysis_notes") and b.get("analysis_notes"):
+                        all_bugs_dict[b_id]["analysis_notes"] = b.get("analysis_notes")
                 else:
                     if rel_shot and not (self.runs_dir / r_id / rel_shot).exists():
                         rel_shot = ""
                     if before_shot and not (self.runs_dir / r_id / before_shot).exists():
                         before_shot = ""
 
+                    step_val = (b.get("details") or {}).get("step", b.get("step", ""))
+                    run_ui_path = b.get("ui_path")
+                    if not run_ui_path or run_ui_path == "无":
+                        run_ui_path = extract_ui_path_from_step(step_val, default="首页")
+
+                    run_status = b.get("status", "激活")
+                    if run_status == "Open" or not run_status:
+                        run_status = "激活"
+
+                    run_analysis = b.get("analysis_notes", "")
+                    if run_analysis == "无":
+                        run_analysis = ""
+
                     all_bugs_dict[b_id] = {
                         "id": b_id,
                         "title": b.get("title", ""),
                         "run_id": r_id,
                         "date": b.get("creation_date", b.get("date", "")),
-                        "status": b.get("status", "Open"),
-                        "step": (b.get("details") or {}).get("step", b.get("step", "")),
+                        "status": run_status,
+                        "step": step_val,
                         "actual": (b.get("details") or {}).get("actual", b.get("actual", "")),
                         "rel_screenshot": rel_shot,
                         "before_screenshot": before_shot,
@@ -177,11 +244,11 @@ class ReportHub:
                         "global_step": "无",
                         "action_type": "无",
                         "target_element": "无",
-                        "assignee": "Unassigned",
+                        "assignee": b.get("assignee", "Unassigned"),
                         "tags": "无",
-                        "severity": 3,
-                        "ui_path": "无",
-                        "analysis_notes": "无"
+                        "severity": normalize_severity(b.get("severity", 3)),
+                        "ui_path": run_ui_path,
+                        "analysis_notes": run_analysis
                     }
                     
         # 3. 生成 all_bugs 并修正总数
@@ -845,10 +912,11 @@ class ReportHub:
       <table class="bugs-table">
         <thead>
           <tr>
-            <th style="width: 140px;">缺陷编号</th>
-            <th style="width: 180px;">RUN ID</th>
+            <th style="width: 130px;">缺陷编号</th>
+            <th style="width: 75px;">严重度</th>
+            <th style="width: 170px;">RUN ID</th>
             <th style="width: 80px;">状态</th>
-            <th style="width: 300px;">业务路径与目标</th>
+            <th style="width: 290px;">业务路径与目标</th>
             <th>异常详情</th>
             <th style="width: 180px;">截图凭据 (操作前 vs 案发)</th>
             <th style="width: 100px;">操作</th>
@@ -1244,13 +1312,25 @@ class ReportHub:
             ${{optionsHtml}}
         </select>`;
 
+        const sevLevel = parseInt(b.severity) || 3;
+        const sevBadgeConfig = {{
+          1: {{ label: '1 致命', color: '#ef4444', bg: 'rgba(239,68,68,0.15)', border: 'rgba(239,68,68,0.3)' }},
+          2: {{ label: '2 严重', color: '#f97316', bg: 'rgba(249,115,22,0.15)', border: 'rgba(249,115,22,0.3)' }},
+          3: {{ label: '3 一般', color: '#eab308', bg: 'rgba(234,179,8,0.15)', border: 'rgba(234,179,8,0.3)' }},
+          4: {{ label: '4 轻微', color: '#94a3b8', bg: 'rgba(148,163,184,0.15)', border: 'rgba(148,163,184,0.3)' }}
+        }};
+        const sb = sevBadgeConfig[sevLevel] || sevBadgeConfig[3];
+        const sevBadge = `<span style="background:${{sb.bg}};color:${{sb.color}};border:1px solid ${{sb.border}};padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;white-space:nowrap;">${{sb.label}}</span>`;
+
         html += `
           <tr>
             <td><span style="font-family:var(--font-mono);font-weight:700;color:#fb7185;font-size:12px;">${{escapeHtml(b.id)}}</span></td>
+            <td>${{sevBadge}}</td>
             <td><span style="font-family:var(--font-mono);color:var(--text-muted);font-size:11px;">${{escapeHtml(b.run_id)}}</span></td>
             <td>${{statusBadge}}</td>
             <td style="color:#cbd5e1;font-size:13px;line-height:1.4;">
-                <div style="font-weight:600;margin-bottom:6px;color:#f8fafc;">${{escapeHtml(b.title)}}</div>
+                <div style="color:#38bdf8;font-size:11px;font-weight:600;margin-bottom:4px;">📍 ${{escapeHtml(b.ui_path || '首页')}}</div>
+                <div style="font-weight:600;margin-bottom:4px;color:#f8fafc;">${{escapeHtml(b.title)}}</div>
                 <div style="color:#94a3b8;font-family:var(--font-mono);font-size:11px;">${{escapeHtml(b.step || '(无步骤)')}}</div>
             </td>
             <td><div style="font-family:var(--font-mono);font-size:11px;color:#fca5a5;max-height:80px;overflow-y:auto;line-height:1.4;word-break:break-all;padding-right:8px;">${{escapeHtml(b.actual || '')}}</div></td>
@@ -1296,6 +1376,9 @@ class ReportHub:
       const b = allBugs.find(x => x.id === bugId);
       if (!b) return;
       
+      // 1. 修复 BUG 单号显示
+      document.getElementById('modalBugId').innerText = b.id;
+      
       const statusMeta = {{
         '激活': {{ bg: 'rgba(244,63,94,0.15)', color: '#f43f5e', border: 'rgba(244,63,94,0.3)' }},
         'Open': {{ bg: 'rgba(244,63,94,0.15)', color: '#f43f5e', border: 'rgba(244,63,94,0.3)' }},
@@ -1307,7 +1390,17 @@ class ReportHub:
       const sm = statusMeta[b.status] || {{ bg: 'rgba(100,116,139,0.15)', color: '#94a3b8', border: 'rgba(100,116,139,0.3)' }};
       const statusText = (b.status === 'Open') ? '激活' : (b.status || '激活');
       document.getElementById('modalStatus').innerHTML = `<div style="background:${{sm.bg}};color:${{sm.color}};padding:6px 12px;border-radius:6px;font-size:14px;font-weight:700;border:1px solid ${{sm.border}}">${{statusText}}</div>`;
-      document.getElementById('modalSeverity').innerText = `🔥 严重度: ${{b.severity || 3}}`;
+      
+      // 2. 禅道严重度枚举映射 (1致命, 2严重, 3一般, 4轻微)
+      const sevLevel = parseInt(b.severity) || 3;
+      const sevMeta = {{
+        1: {{ label: '🔥 1 致命', color: '#ef4444', bg: 'rgba(239,68,68,0.15)', border: 'rgba(239,68,68,0.3)' }},
+        2: {{ label: '⚡ 2 严重', color: '#f97316', bg: 'rgba(249,115,22,0.15)', border: 'rgba(249,115,22,0.3)' }},
+        3: {{ label: '⚠️ 3 一般', color: '#eab308', bg: 'rgba(234,179,8,0.15)', border: 'rgba(234,179,8,0.3)' }},
+        4: {{ label: 'ℹ️ 4 轻微', color: '#94a3b8', bg: 'rgba(148,163,184,0.15)', border: 'rgba(148,163,184,0.3)' }}
+      }};
+      const curSev = sevMeta[sevLevel] || sevMeta[3];
+      document.getElementById('modalSeverity').innerHTML = `<div style="background:${{curSev.bg}};color:${{curSev.color}};padding:6px 12px;border-radius:6px;font-weight:700;border:1px solid ${{curSev.border}};font-size:13px;">${{curSev.label}}</div>`;
       
       document.getElementById('modalRunId').innerText = b.run_id || '无';
       document.getElementById('modalDate').innerText = b.date || '无';
@@ -1316,13 +1409,13 @@ class ReportHub:
       document.getElementById('modalGlobalStep').innerText = b.step_num ? `Step ${{b.step_num}} (本次)` : (b.global_step || '无');
       document.getElementById('modalActionType').innerText = b.action_type || '无';
       document.getElementById('modalTargetElement').innerText = b.target_element || '无';
-      document.getElementById('modalAssignee').innerText = b.assignee || 'Unassigned';
+      document.getElementById('modalAssignee').innerHTML = `<span style="color:#f8fafc;">${{escapeHtml(b.assignee || 'Unassigned')}}</span>`;
       document.getElementById('modalTags').innerText = b.tags || '无';
       
       document.getElementById('modalTitleText').innerText = b.title || '无标题';
-      document.getElementById('modalUiPath').innerText = b.ui_path || b.step || '无路径';
+      document.getElementById('modalUiPath').innerHTML = `<span style="color:#38bdf8;font-weight:600;">📍 ${{escapeHtml(b.ui_path || '首页')}}</span>`;
       document.getElementById('modalActual').innerText = b.actual || '无详情';
-      document.getElementById('modalAnalysis').innerText = b.analysis_notes || '无';
+      document.getElementById('modalAnalysis').innerHTML = `<div style="color:#cbd5e1;white-space:pre-wrap;line-height:1.6;">${{escapeHtml(b.analysis_notes || '(暂无分析备注，点击下方“编辑 Bug 详情”可添加关闭原因/复盘结论)')}}</div>`;
       
       const beforeShotUrl = b.before_screenshot ? (b.before_screenshot.startsWith('../') ? b.before_screenshot.replace('../', './') : `./${{b.run_id}}/${{b.before_screenshot}}`) : '';
       const relShotUrl = b.rel_screenshot ? (b.rel_screenshot.startsWith('../') ? b.rel_screenshot.replace('../', './') : `./${{b.run_id}}/${{b.rel_screenshot}}`) : '';
@@ -1356,10 +1449,114 @@ class ReportHub:
       if (b.report_link && b.report_link !== '#') {{
         footerHtml += `<a href="${{b.report_link}}" target="_blank" style="background:var(--primary);color:#fff;text-decoration:none;font-size:12px;font-weight:600;padding:8px 16px;border-radius:6px;display:inline-flex;align-items:center;gap:6px;transition:all 0.2s;" onmouseover="this.style.background='#4f46e5'" onmouseout="this.style.background='var(--primary)'">🔗 打开对应完整测试报告 ➔</a>`;
       }}
+      footerHtml += `<button style="background:rgba(99,102,241,0.18);border:1px solid var(--primary);color:#a5b4fc;font-size:12px;font-weight:600;padding:8px 16px;border-radius:6px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all 0.2s;" onclick="enterBugEditMode('${{escapeHtml(b.id)}}')">✏️ 编辑 Bug 详情</button>`;
       footerHtml += `<button style="background:var(--bg-card);border:1px solid rgba(255,255,255,0.1);color:var(--text-muted);font-size:12px;padding:8px 16px;border-radius:6px;cursor:pointer;" onclick="document.getElementById('bugModalOverlay').style.display='none'">关闭</button>`;
       document.getElementById('modalActionFooter').innerHTML = footerHtml;
 
       document.getElementById('bugModalOverlay').style.display = 'flex';
+    }}
+
+    function enterBugEditMode(bugId) {{
+      const b = allBugs.find(x => x.id === bugId);
+      if (!b) return;
+
+      const curStatus = (b.status === 'Open' || !b.status) ? '激活' : b.status;
+      const curSev = parseInt(b.severity) || 3;
+
+      // 1. 状态变为下拉选择
+      document.getElementById('modalStatus').innerHTML = `
+        <select id="editBugStatus" style="background:#0f172a;color:#38bdf8;border:1px solid var(--primary);padding:6px 10px;border-radius:6px;font-size:13px;font-weight:700;outline:none;">
+          <option value="激活" ${{curStatus==='激活'?'selected':''}}>🔴 激活</option>
+          <option value="已解决" ${{curStatus==='已解决'?'selected':''}}>🟢 已解决</option>
+          <option value="已提单" ${{curStatus==='已提单'?'selected':''}}>🔵 已提单</option>
+          <option value="已关闭" ${{curStatus==='已关闭'?'selected':''}}>⚪ 已关闭</option>
+          <option value="误报" ${{curStatus==='误报'?'selected':''}}>🛡️ 误报</option>
+        </select>
+      `;
+
+      // 2. 严重度变为下拉选择
+      document.getElementById('modalSeverity').innerHTML = `
+        <select id="editBugSeverity" style="background:#0f172a;color:#f59e0b;border:1px solid #f59e0b;padding:6px 10px;border-radius:6px;font-size:13px;font-weight:700;outline:none;">
+          <option value="1" ${{curSev===1?'selected':''}}>🔥 1 致命</option>
+          <option value="2" ${{curSev===2?'selected':''}}>⚡ 2 严重</option>
+          <option value="3" ${{curSev===3?'selected':''}}>⚠️ 3 一般 (默认)</option>
+          <option value="4" ${{curSev===4?'selected':''}}>ℹ️ 4 轻微</option>
+        </select>
+      `;
+
+      // 3. 处理人变为输入框
+      document.getElementById('modalAssignee').innerHTML = `
+        <input type="text" id="editBugAssignee" value="${{escapeHtml(b.assignee || 'Unassigned')}}" style="width:100%;background:#0f172a;border:1px solid rgba(255,255,255,0.2);color:#fff;padding:6px 8px;border-radius:4px;font-size:12px;outline:none;">
+      `;
+
+      // 4. 业务路径变为输入框
+      document.getElementById('modalUiPath').innerHTML = `
+        <input type="text" id="editBugUiPath" value="${{escapeHtml(b.ui_path || '首页')}}" style="width:100%;background:#0f172a;border:1px solid rgba(255,255,255,0.2);color:#38bdf8;padding:8px 10px;border-radius:6px;font-size:13px;font-weight:600;outline:none;">
+      `;
+
+      // 5. 分析备注变为多行文本输入框
+      document.getElementById('modalAnalysis').innerHTML = `
+        <textarea id="editBugAnalysis" rows="4" style="width:100%;background:#0f172a;border:1px solid var(--primary);color:#f8fafc;padding:10px;border-radius:6px;font-size:13px;line-height:1.5;outline:none;resize:vertical;" placeholder="在此输入原因分析、关闭理由、误报归因或复盘结论...">${{escapeHtml(b.analysis_notes || '')}}</textarea>
+      `;
+
+      // 6. 底部切换保存与取消按钮
+      document.getElementById('modalActionFooter').innerHTML = `
+        <button onclick="saveBugDetail('${{escapeHtml(b.id)}}')" style="background:#10b981;color:#fff;border:none;font-size:13px;font-weight:700;padding:8px 20px;border-radius:6px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;box-shadow:0 4px 12px rgba(16,185,129,0.3);">💾 保存修改</button>
+        <button onclick="showBugModal('${{escapeHtml(b.id)}}')" style="background:var(--bg-card);border:1px solid rgba(255,255,255,0.15);color:var(--text-muted);font-size:13px;padding:8px 16px;border-radius:6px;cursor:pointer;">取消</button>
+      `;
+    }}
+
+    function saveBugDetail(bugId) {{
+      const b = allBugs.find(x => x.id === bugId);
+      if (!b) return;
+
+      const newStatus = document.getElementById('editBugStatus').value;
+      const newSeverity = parseInt(document.getElementById('editBugSeverity').value) || 3;
+      const newAssignee = document.getElementById('editBugAssignee').value.trim() || 'Unassigned';
+      const newUiPath = document.getElementById('editBugUiPath').value.trim() || '首页';
+      const newAnalysis = document.getElementById('editBugAnalysis').value.trim();
+
+      let apiBase = '';
+      if (location.protocol === 'file:') {{
+          apiBase = 'http://localhost:8080';
+      }} else if (location.port !== '8080') {{
+          apiBase = `${{location.protocol}}//${{location.hostname}}:8080`;
+      }}
+      const apiUrl = `${{apiBase}}/api/update_bug_detail`;
+
+      fetch(apiUrl, {{
+          method: 'POST',
+          headers: {{ 'Content-Type': 'application/json' }},
+          body: JSON.stringify({{
+              bug_id: bugId,
+              status: newStatus,
+              severity: newSeverity,
+              assignee: newAssignee,
+              ui_path: newUiPath,
+              analysis_notes: newAnalysis
+          }})
+      }}).then(async res => {{
+          if (!res.ok) {{
+              throw new Error(`HTTP ${{res.status}} 响应异常`);
+          }}
+          return res.json();
+      }}).then(data => {{
+          if (data.success) {{
+              b.status = newStatus;
+              b.severity = newSeverity;
+              b.assignee = newAssignee;
+              b.ui_path = newUiPath;
+              b.analysis_notes = newAnalysis;
+
+              // 退出编辑模式并重新渲染大盘
+              showBugModal(bugId);
+              renderBugs();
+          }} else {{
+              alert('保存失败: ' + (data.error || '未知错误'));
+          }}
+      }}).catch(err => {{
+          alert('保存失败: ' + (err.message || err) + '\\n\\n请确认同主机的 8080 Python 服务已启动: python utils/report_hub.py --serve');
+      }});
     }}
 
     document.addEventListener('keydown', (e) => {{
@@ -1462,7 +1659,7 @@ class ReportHub:
                 self.end_headers()
 
             def do_POST(self):
-                if self.path == "/api/update_bug_status":
+                if self.path in ("/api/update_bug_status", "/api/update_bug_detail"):
                     try:
                         content_length = int(self.headers.get('Content-Length', 0))
                         post_data = self.rfile.read(content_length)
@@ -1470,13 +1667,29 @@ class ReportHub:
                         data = json.loads(raw_str, strict=False)
                         
                         bug_id = data.get('bug_id')
+                        if not bug_id:
+                            raise ValueError("缺少必要的 bug_id 参数")
+
                         new_status = data.get('status')
-                        
-                        if not bug_id or not new_status:
-                            raise ValueError("缺少必要的 bug_id 或 status 参数")
+                        new_severity = normalize_severity(data.get('severity')) if "severity" in data else None
+                        new_assignee = data.get('assignee')
+                        new_ui_path = data.get('ui_path')
+                        new_analysis = data.get('analysis_notes')
 
                         success = False
                         updated_targets = []
+
+                        def update_bug_dict(b_dict: dict):
+                            if new_status:
+                                b_dict['status'] = new_status
+                            if new_severity is not None:
+                                b_dict['severity'] = new_severity
+                            if new_assignee is not None:
+                                b_dict['assignee'] = new_assignee
+                            if new_ui_path is not None:
+                                b_dict['ui_path'] = new_ui_path
+                            if new_analysis is not None:
+                                b_dict['analysis_notes'] = new_analysis
 
                         # 1. 在全局缺陷知识库 (artifacts/bugs/global_bugs.json) 中查找并更新
                         bug_file = (GLOBAL_BUGS_DIR / "global_bugs.json").resolve()
@@ -1486,7 +1699,7 @@ class ReportHub:
                                     bugs = json.load(f)
                                 for b in bugs:
                                     if b.get('id') == bug_id:
-                                        b['status'] = new_status
+                                        update_bug_dict(b)
                                         success = True
                                         updated_targets.append("global_bugs.json")
                                         break
@@ -1505,7 +1718,7 @@ class ReportHub:
                                         try:
                                             with open(run_bug_file, 'r', encoding='utf-8') as rf:
                                                 b_data = json.load(rf)
-                                            b_data['status'] = new_status
+                                            update_bug_dict(b_data)
                                             with open(run_bug_file, 'w', encoding='utf-8') as rf:
                                                 json.dump(b_data, rf, ensure_ascii=False, indent=2)
                                             success = True
@@ -1518,8 +1731,8 @@ class ReportHub:
                             try:
                                 hub_instance.build_index_html()
                             except Exception as be:
-                                logger.warning(f"Rebuilding index.html after bug status update warning: {be}")
-                            resp_data = {"success": True, "bug_id": bug_id, "status": new_status, "updated": updated_targets}
+                                logger.warning(f"Rebuilding index.html after bug update warning: {be}")
+                            resp_data = {"success": True, "bug_id": bug_id, "updated": updated_targets}
                         else:
                             resp_data = {"success": False, "bug_id": bug_id, "error": f"在全局库及各运行目录中均未找到编号为 '{bug_id}' 的缺陷记录"}
 
