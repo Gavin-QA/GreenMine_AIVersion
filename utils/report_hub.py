@@ -1220,20 +1220,27 @@ class ReportHub:
         }} else {{
           imgHtml = '<span style="color:#64748b;font-size:12px;">无截图</span>';
         }}
-        const options = ['Open', '已提单', '误报', '已解决'];
+        const optionsConfig = [
+          {{ value: '激活', label: '激活', color: '#f43f5e' }},
+          {{ value: '已解决', label: '已解决', color: '#10b981' }},
+          {{ value: '已提单', label: '已提单', color: '#3b82f6' }},
+          {{ value: '已关闭', label: '已关闭', color: '#64748b' }},
+          {{ value: '误报', label: '误报', color: '#64748b' }}
+        ];
+        let curStatus = b.status;
+        if (curStatus === 'Open') curStatus = '激活';
+        if (!curStatus) curStatus = '激活';
+
         let optionsHtml = '';
-        options.forEach(opt => {{
-            const selected = (b.status === opt || (opt === 'Open' && b.status === '激活')) ? 'selected' : '';
-            optionsHtml += `<option value="${{opt}}" ${{selected}}>${{opt}}</option>`;
+        optionsConfig.forEach(opt => {{
+            const selected = (curStatus === opt.value) ? 'selected' : '';
+            optionsHtml += `<option value="${{opt.value}}" ${{selected}} style="background:#0f172a;color:${{opt.color}};font-weight:600;">${{opt.label}}</option>`;
         }});
         
-        let selectColor = '#94a3b8';
-        if (b.status === 'Open' || b.status === '激活') selectColor = '#f43f5e';
-        else if (b.status === '已提单') selectColor = '#3b82f6';
-        else if (b.status === '已解决') selectColor = '#10b981';
-        else if (b.status === '误报') selectColor = '#64748b';
+        const matched = optionsConfig.find(o => o.value === curStatus);
+        const selectColor = matched ? matched.color : '#94a3b8';
 
-        const statusBadge = `<select onchange="changeBugStatus('${{escapeHtml(b.id)}}', this)" style="background:rgba(255,255,255,0.05);color:${{selectColor}};padding:2px 8px;border-radius:4px;font-size:12px;font-weight:600;border:1px solid rgba(255,255,255,0.2);outline:none;cursor:pointer;appearance:none;text-align:center;">
+        const statusBadge = `<select onchange="changeBugStatus('${{escapeHtml(b.id)}}', this)" style="background:rgba(255,255,255,0.06);color:${{selectColor}};padding:3px 10px;border-radius:6px;font-size:12px;font-weight:700;border:1px solid rgba(255,255,255,0.18);outline:none;cursor:pointer;text-align:center;transition:all 0.2s;">
             ${{optionsHtml}}
         </select>`;
 
@@ -1289,10 +1296,17 @@ class ReportHub:
       const b = allBugs.find(x => x.id === bugId);
       if (!b) return;
       
-      document.getElementById('modalBugId').innerText = b.id;
-      document.getElementById('modalStatus').innerHTML = (b.status === 'Open' || b.status === '激活')
-          ? `<div style="background:rgba(244,63,94,0.15);color:#f43f5e;padding:6px 12px;border-radius:6px;font-size:14px;font-weight:700;border:1px solid rgba(244,63,94,0.3)">激活</div>`
-          : `<div style="background:rgba(16,185,129,0.15);color:#10b981;padding:6px 12px;border-radius:6px;font-size:14px;font-weight:700;border:1px solid rgba(16,185,129,0.3)">已关闭</div>`;
+      const statusMeta = {{
+        '激活': {{ bg: 'rgba(244,63,94,0.15)', color: '#f43f5e', border: 'rgba(244,63,94,0.3)' }},
+        'Open': {{ bg: 'rgba(244,63,94,0.15)', color: '#f43f5e', border: 'rgba(244,63,94,0.3)' }},
+        '已解决': {{ bg: 'rgba(16,185,129,0.15)', color: '#10b981', border: 'rgba(16,185,129,0.3)' }},
+        '已提单': {{ bg: 'rgba(59,130,246,0.15)', color: '#3b82f6', border: 'rgba(59,130,246,0.3)' }},
+        '已关闭': {{ bg: 'rgba(100,116,139,0.15)', color: '#94a3b8', border: 'rgba(100,116,139,0.3)' }},
+        '误报': {{ bg: 'rgba(100,116,139,0.15)', color: '#94a3b8', border: 'rgba(100,116,139,0.3)' }}
+      }};
+      const sm = statusMeta[b.status] || {{ bg: 'rgba(100,116,139,0.15)', color: '#94a3b8', border: 'rgba(100,116,139,0.3)' }};
+      const statusText = (b.status === 'Open') ? '激活' : (b.status || '激活');
+      document.getElementById('modalStatus').innerHTML = `<div style="background:${{sm.bg}};color:${{sm.color}};padding:6px 12px;border-radius:6px;font-size:14px;font-weight:700;border:1px solid ${{sm.border}}">${{statusText}}</div>`;
       document.getElementById('modalSeverity').innerText = `🔥 严重度: ${{b.severity || 3}}`;
       
       document.getElementById('modalRunId').innerText = b.run_id || '无';
@@ -1430,37 +1444,63 @@ class ReportHub:
         self.build_index_html()
         os.chdir(self.runs_dir)
 
+        hub_instance = self
+
         class APIHandler(http.server.SimpleHTTPRequestHandler):
+            def do_OPTIONS(self):
+                self.send_response(200)
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.send_header('Access-Control-Allow-Methods', 'POST, GET, OPTIONS')
+                self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+                self.end_headers()
+
             def do_POST(self):
                 if self.path == "/api/update_bug_status":
-                    content_length = int(self.headers['Content-Length'])
-                    post_data = self.rfile.read(content_length)
-                    data = json.loads(post_data.decode('utf-8'))
-                    
-                    bug_id = data.get('bug_id')
-                    new_status = data.get('status')
-                    
-                    # 向上寻找 global_bugs.json (当前在 reports/runs)
-                    bug_file = Path('../../artifacts/bugs/global_bugs.json').resolve()
-                    success = False
-                    if bug_file.exists():
-                        with open(bug_file, 'r', encoding='utf-8') as f:
-                            bugs = json.load(f)
+                    try:
+                        content_length = int(self.headers.get('Content-Length', 0))
+                        post_data = self.rfile.read(content_length)
+                        raw_str = post_data.decode('utf-8', errors='ignore')
+                        data = json.loads(raw_str, strict=False)
                         
-                        for b in bugs:
-                            if b.get('id') == bug_id:
-                                b['status'] = new_status
-                                success = True
-                                break
-                                
-                        if success:
-                            with open(bug_file, 'w', encoding='utf-8') as f:
-                                json.dump(bugs, f, ensure_ascii=False, indent=2)
-                    
-                    self.send_response(200)
-                    self.send_header('Content-type', 'application/json')
-                    self.end_headers()
-                    self.wfile.write(json.dumps({"success": success}).encode('utf-8'))
+                        bug_id = data.get('bug_id')
+                        new_status = data.get('status')
+                        
+                        bug_file = (GLOBAL_BUGS_DIR / "global_bugs.json").resolve()
+                        success = False
+                        if bug_file.exists():
+                            with open(bug_file, 'r', encoding='utf-8') as f:
+                                bugs = json.load(f)
+                            
+                            for b in bugs:
+                                if b.get('id') == bug_id:
+                                    b['status'] = new_status
+                                    success = True
+                                    break
+                                    
+                            if success:
+                                with open(bug_file, 'w', encoding='utf-8') as f:
+                                    json.dump(bugs, f, ensure_ascii=False, indent=2)
+                                # 同步重构静态大盘与 runs_data.js，保持数据双向实时一致
+                                try:
+                                    hub_instance.build_index_html()
+                                except Exception as be:
+                                    logger.warning(f"Rebuilding index.html after bug status update warning: {be}")
+
+                        resp_bytes = json.dumps({"success": success, "bug_id": bug_id, "status": new_status}).encode('utf-8')
+                        self.send_response(200)
+                        self.send_header('Content-Type', 'application/json; charset=utf-8')
+                        self.send_header('Content-Length', str(len(resp_bytes)))
+                        self.send_header('Access-Control-Allow-Origin', '*')
+                        self.end_headers()
+                        self.wfile.write(resp_bytes)
+                    except Exception as err:
+                        err_bytes = json.dumps({"success": False, "error": str(err)}).encode('utf-8')
+                        self.send_response(500)
+                        self.send_header('Content-Type', 'application/json; charset=utf-8')
+                        self.send_header('Content-Length', str(len(err_bytes)))
+                        self.send_header('Access-Control-Allow-Origin', '*')
+                        self.end_headers()
+                        self.wfile.write(err_bytes)
                 else:
                     self.send_error(404, "Not Found")
 
