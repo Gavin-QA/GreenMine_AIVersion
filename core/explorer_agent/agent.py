@@ -246,9 +246,10 @@ class ExplorerAgent:
         # 1. 导出自动化回归用例
         if trajectory:
             try:
-                exporter = TrajectoryExporter(run_dir=self.run_dir)
-                case_file = exporter.export_yaml(trajectory, run_id=self.run_id)
-                logger.info(f"📝 自动生成确定性 YAML 用例: {case_file.name}")
+                exporter = TrajectoryExporter(run_dir=self.run_dir, run_id=self.run_id)
+                case_file = exporter.export_yaml(trajectory)
+                if case_file:
+                    logger.info(f"📝 自动生成确定性 YAML 用例: {case_file.name}")
             except Exception as e:
                 logger.warning(f"导出用例失败: {e}")
 

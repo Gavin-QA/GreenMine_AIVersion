@@ -1,14 +1,44 @@
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 from utils.paths import get_run_generated_cases_dir
 
 logger = logging.getLogger("explorer_agent.trajectory")
 
 class TrajectoryExporter:
+    def __init__(
+        self,
+        run_dir: Optional[Union[Path, str]] = None,
+        output_dir: Optional[Union[Path, str]] = None,
+        run_id: Optional[str] = None
+    ):
+        self.run_dir = Path(run_dir) if run_dir else None
+        if output_dir:
+            self.output_dir = Path(output_dir)
+        elif self.run_dir:
+            self.output_dir = self.run_dir / "generated_cases"
+        else:
+            self.output_dir = None
+        self.run_id = run_id
+
+    def export_yaml(
+        self,
+        trajectory: list,
+        run_id: Optional[str] = None,
+        output_dir: Optional[Union[Path, str]] = None
+    ) -> Optional[Path]:
+        """实例方法导出 YAML 测试脚本"""
+        target_run_id = run_id or self.run_id or "default"
+        target_output_dir = Path(output_dir) if output_dir else self.output_dir
+        return self.export_yaml_case(
+            run_id=target_run_id,
+            trajectory=trajectory,
+            output_dir=target_output_dir
+        )
+
     @staticmethod
-    def export_yaml_case(run_id: str, trajectory: list, output_dir: Optional[Path] = None) -> Optional[Path]:
+    def export_yaml_case(run_id: str, trajectory: list, output_dir: Optional[Union[Path, str]] = None) -> Optional[Path]:
         """将探索轨迹导出为符合要求的 YAML 测试脚本，默认存放在本次运行的专属 generated_cases 目录下，避免污染正式用例库"""
         try:
             import yaml
