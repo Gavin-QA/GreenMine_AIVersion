@@ -1520,17 +1520,40 @@ class ReportHub:
             except KeyboardInterrupt:
                 print("\n🛑 服务已停止。")
 
+    def refresh_all_reports(self) -> int:
+        """强制重新生成所有子运行目录中的 report.html，并更新统一大盘"""
+        from utils.report_generator import ReportGenerator
+
+        subdirs = sorted([d for d in self.runs_dir.iterdir() if d.is_dir() and not d.name.startswith((".", "__"))], key=lambda p: p.stat().st_mtime, reverse=True)
+        count = 0
+        logger.info(f"🔄 开始强制全量刷新 {len(subdirs)} 个运行目录的 report.html...")
+        for idx, d in enumerate(subdirs, 1):
+            try:
+                gen = ReportGenerator(d)
+                gen.generate_html()
+                count += 1
+                logger.info(f"[{idx}/{len(subdirs)}] ✅ 成功刷新: {d.name}/report.html")
+            except Exception as e:
+                logger.error(f"[{idx}/{len(subdirs)}] ❌ 刷新 {d.name} 失败: {e}")
+        
+        self.build_index_html()
+        logger.info(f"🎉 全部 {count} 份独立报告及统一巡检门户已全量刷新完成！")
+        return count
+
 
 def main():
     parser = argparse.ArgumentParser(description="Electron Vision AI 统一巡检门户引擎")
     parser.add_argument("--build", action="store_true", help="仅重新生成 reports/runs/index.html")
+    parser.add_argument("--refresh-all", action="store_true", help="强制重新生成所有子运行目录下的 report.html 并更新大盘")
     parser.add_argument("--serve", action="store_true", help="启动常驻 Web 服务")
     parser.add_argument("--port", type=int, default=8080, help="Web 服务端口 (默认 8080)")
     args = parser.parse_args()
 
     hub = ReportHub()
 
-    if args.serve:
+    if args.refresh_all:
+        hub.refresh_all_reports()
+    elif args.serve:
         hub.serve(port=args.port)
     else:
         out = hub.build_index_html()

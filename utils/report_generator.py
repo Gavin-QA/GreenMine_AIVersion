@@ -141,12 +141,13 @@ class ReportGenerator:
                         if (shots_dir / before_file).exists():
                             b_info["before_screenshot"] = f"screenshots/{before_file}"
 
-                    # 注入全局缺陷库元数据 (occurrences, last_seen, assignee, tags, analysis_notes, etc.)
+                    # 注入全局缺陷库权威元数据 (status, occurrences, last_seen, assignee, tags, analysis_notes, etc.)
                     if bug_id in global_bugs_map:
                         gb = global_bugs_map[bug_id]
                         for k in ["occurrences", "last_seen", "status", "severity", "action_type", "ui_path", "target_element", "assignee", "tags", "analysis_notes", "date"]:
-                            if k in gb and (k not in b_info or not b_info[k] or b_info[k] == "Medium"):
-                                b_info[k] = gb[k]
+                            if k in gb:
+                                if k in ["status", "severity", "assignee", "tags", "analysis_notes", "occurrences", "last_seen"] or k not in b_info or not b_info[k] or b_info[k] == "Medium":
+                                    b_info[k] = gb[k]
 
                     data["bugs"].append(b_info)
                 except Exception as e:
@@ -2427,11 +2428,24 @@ class ReportGenerator:
             🎬 查看执行树对应步骤 (Step ${{b_step_num}}) ➔
           </button>` : '';
 
+        let curStatus = b.status || '激活';
+        if (curStatus === 'Open') curStatus = '激活';
+        const statusMeta = {{
+          '激活': {{ bg: 'rgba(244,63,94,0.15)', color: '#f43f5e', border: 'rgba(244,63,94,0.3)' }},
+          '已解决': {{ bg: 'rgba(16,185,129,0.15)', color: '#10b981', border: 'rgba(16,185,129,0.3)' }},
+          '已提单': {{ bg: 'rgba(59,130,246,0.15)', color: '#3b82f6', border: 'rgba(59,130,246,0.3)' }},
+          '已关闭': {{ bg: 'rgba(100,116,139,0.15)', color: '#94a3b8', border: 'rgba(100,116,139,0.3)' }},
+          '误报': {{ bg: 'rgba(100,116,139,0.15)', color: '#94a3b8', border: 'rgba(100,116,139,0.3)' }}
+        }};
+        const sm = statusMeta[curStatus] || {{ bg: 'rgba(100,116,139,0.15)', color: '#94a3b8', border: 'rgba(100,116,139,0.3)' }};
+        const statusBadgeHtml = `<span style="background:${{sm.bg}};color:${{sm.color}};border:1px solid ${{sm.border}};padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;">${{curStatus}}</span>`;
+
         html += `
           <div class="bug-card" id="bug-card-${{card_id}}">
             <div class="bug-card-header">
               <div class="bug-id-group">
                 <span class="bug-badge">${{b_id}}</span>
+                ${{statusBadgeHtml}}
                 <span class="bug-title">${{b_title}}</span>
               </div>
               <div style="display:flex;align-items:center;gap:12px;">
@@ -2597,10 +2611,17 @@ class ReportGenerator:
       const b_id = b.id || cardId || 'BUG';
       document.getElementById('modalBugId').innerText = b_id;
       
-      const status = b.status || '激活';
-      document.getElementById('modalStatus').innerHTML = (status === 'Open' || status === '激活')
-          ? `<div style="background:rgba(244,63,94,0.15);color:#f43f5e;padding:6px 12px;border-radius:6px;font-size:13px;font-weight:700;border:1px solid rgba(244,63,94,0.3)">激活</div>`
-          : `<div style="background:rgba(16,185,129,0.15);color:#10b981;padding:6px 12px;border-radius:6px;font-size:13px;font-weight:700;border:1px solid rgba(16,185,129,0.3)">已关闭</div>`;
+      let curStatus = b.status || '激活';
+      if (curStatus === 'Open') curStatus = '激活';
+      const statusMeta = {{
+        '激活': {{ bg: 'rgba(244,63,94,0.15)', color: '#f43f5e', border: 'rgba(244,63,94,0.3)' }},
+        '已解决': {{ bg: 'rgba(16,185,129,0.15)', color: '#10b981', border: 'rgba(16,185,129,0.3)' }},
+        '已提单': {{ bg: 'rgba(59,130,246,0.15)', color: '#3b82f6', border: 'rgba(59,130,246,0.3)' }},
+        '已关闭': {{ bg: 'rgba(100,116,139,0.15)', color: '#94a3b8', border: 'rgba(100,116,139,0.3)' }},
+        '误报': {{ bg: 'rgba(100,116,139,0.15)', color: '#94a3b8', border: 'rgba(100,116,139,0.3)' }}
+      }};
+      const sm = statusMeta[curStatus] || {{ bg: 'rgba(100,116,139,0.15)', color: '#94a3b8', border: 'rgba(100,116,139,0.3)' }};
+      document.getElementById('modalStatus').innerHTML = `<div style="background:${{sm.bg}};color:${{sm.color}};padding:6px 12px;border-radius:6px;font-size:13px;font-weight:700;border:1px solid ${{sm.border}}">${{curStatus}}</div>`;
       
       const sev = b.severity || 3;
       document.getElementById('modalSeverity').innerText = `🔥 严重度: ${{sev}}`;
