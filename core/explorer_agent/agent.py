@@ -159,7 +159,7 @@ class ExplorerAgent:
                 if self.is_panel_hidden:
                     planner_context += "\n⚠️【极度紧急：大屏处于一键隐藏状态】当前页面 2D 业务面板已被收起/隐藏！画面仅剩三维场景！必须优先规划子目标为：'点击右上角【一键展开/一键显示】按钮（含 << 图标）恢复大屏面板显示'！绝对严禁规划任何其他业务操作！\n"
                 if self.mailing_dialog_open or any("迈灵" in m for m in self.container_stack):
-                    planner_context += "\n⚠️【极度紧急：【迈灵】助手对话弹窗处于打开状态】当前屏幕底部悬浮着【迈灵】AI助手对话窗，遮挡了底部业务区！必须优先规划子目标为：'再次点击顶部【迈灵】图标或点击底部对话框关闭按钮将其关闭'！严禁在对话窗未关闭时操作其他组件！\n"
+                    planner_context += "\n⚠️【极度紧急：【迈灵】助手对话弹窗处于打开状态】当前屏幕底部悬浮着【迈灵】AI助手对话窗！必须优先规划子目标为：'再次点击顶部状态栏右上角的【迈灵】圆形功能按钮以关闭对话窗'！注意：该弹窗本身无独立关闭❌叉号，必须且只能再次点击【迈灵】按钮本身进行 Toggle 关闭！严禁去屏幕极右上角寻找关闭叉号！\n"
 
                 plan = self.vision.plan_sub_objective(
                     macro_objective=objective,
@@ -278,7 +278,7 @@ class ExplorerAgent:
                     if self.is_panel_hidden:
                         worker_context += "\n⚠️【极度紧急：大屏处于一键隐藏状态】当前页面 2D 业务面板已被收起/隐藏！下一步必须且只能执行：点击右上角【一键展开/一键显示】按钮（含 << 图标，如 class_foldBarRightunfold）恢复大屏面板显示！\n"
                     if self.mailing_dialog_open or any("迈灵" in m for m in self.container_stack):
-                        worker_context += "\n⚠️【极度紧急：【迈灵】助手对话弹窗处于打开状态】当前屏幕底部悬浮着【迈灵】AI助手对话窗！下一步必须立即将其关闭：可再次点击顶部【迈灵】图标，或点击底部对话框右上角关闭按钮❌！\n"
+                        worker_context += "\n⚠️【极度紧急：【迈灵】助手对话弹窗处于打开状态】当前屏幕底部悬浮着【迈灵】AI助手对话窗！下一步必须立即将其关闭：直接再次点击顶部状态栏右上角的【迈灵】圆形功能按钮！绝对严禁在屏幕极右上角盲找或点击关闭叉号（极易误触系统退出按钮）！\n"
 
                     decision = self.vision.execute_sub_objective(
                         sub_objective=sub_objective,
@@ -464,7 +464,7 @@ class ExplorerAgent:
                             dom_elements = self.driver.extract_interactive_elements()
                             if self.mailing_dialog_open or any("迈灵" in m for m in self.container_stack):
                                 cx, cy = self.vision.find_element(
-                                    instruction="顶部右上角‘迈灵’圆形功能按钮，或者底部对话框右上角的关闭按钮❌(如 class_teleportbox-close)",
+                                    instruction="顶部状态栏右上角的‘迈灵’圆形功能按钮(位于时间戳左侧、智控管理右侧，带彩色光环)",
                                     base64_image=base64_img,
                                     viewport_width=width,
                                     viewport_height=height,
