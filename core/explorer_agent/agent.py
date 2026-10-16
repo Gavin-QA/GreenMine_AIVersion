@@ -20,6 +20,7 @@ from utils.paths import (
 from .page_map_builder import PageMapBuilder
 from .trajectory_exporter import TrajectoryExporter
 from .post_click_diff import PostClickDetector
+from .guards import ExplorerGuards
 
 logger = logging.getLogger("explorer_agent")
 
@@ -574,22 +575,8 @@ class ExplorerAgent:
                                     "path": current_ui_path
                                 }
 
-                                # 探针点位有效性卫语句：检查是否仅捕获到非业务占位数据（如“默认视角”、“none”等）
-                                valid_metric_points = False
-                                for p in points:
-                                    if isinstance(p, dict):
-                                        vals = [str(v).strip() for v in p.values() if v is not None]
-                                        if any(v and v not in ("默认视角", "none", "-", "null", "undefined") for v in vals):
-                                            valid_metric_points = True
-                                            break
-                                    elif isinstance(p, (int, float)):
-                                        valid_metric_points = True
-                                        break
-                                    elif isinstance(p, str) and p.strip() and p.strip() not in ("默认视角", "none", "-", "null", "undefined"):
-                                        valid_metric_points = True
-                                        break
-
-                                if not valid_metric_points:
+                                # 1. 探针点位有效性卫语句：检查是否仅捕获到非业务占位数据（如“默认视角”、“none”等）
+                                if not ExplorerGuards.is_valid_metric_chart(points):
                                     logger.info(f"ℹ️ [BatchChart] 图表 '{chart_title}' 探针仅捕获到非业务占位数据 (如'默认视角')，处于3D/占位状态，跳过强行接口数据断言以防误判。")
                                     action_success = True
                                     trajectory.append({
@@ -616,42 +603,16 @@ class ExplorerAgent:
                                     api_summary = self.driver.get_focused_api_records_summary(search_context, page_scope=current_scope_str)
 
                                     if api_summary and api_summary != "[]":
-                                        # ========================================================
-                                        # 通用亲和度卫语句 (Semantic Affinity Pre-filter)
-                                        # 提取图表探针实际捕获到的业务指标名集合 (剔除通用元数据字段)
-                                        # ========================================================
-                                        chart_metric_keys = set()
-                                        for p in points:
-                                            if isinstance(p, dict):
-                                                for k in p.keys():
-                                                    k_str = str(k).strip()
-                                                    if k_str and k_str not in ("raw", "label", "style", "itemStyle") and not k_str.startswith("detail_"):
-                                                        clean_k = re.sub(r'[\(（\[].*?[\)）\]]', '', k_str).strip()
-                                                        if clean_k and len(clean_k) >= 2:
-                                                            chart_metric_keys.add(clean_k)
-                                                        if len(k_str) >= 2:
-                                                            chart_metric_keys.add(k_str)
-
-                                        # 如果图表捕获到了明确的具体指标名称，且候选 API 报文在忽略大小写的情况下
-                                        # 连任何一个指标关键词的词根都完全不存在，说明该候选 API 与当前图表绝非同源（探针偏靶或未拦截到真实接口）
-                                        has_affinity = True
-                                        if chart_metric_keys:
-                                            api_summary_lower = api_summary.lower()
-                                            matched_any = any(k.lower() in api_summary_lower for k in chart_metric_keys)
-                                            if not matched_any:
-                                                has_affinity = False
-                                                logger.info(
-                                                    f"ℹ️ [BatchChart] 亲和度卫语句生效: 图表提取指标 {list(chart_metric_keys)} "
-                                                    f"与候选 API 报文无任何同源交集，判定为非同源数据源，免除误判。"
-                                                )
-                                                action_success = True
-                                                trajectory.append({
-                                                    "type": "chart_probe_skip",
-                                                    "prompt": f"图表 '{chart_title}' 与候选接口非同源，免除误判",
-                                                    "thought": f"指标词 {list(chart_metric_keys)} 未在候选接口中出现，跳过比对"
-                                                })
-
-                                        if has_affinity:
+                                        # 2. 通用亲和度卫语句 (Semantic Affinity Pre-filter)
+                                        has_affinity, metric_keys = ExplorerGuards.check_chart_api_affinity(points, api_summary)
+                                        if not has_affinity:
+                                            action_success = True
+                                            trajectory.append({
+                                                "type": "chart_probe_skip",
+                                                "prompt": f"图表 '{chart_title}' 与候选接口非同源，免除误判",
+                                                "thought": f"指标词 {metric_keys} 未在候选接口中出现，跳过比对"
+                                            })
+                                        else:
                                             passed, reason = self.vision.check_batch_chart_assertion(
                                                 chart_name=chart_title,
                                                 points=points,
