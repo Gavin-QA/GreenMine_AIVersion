@@ -1841,13 +1841,18 @@
     "run_id": "explore_20261015_182652",
     "title": "[explore_20261010_182539] 探索操作 '下拉菜单项【智能巡检】' 触发底层异常",
     "severity": "Medium",
-    "status": "激活",
+    "status": "已关闭",
     "date": "2026-10-10",
-    "occurrences": 65,
+    "occurrences": 66,
     "last_seen": "2026-10-15",
     "step": "[CLICK] 交互目标: '下拉菜单项【智能巡检】' (页面路径: 智控管理)",
     "actual": "[network_error] HTTP 500: http://localhost:9528/nplusone/InspectionRobot/GetVideoPlayUrl?robotId=184&videoType=2\n[console_error (代码位置: GetVideoPlayUrl:0)] Failed to load resource: the server responded with a status of 500 (Internal Server Error)\n[console_error (代码位置: index-D2TFswQ9.js:4412)] httpUtils_error Ro\n[network_error] HTTP 500: http://localhost:9528/nplusone/InspectionRobot/AlarmInfoService\n[console_error (代码位置: AlarmInfoService:0)] Failed to load resource: the server responded with a status of 500 (Internal Server Error)\n[console_error (代码位置: index-D2TFswQ9.js:4412)] httpUtils_error Ro\n[network_error] HTTP 500: http://localhost:9528/nplusone/InspectionRobot/GetVideoPlayUrl?robotId=184&videoType=1\n[console_error (代码位置: GetVideoPlayUrl:0)] Failed to load resource: the server responded with a status of 500 (Internal Server Error)\n[console_error (代码位置: index-D2TFswQ9.js:4412)] httpUtils_error Ro\n[network_error] HTTP 500: http://localhost:9528/nplusone/InspectionRobot/GetObjectInspectionResultsService\n[console_error (代码位置: GetObjectInspectionResultsService:0)] Failed to load resource: the server responded with a status of 500 (Internal Server Error)\n[console_error (代码位置: index-D2TFswQ9.js:4412)] httpUtils_error Ro\n[page_error] Ro\n[page_error] Ro\n[page_error] Ro\n[page_error] Ro",
-    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/explore_20261015_182652/bugs/BUG-20261010-005_211459.png"
+    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/explore_20261015_182652/bugs/BUG-20261010-005_211459.png",
+    "tags": [
+      "已知物联网波动",
+      "误报屏蔽"
+    ],
+    "analysis_notes": "[已确认已知现象 - 物联网巡检机器人通信偶发波动 500]\n原因说明: 该模块对接真实物联网硬件设备与边缘视频流，网络抖动或硬件休眠时接口存在间歇性 500，属于已知环境偶发波动，底座已接入智能语义去重与静默抑制，后续再触发时自动静默合并，不重复刷屏开单。"
   },
   {
     "id": "BUG-20261010-006",
@@ -2119,13 +2124,18 @@
     "run_id": "explore_20261015_182652",
     "title": "[explore_20261015_182652] 探索操作 '下拉菜单项【智能巡检】' 触发底层异常",
     "severity": "Medium",
-    "status": "激活",
+    "status": "已关闭",
     "date": "2026-10-15",
     "occurrences": 1,
     "last_seen": "2026-10-15",
     "step": "[CLICK] 交互目标: '下拉菜单项【智能巡检】' (页面路径: 智控管理)",
     "actual": "[network_error] HTTP 500: http://localhost:9528/nplusone/InspectionRobot/GetVideoPlayUrl?robotId=184&videoType=1\n[console_error (代码位置: GetVideoPlayUrl:0)] Failed to load resource: the server responded with a status of 500 (Internal Server Error)\n[console_error (代码位置: index-D2TFswQ9.js:4412)] httpUtils_error Ro\n[network_error] HTTP 500: http://localhost:9528/nplusone/InspectionRobot/AlarmInfoService\n[console_error (代码位置: AlarmInfoService:0)] Failed to load resource: the server responded with a status of 500 (Internal Server Error)\n[console_error (代码位置: index-D2TFswQ9.js:4412)] httpUtils_error Ro\n[network_error] HTTP 500: http://localhost:9528/nplusone/InspectionRobot/GetObjectInspectionResultsService\n[console_error (代码位置: GetObjectInspectionResultsService:0)] Failed to load resource: the server responded with a status of 500 (Internal Server Error)\n[console_error (代码位置: index-D2TFswQ9.js:4412)] httpUtils_error Ro\n[network_error] HTTP 500: http://localhost:9528/nplusone/InspectionRobot/GetVideoPlayUrl?robotId=184&videoType=2\n[console_error (代码位置: GetVideoPlayUrl:0)] Failed to load resource: the server responded with a status of 500 (Internal Server Error)\n[console_error (代码位置: index-D2TFswQ9.js:4412)] httpUtils_error Ro\n[page_error] Ro\n[page_error] Ro\n[page_error] Ro\n[page_error] Ro",
-    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/explore_20261015_182652/bugs/BUG-20261015-005.png"
+    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/explore_20261015_182652/bugs/BUG-20261015-005.png",
+    "tags": [
+      "已知物联网波动",
+      "已合并"
+    ],
+    "analysis_notes": "[已关闭 - 与 BUG-20261010-005 重复并合并] 物联网巡检机器人硬件接口偶发 500，已统一归纳至 BUG-20261010-005 跟踪。"
   },
   {
     "id": "BUG-20261015-006",
