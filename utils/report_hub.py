@@ -1386,19 +1386,26 @@ class ReportHub:
     }}
 
     function changeBugStatus(bugId, selectEl) {{
-        if (location.protocol === 'file:') {{
-            alert('修改状态需要启动本地 Web 服务！请在终端运行: python utils/report_hub.py --serve');
-            // reset select
-            renderBugs();
-            return;
-        }}
-        
         const newStatus = selectEl.value;
-        fetch('/api/update_bug_status', {{
+        let apiBase = '';
+        if (location.protocol === 'file:') {{
+            apiBase = 'http://localhost:8080';
+        }} else if (location.port !== '8080') {{
+            // 兼容 IIS (80端口) 或其他反向代理：自动定向到同台主机的 8080 Python 服务
+            apiBase = `${{location.protocol}}//${{location.hostname}}:8080`;
+        }}
+        const apiUrl = `${{apiBase}}/api/update_bug_status`;
+        
+        fetch(apiUrl, {{
             method: 'POST',
             headers: {{ 'Content-Type': 'application/json' }},
             body: JSON.stringify({{ bug_id: bugId, status: newStatus }})
-        }}).then(res => res.json()).then(data => {{
+        }}).then(async res => {{
+            if (!res.ok) {{
+                throw new Error(`HTTP ${{res.status}} 响应异常`);
+            }}
+            return res.json();
+        }}).then(data => {{
             if (data.success) {{
                 const bug = allBugs.find(b => b.id === bugId);
                 if(bug) bug.status = newStatus;
@@ -1411,7 +1418,7 @@ class ReportHub:
                 alert('更新失败: ' + (data.error || '未知错误'));
             }}
         }}).catch(err => {{
-            alert('网络请求失败: ' + err);
+            alert('更新状态失败: ' + (err.message || err) + '\\n\\n请确认同主机的 8080 Python 服务已启动: python utils/report_hub.py --serve');
         }});
     }}
 
