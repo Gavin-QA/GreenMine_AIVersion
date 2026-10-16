@@ -1472,28 +1472,58 @@ class ReportHub:
                         bug_id = data.get('bug_id')
                         new_status = data.get('status')
                         
-                        bug_file = (GLOBAL_BUGS_DIR / "global_bugs.json").resolve()
-                        success = False
-                        if bug_file.exists():
-                            with open(bug_file, 'r', encoding='utf-8') as f:
-                                bugs = json.load(f)
-                            
-                            for b in bugs:
-                                if b.get('id') == bug_id:
-                                    b['status'] = new_status
-                                    success = True
-                                    break
-                                    
-                            if success:
-                                with open(bug_file, 'w', encoding='utf-8') as f:
-                                    json.dump(bugs, f, ensure_ascii=False, indent=2)
-                                # 同步重构静态大盘与 runs_data.js，保持数据双向实时一致
-                                try:
-                                    hub_instance.build_index_html()
-                                except Exception as be:
-                                    logger.warning(f"Rebuilding index.html after bug status update warning: {be}")
+                        if not bug_id or not new_status:
+                            raise ValueError("缺少必要的 bug_id 或 status 参数")
 
-                        resp_bytes = json.dumps({"success": success, "bug_id": bug_id, "status": new_status}).encode('utf-8')
+                        success = False
+                        updated_targets = []
+
+                        # 1. 在全局缺陷知识库 (artifacts/bugs/global_bugs.json) 中查找并更新
+                        bug_file = (GLOBAL_BUGS_DIR / "global_bugs.json").resolve()
+                        if bug_file.exists():
+                            try:
+                                with open(bug_file, 'r', encoding='utf-8') as f:
+                                    bugs = json.load(f)
+                                for b in bugs:
+                                    if b.get('id') == bug_id:
+                                        b['status'] = new_status
+                                        success = True
+                                        updated_targets.append("global_bugs.json")
+                                        break
+                                if success:
+                                    with open(bug_file, 'w', encoding='utf-8') as f:
+                                        json.dump(bugs, f, ensure_ascii=False, indent=2)
+                            except Exception as ge:
+                                logger.warning(f"更新 global_bugs.json 异常: {ge}")
+
+                        # 2. 在各个单次运行目录 (reports/runs/<run_id>/bugs/<bug_id>.json) 中查找并更新
+                        if hub_instance.runs_dir.exists():
+                            for run_dir in hub_instance.runs_dir.iterdir():
+                                if run_dir.is_dir() and not run_dir.name.startswith((".", "__")):
+                                    run_bug_file = run_dir / "bugs" / f"{bug_id}.json"
+                                    if run_bug_file.exists():
+                                        try:
+                                            with open(run_bug_file, 'r', encoding='utf-8') as rf:
+                                                b_data = json.load(rf)
+                                            b_data['status'] = new_status
+                                            with open(run_bug_file, 'w', encoding='utf-8') as rf:
+                                                json.dump(b_data, rf, ensure_ascii=False, indent=2)
+                                            success = True
+                                            updated_targets.append(f"{run_dir.name}/bugs/{bug_id}.json")
+                                        except Exception as re_err:
+                                            logger.warning(f"更新运行目录 Bug 文件异常 ({run_bug_file}): {re_err}")
+
+                        if success:
+                            # 同步重构静态大盘与 runs_data.js，保持数据双向实时一致
+                            try:
+                                hub_instance.build_index_html()
+                            except Exception as be:
+                                logger.warning(f"Rebuilding index.html after bug status update warning: {be}")
+                            resp_data = {"success": True, "bug_id": bug_id, "status": new_status, "updated": updated_targets}
+                        else:
+                            resp_data = {"success": False, "bug_id": bug_id, "error": f"在全局库及各运行目录中均未找到编号为 '{bug_id}' 的缺陷记录"}
+
+                        resp_bytes = json.dumps(resp_data, ensure_ascii=False).encode('utf-8')
                         self.send_response(200)
                         self.send_header('Content-Type', 'application/json; charset=utf-8')
                         self.send_header('Content-Length', str(len(resp_bytes)))
@@ -1501,7 +1531,7 @@ class ReportHub:
                         self.end_headers()
                         self.wfile.write(resp_bytes)
                     except Exception as err:
-                        err_bytes = json.dumps({"success": False, "error": str(err)}).encode('utf-8')
+                        err_bytes = json.dumps({"success": False, "error": str(err)}, ensure_ascii=False).encode('utf-8')
                         self.send_response(500)
                         self.send_header('Content-Type', 'application/json; charset=utf-8')
                         self.send_header('Content-Length', str(len(err_bytes)))
