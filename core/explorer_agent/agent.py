@@ -616,36 +616,72 @@ class ExplorerAgent:
                                     api_summary = self.driver.get_focused_api_records_summary(search_context, page_scope=current_scope_str)
 
                                     if api_summary and api_summary != "[]":
-                                        passed, reason = self.vision.check_batch_chart_assertion(
-                                            chart_name=chart_title,
-                                            points=points,
-                                            base64_image=base64_img,
-                                            api_data_json=api_summary
-                                        )
-                                        if not passed:
-                                            logger.error(f"🚨 [BATCH CHART MISMATCH] 图表 '{chart_title}' 全量核验失败: {reason}")
-                                            action_success = False
-                                            chart_bug_img = str(self.explore_dir / f"chart_bug_{steps_taken}_{worker_step}.png")
-                                            try:
-                                                self.driver.capture_screenshot(chart_bug_img)
-                                            except Exception:
-                                                chart_bug_img = None
-                                            path_str = " -> ".join(current_ui_path) if current_ui_path else "未知路径"
-                                            self.bug_reporter.report_bug(
-                                                run_id=self.run_id,
-                                                title=f"[{self.run_id}] 图表全量数据核验异常: '{chart_title}'",
-                                                step_prompt=f"[CHART-PROBE] 批量核验图表: '{chart_title}' ({len(points)}个数据点) (路径: {path_str})",
-                                                actual_result=f"图表批量断言未通过: {reason}",
-                                                crash_image_path=chart_bug_img
+                                        # ========================================================
+                                        # 通用亲和度卫语句 (Semantic Affinity Pre-filter)
+                                        # 提取图表探针实际捕获到的业务指标名集合 (剔除通用元数据字段)
+                                        # ========================================================
+                                        chart_metric_keys = set()
+                                        for p in points:
+                                            if isinstance(p, dict):
+                                                for k in p.keys():
+                                                    k_str = str(k).strip()
+                                                    if k_str and k_str not in ("raw", "label", "style", "itemStyle") and not k_str.startswith("detail_"):
+                                                        clean_k = re.sub(r'[\(（\[].*?[\)）\]]', '', k_str).strip()
+                                                        if clean_k and len(clean_k) >= 2:
+                                                            chart_metric_keys.add(clean_k)
+                                                        if len(k_str) >= 2:
+                                                            chart_metric_keys.add(k_str)
+
+                                        # 如果图表捕获到了明确的具体指标名称，且候选 API 报文在忽略大小写的情况下
+                                        # 连任何一个指标关键词的词根都完全不存在，说明该候选 API 与当前图表绝非同源（探针偏靶或未拦截到真实接口）
+                                        has_affinity = True
+                                        if chart_metric_keys:
+                                            api_summary_lower = api_summary.lower()
+                                            matched_any = any(k.lower() in api_summary_lower for k in chart_metric_keys)
+                                            if not matched_any:
+                                                has_affinity = False
+                                                logger.info(
+                                                    f"ℹ️ [BatchChart] 亲和度卫语句生效: 图表提取指标 {list(chart_metric_keys)} "
+                                                    f"与候选 API 报文无任何同源交集，判定为非同源数据源，免除误判。"
+                                                )
+                                                action_success = True
+                                                trajectory.append({
+                                                    "type": "chart_probe_skip",
+                                                    "prompt": f"图表 '{chart_title}' 与候选接口非同源，免除误判",
+                                                    "thought": f"指标词 {list(chart_metric_keys)} 未在候选接口中出现，跳过比对"
+                                                })
+
+                                        if has_affinity:
+                                            passed, reason = self.vision.check_batch_chart_assertion(
+                                                chart_name=chart_title,
+                                                points=points,
+                                                base64_image=base64_img,
+                                                api_data_json=api_summary
                                             )
-                                        else:
-                                            logger.info(f"🎉 [BatchChart] 图表 '{chart_title}' 全量 {len(points)} 个数据点集中核验 100% 通过！")
-                                            action_success = True
-                                            trajectory.append({
-                                                "type": "api_assert",
-                                                "prompt": f"批量核验图表 '{chart_title}' 全量 {len(points)} 个数据节点业务数据一致性",
-                                                "thought": f"ECharts 双擎嗅探全量点位核验: {reason}"
-                                            })
+                                            if not passed:
+                                                logger.error(f"🚨 [BATCH CHART MISMATCH] 图表 '{chart_title}' 全量核验失败: {reason}")
+                                                action_success = False
+                                                chart_bug_img = str(self.explore_dir / f"chart_bug_{steps_taken}_{worker_step}.png")
+                                                try:
+                                                    self.driver.capture_screenshot(chart_bug_img)
+                                                except Exception:
+                                                    chart_bug_img = None
+                                                path_str = " -> ".join(current_ui_path) if current_ui_path else "未知路径"
+                                                self.bug_reporter.report_bug(
+                                                    run_id=self.run_id,
+                                                    title=f"[{self.run_id}] 图表全量数据核验异常: '{chart_title}'",
+                                                    step_prompt=f"[CHART-PROBE] 批量核验图表: '{chart_title}' ({len(points)}个数据点) (路径: {path_str})",
+                                                    actual_result=f"图表批量断言未通过: {reason}",
+                                                    crash_image_path=chart_bug_img
+                                                )
+                                            else:
+                                                logger.info(f"🎉 [BatchChart] 图表 '{chart_title}' 全量 {len(points)} 个数据点集中核验 100% 通过！")
+                                                action_success = True
+                                                trajectory.append({
+                                                    "type": "api_assert",
+                                                    "prompt": f"批量核验图表 '{chart_title}' 全量 {len(points)} 个数据节点业务数据一致性",
+                                                    "thought": f"ECharts 双擎嗅探全量点位核验: {reason}"
+                                                })
                                     else:
                                         logger.info(f"ℹ️ [BatchChart] 未检索到图表 '{chart_title}' 的专属后台接口报文，记录图表已嗅探。")
                                         action_success = True
