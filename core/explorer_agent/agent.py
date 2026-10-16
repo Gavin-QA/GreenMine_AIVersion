@@ -561,55 +561,81 @@ class ExplorerAgent:
                                     "path": current_ui_path
                                 }
 
-                                # 检索后台相关接口报文（融合图表名、序列名与具体数值，驱动两级智能寻索）
-                                search_tokens = [chart_title]
-                                for p in points[:6]:
+                                # 探针点位有效性卫语句：检查是否仅捕获到非业务占位数据（如“默认视角”、“none”等）
+                                valid_metric_points = False
+                                for p in points:
                                     if isinstance(p, dict):
-                                        for k, v in p.items():
-                                            if k and str(k).strip() not in ("style", "itemStyle"):
-                                                search_tokens.append(str(k).strip())
-                                            if v is not None and str(v).strip():
-                                                search_tokens.append(str(v).strip())
-                                    else:
-                                        search_tokens.append(str(p))
-                                search_context = " ".join(search_tokens)
-                                current_scope_str = " -> ".join([str(p) for p in current_ui_path[:2]]) if current_ui_path and len(current_ui_path) >= 2 else (str(current_ui_path[0]) if current_ui_path else None)
-                                api_summary = self.driver.get_focused_api_records_summary(search_context, page_scope=current_scope_str)
+                                        vals = [str(v).strip() for v in p.values() if v is not None]
+                                        if any(v and v not in ("默认视角", "none", "-", "null", "undefined") for v in vals):
+                                            valid_metric_points = True
+                                            break
+                                    elif isinstance(p, (int, float)):
+                                        valid_metric_points = True
+                                        break
+                                    elif isinstance(p, str) and p.strip() and p.strip() not in ("默认视角", "none", "-", "null", "undefined"):
+                                        valid_metric_points = True
+                                        break
 
-                                if api_summary and api_summary != "[]":
-                                    passed, reason = self.vision.check_batch_chart_assertion(
-                                        chart_name=chart_title,
-                                        points=points,
-                                        base64_image=base64_img,
-                                        api_data_json=api_summary
-                                    )
-                                    if not passed:
-                                        logger.error(f"🚨 [BATCH CHART MISMATCH] 图表 '{chart_title}' 全量核验失败: {reason}")
-                                        action_success = False
-                                        chart_bug_img = str(self.explore_dir / f"chart_bug_{steps_taken}_{worker_step}.png")
-                                        try:
-                                            self.driver.capture_screenshot(chart_bug_img)
-                                        except Exception:
-                                            chart_bug_img = None
-                                        path_str = " -> ".join(current_ui_path) if current_ui_path else "未知路径"
-                                        self.bug_reporter.report_bug(
-                                            run_id=self.run_id,
-                                            title=f"[{self.run_id}] 图表全量数据核验异常: '{chart_title}'",
-                                            step_prompt=f"[CHART-PROBE] 批量核验图表: '{chart_title}' ({len(points)}个数据点) (路径: {path_str})",
-                                            actual_result=f"图表批量断言未通过: {reason}",
-                                            crash_image_path=chart_bug_img
-                                        )
-                                    else:
-                                        logger.info(f"🎉 [BatchChart] 图表 '{chart_title}' 全量 {len(points)} 个数据点集中核验 100% 通过！")
-                                        action_success = True
-                                        trajectory.append({
-                                            "type": "api_assert",
-                                            "prompt": f"批量核验图表 '{chart_title}' 全量 {len(points)} 个数据节点业务数据一致性",
-                                            "thought": f"ECharts 双擎嗅探全量点位核验: {reason}"
-                                        })
-                                else:
-                                    logger.info(f"ℹ️ [BatchChart] 未检索到图表 '{chart_title}' 的专属后台接口报文，记录图表已嗅探。")
+                                if not valid_metric_points:
+                                    logger.info(f"ℹ️ [BatchChart] 图表 '{chart_title}' 探针仅捕获到非业务占位数据 (如'默认视角')，处于3D/占位状态，跳过强行接口数据断言以防误判。")
                                     action_success = True
+                                    trajectory.append({
+                                        "type": "chart_probe_skip",
+                                        "prompt": f"图表 '{chart_title}' 处于非时序占位态，免除数据核验",
+                                        "thought": "组件当前呈现占位状态，无需触发错误警报"
+                                    })
+                                else:
+                                    # 检索后台相关接口报文（融合图表名、页面路径、序列名与具体数值，驱动两级智能寻索）
+                                    search_tokens = [chart_title]
+                                    if current_ui_path:
+                                        search_tokens.extend([str(seg) for seg in current_ui_path if seg])
+                                    for p in points[:6]:
+                                        if isinstance(p, dict):
+                                            for k, v in p.items():
+                                                if k and str(k).strip() not in ("style", "itemStyle"):
+                                                    search_tokens.append(str(k).strip())
+                                                if v is not None and str(v).strip():
+                                                    search_tokens.append(str(v).strip())
+                                        else:
+                                            search_tokens.append(str(p))
+                                    search_context = " ".join(search_tokens)
+                                    current_scope_str = " -> ".join([str(p) for p in current_ui_path[:2]]) if current_ui_path and len(current_ui_path) >= 2 else (str(current_ui_path[0]) if current_ui_path else None)
+                                    api_summary = self.driver.get_focused_api_records_summary(search_context, page_scope=current_scope_str)
+
+                                    if api_summary and api_summary != "[]":
+                                        passed, reason = self.vision.check_batch_chart_assertion(
+                                            chart_name=chart_title,
+                                            points=points,
+                                            base64_image=base64_img,
+                                            api_data_json=api_summary
+                                        )
+                                        if not passed:
+                                            logger.error(f"🚨 [BATCH CHART MISMATCH] 图表 '{chart_title}' 全量核验失败: {reason}")
+                                            action_success = False
+                                            chart_bug_img = str(self.explore_dir / f"chart_bug_{steps_taken}_{worker_step}.png")
+                                            try:
+                                                self.driver.capture_screenshot(chart_bug_img)
+                                            except Exception:
+                                                chart_bug_img = None
+                                            path_str = " -> ".join(current_ui_path) if current_ui_path else "未知路径"
+                                            self.bug_reporter.report_bug(
+                                                run_id=self.run_id,
+                                                title=f"[{self.run_id}] 图表全量数据核验异常: '{chart_title}'",
+                                                step_prompt=f"[CHART-PROBE] 批量核验图表: '{chart_title}' ({len(points)}个数据点) (路径: {path_str})",
+                                                actual_result=f"图表批量断言未通过: {reason}",
+                                                crash_image_path=chart_bug_img
+                                            )
+                                        else:
+                                            logger.info(f"🎉 [BatchChart] 图表 '{chart_title}' 全量 {len(points)} 个数据点集中核验 100% 通过！")
+                                            action_success = True
+                                            trajectory.append({
+                                                "type": "api_assert",
+                                                "prompt": f"批量核验图表 '{chart_title}' 全量 {len(points)} 个数据节点业务数据一致性",
+                                                "thought": f"ECharts 双擎嗅探全量点位核验: {reason}"
+                                            })
+                                    else:
+                                        logger.info(f"ℹ️ [BatchChart] 未检索到图表 '{chart_title}' 的专属后台接口报文，记录图表已嗅探。")
+                                        action_success = True
 
                                 # 将拓扑树收敛为一个规范的聚合图表节点
                                 if curr_node is not None:

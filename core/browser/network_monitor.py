@@ -64,22 +64,23 @@ class NetworkMonitorMixin:
             
         def on_console(msg):
             if msg.type == "error":
-                if NetworkMonitorMixin.is_benign_noise(msg_text=msg.text):
-                    logger.debug(f"[Electron Console Filtered (Noise)] {msg.text}")
-                    return
-                logger.warning(f"[Electron Console Error] {msg.text}")
-
-                # 提取报错的代码物理位置 (文件、行号)
                 loc_info = None
+                loc_url = ""
                 try:
                     loc = msg.location
                     if loc and loc.get("url"):
-                        loc_clean = loc["url"].split("?")[0].split("/")[-1]
+                        loc_url = loc["url"]
+                        loc_clean = loc_url.split("?")[0].split("/")[-1]
                         line_no = loc.get("lineNumber", 0)
                         if loc_clean:
                             loc_info = f"{loc_clean}:{line_no}"
                 except Exception:
                     pass
+
+                if NetworkMonitorMixin.is_benign_noise(msg_text=msg.text, url=loc_url):
+                    logger.debug(f"[Electron Console Filtered (Noise)] {msg.text} (loc: {loc_url})")
+                    return
+                logger.warning(f"[Electron Console Error] {msg.text}")
 
                 bug_entry = {
                     "type": "console_error",
@@ -380,6 +381,28 @@ class NetworkMonitorMixin:
 
         date_years = {"2022", "2023", "2024", "2025", "2026", "2027", "2028", "2029", "2030"}
 
+        DOMAIN_KEYWORD_MAP = {
+            "电耗": ["power", "electric", "powerconsumption"],
+            "水耗": ["water", "waterconsumption"],
+            "油耗": ["fuel", "fuelconsumption"],
+            "巡检": ["inspect", "inspection", "inspectrecord"],
+            "资源": ["resource", "situation"],
+            "储量": ["reserve", "situation", "reserves"],
+            "车辆": ["vehicle", "truck", "car", "location"],
+            "人员": ["staff", "person", "staffcount", "personnel"],
+            "溜井": ["bin", "pass", "chute", "passbasic"],
+            "矿仓": ["bin", "inventory", "binstats"],
+            "通风": ["ventilation", "wind", "fan"],
+            "风速": ["wind", "speed", "windspeed"],
+            "环境": ["environment", "sensor"],
+            "预警": ["alarm", "warn", "warning"],
+            "告警": ["alarm"],
+            "设备": ["equipment", "device"],
+            "采场": ["stope", "stopebasic"],
+            "钻孔": ["borehole", "hole"],
+            "回采": ["mining", "stoping"],
+        }
+
         for token in tokens:
             token_matched = False
             is_code = bool(re.search(r'[A-Za-z]', token) and re.search(r'\d', token))
@@ -396,7 +419,7 @@ class NetworkMonitorMixin:
                 elif is_metric:
                     score += 35.0
                 else:
-                    score += 30.0
+                    score += 40.0
             elif is_metric and token.endswith("%") and token[:-1] in data_str:
                 token_matched = True
                 score += 25.0
@@ -406,10 +429,23 @@ class NetworkMonitorMixin:
                 score += 100.0
                 token_matched = True
             elif len(token) >= 3 and token.lower() in url_str:
-                score += 20.0
+                score += 30.0
                 token_matched = True
 
-            if token_matched:
+            # 领域业务关键词智能映射与加权 (解决中文图表 vs 英文接口名脱节痛点)
+            for kw, en_terms in DOMAIN_KEYWORD_MAP.items():
+                if kw in token:
+                    for term in en_terms:
+                        if term in url_str:
+                            score += 50.0
+                            token_matched = True
+                            if f"{kw}->{term}" not in matched:
+                                matched.append(f"{kw}->{term}")
+                        elif term in data_str.lower():
+                            score += 30.0
+                            token_matched = True
+
+            if token_matched and token not in matched:
                 matched.append(token)
 
         return round(score, 2), matched
@@ -459,7 +495,7 @@ class NetworkMonitorMixin:
         else:
             return data
 
-    def get_focused_api_records_summary(self, query_text: str = "", max_records: int = 3, max_total_chars: int = 18000, page_scope: Optional[str] = None) -> str:
+    def get_focused_api_records_summary(self, query_text: str = "", max_records: int = 6, max_total_chars: int = 24000, page_scope: Optional[str] = None) -> str:
         """
         通用两级智能接口寻索机制 (Two-Tier Intelligent API Retrieval)：
         - 【第一级：页面作用域优先定向检索 (Tier 1)】

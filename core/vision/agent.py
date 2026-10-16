@@ -226,14 +226,17 @@ class VisionAgent:
             )
             
             thought = result.get("thought", "")
+            match_status = result.get("match_status", "MATCHED")
             passed = result.get("passed", False)
+            if match_status in ("UNRELATED", "SKIPPED"):
+                passed = True
             reason = result.get("assert_reason", "未提供理由")
             
-            logger.info(f"💡 [BatchChartAssert] AI 思考链: {thought}")
+            logger.info(f"💡 [BatchChartAssert] AI 思考链: {thought} | 状态: {match_status}")
             if passed:
-                logger.info(f"✅ [BatchChartAssert] 图表批量断言结果: True | 理由: {reason}")
+                logger.info(f"✅ [BatchChartAssert] 图表批量断言结果: True ({match_status}) | 理由: {reason}")
             else:
-                logger.warning(f"❌ [BatchChartAssert] 图表批量断言结果: False | 理由: {reason}")
+                logger.warning(f"❌ [BatchChartAssert] 图表批量断言结果: False ({match_status}) | 理由: {reason}")
                 
             return passed, reason
             

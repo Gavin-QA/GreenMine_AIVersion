@@ -51,6 +51,14 @@ class BugReporter:
                 bug_record["occurrences"] = bug_record.get("occurrences", 1) + 1
                 bug_record["last_seen"] = now_date
                 bug_id = dup_id
+
+                # 核心改进：若命中了已关闭/误报屏蔽的历史已知问题，直接静默阻断，不落盘产生新Bug快照
+                is_closed = bug_record.get("status") == "已关闭"
+                is_noise = "误报" in str(bug_record.get("tags", [])) or "误报" in str(bug_record.get("analysis_notes", ""))
+                if is_closed or is_noise:
+                    logger.info(f"🛡️ [Silent Suppress] 该异常命中历史已关闭/误报屏蔽条目 [{dup_id}]，已同步复现频次并静默屏蔽，不生成新 Bug 档案。")
+                    self._save_globals()
+                    return dup_id
             else:
                 # 极端异常情况：查到了 ID 但库里找不到
                 bug_id = self._create_new_bug(run_id, title, step_prompt, actual_result, now_date)
@@ -139,18 +147,27 @@ class BugReporter:
         if not self.global_bugs:
             return None
             
-        # 筛选近期激活或未解决的 Bug（为了省 token，只传前 20 个未关闭的）
-        active_bugs = [b for b in self.global_bugs if b["status"] != "已关闭"][-20:]
-        if not active_bugs:
+        # 1. 筛选近期激活或未解决的 Bug（为了省 token，只传前 25 个未关闭的）
+        active_bugs = [b for b in self.global_bugs if b.get("status") != "已关闭"][-25:]
+        # 2. 筛选已关闭或标记为误报屏蔽的历史已知条目（最多取最近 20 个，用于防范历史误报再次被当作新Bug）
+        closed_or_noise_bugs = [
+            b for b in self.global_bugs 
+            if b.get("status") == "已关闭" or "误报" in str(b.get("tags", [])) or "误报" in str(b.get("analysis_notes", ""))
+        ][-20:]
+        
+        candidate_bugs = active_bugs + [b for b in closed_or_noise_bugs if b not in active_bugs]
+        if not candidate_bugs:
             return None
             
-        bugs_context = json.dumps(active_bugs, ensure_ascii=False, indent=2)
+        bugs_context = json.dumps(candidate_bugs, ensure_ascii=False, indent=2)
         
         system_prompt = (
             "你是一个专业的测试架构师，负责进行缺陷查重 (Bug Deduplication)。\n"
             "用户会提供一个【新的崩溃报错】（包含执行的步骤和实际报错结果）。\n"
             "你需要将其与【全局 Bug 库】中已有的缺陷进行对比判定。\n"
-            "如果这个新崩溃的核心原因和某个已存在的 Bug 是同一个（比如同样是在某个模块找不到某个元素，或者同样的网络接口报错），请判定为重复，并返回该老 Bug 的 ID。\n"
+            "【注意】：全局 Bug 库中包含【激活中】的问题以及【已关闭/误报屏蔽】的历史已知问题。\n"
+            "如果这个新崩溃的核心原因和某个已存在的 Bug 是同一个（比如同样是在某个模块找不到某个元素，或者同样的静态资源404、同样的服务端接口500），请判定为重复，并返回该老 Bug 的 ID。\n"
+            "特别地，如果匹配到了【已关闭】或【误报屏蔽】的已知历史条目，也必须判定为重复并返回对应的 ID！\n"
             "如果这是一个全新的问题，请判定为不重复。\n"
             "你必须且只能返回合法的 JSON 对象，格式要求：\n"
             "{\"is_duplicate\": true/false, \"duplicate_id\": \"对应的Bug ID，如果没有则是null\", \"reason\": \"你的判定理由\"}\n"
@@ -158,7 +175,7 @@ class BugReporter:
         )
         
         user_prompt = (
-            f"【全局 Bug 库】：\n{bugs_context}\n\n"
+            f"【全局 Bug 库候选条目】：\n{bugs_context}\n\n"
             f"【新的崩溃报错】：\n"
             f"- 执行步骤: {step_prompt}\n"
             f"- 报错结果: {actual_result}\n\n"

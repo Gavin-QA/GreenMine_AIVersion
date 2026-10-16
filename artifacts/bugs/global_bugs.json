@@ -27,8 +27,8 @@
     "severity": 4,
     "status": "已关闭",
     "date": "2026-09-22",
-    "occurrences": 2,
-    "last_seen": "2026-09-22",
+    "occurrences": 3,
+    "last_seen": "2026-10-15",
     "global_step": null,
     "action_type": "CLICK",
     "ui_path": "首页 -> 矿山简介",
@@ -2062,13 +2062,18 @@
     "run_id": "explore_20261015_182652",
     "title": "[explore_20261015_182652] 探索操作 '下拉菜单项【生产统计】' 触发底层异常",
     "severity": "Medium",
-    "status": "激活",
+    "status": "已关闭",
     "date": "2026-10-15",
     "occurrences": 1,
     "last_seen": "2026-10-15",
     "step": "[CLICK] 交互目标: '下拉菜单项【生产统计】' (页面路径: 生产管理)",
     "actual": "[console_error (代码位置: %E8%83%8C%E6%99%AF%E6%95%B0%E5%AD%97%E9%9B%A8.png:0)] Failed to load resource: the server responded with a status of 404 (Not Found)",
-    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/explore_20261015_182652/bugs/BUG-20261015-001.png"
+    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/explore_20261015_182652/bugs/BUG-20261015-001.png",
+    "tags": [
+      "误报屏蔽",
+      "已合并"
+    ],
+    "analysis_notes": "[已关闭 - 与 BUG-20260922-002 重复并合并] 生产统计页面静态切图 (背景数字雨.png) 缺失 404，底座已接入 console_error 路径过滤机制。"
   },
   {
     "id": "BUG-20261015-002",
