@@ -451,15 +451,28 @@ class ExplorerAgent:
                     action_success = True
 
                 elif action_type in ("click", "hover"):
-                    # 模态逃逸防御：如果当前处于模态弹窗/迈灵对话框中，但试图与顶部导航栏或页面其他非弹窗区域交互，自动解除阻断
+                    # 全局模态逃逸与防串扰防御 (Universal Modal Escape Guard)：
+                    # 若当前处于模态弹窗/PDF查看器/迈灵对话框中，但即将执行的动作并非弹窗内部交互或关闭动作，
+                    # 自动拦截并物理点击右上角关闭按钮 ❌ 解除阻断，防范未关闭弹窗直接点击底层页面导致的前端崩溃！
                     should_escape = False
-                    if is_nav_interaction and self.container_stack:
-                        should_escape = True
-                    elif (self.mailing_dialog_open or any("迈灵" in m for m in self.container_stack)) and not any(k in (element_desc or "") for k in ["迈灵", "close", "关闭", "❌", "收起"]):
-                        should_escape = True
+                    is_closing_action = bool(element_desc and any(k in element_desc.lower() for k in ["close", "关闭", "❌", "收起", "取消", "返回", "叉号"]))
+                    
+                    if self.mailing_dialog_open or any("迈灵" in m for m in self.container_stack):
+                        # 迈灵对话框必须在操作其他业务前通过顶部迈灵按钮 Toggle 关闭
+                        if not any(k in (element_desc or "") for k in ["迈灵", "close", "关闭", "❌", "收起"]):
+                            should_escape = True
+                    elif self.container_stack and not is_closing_action:
+                        # 检查目标是否明确属于当前弹窗内的子组件
+                        is_inside_modal = (
+                            (container_name and any(m in container_name or container_name in m for m in self.container_stack)) or
+                            any(k in (element_desc or "") for k in ["弹窗内", "弹窗中", "浮层中", "预览区", "预览窗", "查看器内", "对话框内"])
+                        )
+                        # 若试图切换主导航 (is_nav_interaction)，或点击背景页面元素（如左侧列表、其他卡片、表格等），强制触发模态逃逸
+                        if is_nav_interaction or not is_inside_modal:
+                            should_escape = True
 
                     if should_escape and self.container_stack:
-                        logger.warning(f"🛡️ [Modal Escape] 检测到页面仍有模态遮罩/浮层未关闭 ({self.container_stack})，将阻断其他交互！自动定位并物理点击关闭按钮解除阻断...")
+                        logger.warning(f"🛡️ [Modal Escape] 检测到页面仍有模态遮罩/浮层未关闭 ({self.container_stack})，但即将执行非弹窗内交互 '{element_desc}'！自动定位并物理点击关闭按钮解除阻断...")
                         try:
                             dom_elements = self.driver.extract_interactive_elements()
                             if self.mailing_dialog_open or any("迈灵" in m for m in self.container_stack):
@@ -472,7 +485,7 @@ class ExplorerAgent:
                                 )
                             else:
                                 cx, cy = self.vision.find_element(
-                                    instruction="当前弹窗或查看器右上角的关闭按钮(❌图标或关闭按钮)",
+                                    instruction="当前弹窗、查看器或PDF预览窗口右上角的关闭按钮(❌图标或关闭按钮)",
                                     base64_image=base64_img,
                                     viewport_width=width,
                                     viewport_height=height,
