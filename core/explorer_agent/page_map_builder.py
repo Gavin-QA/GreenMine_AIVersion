@@ -459,6 +459,11 @@ class PageMapBuilder:
         return base_tree
 
     @staticmethod
+    def load_baseline_skeleton() -> dict:
+        """load_global_tree 的防御性别名方法"""
+        return PageMapBuilder.load_global_tree()
+
+    @staticmethod
     def reset_module_subtree(tree: dict, module_name: str) -> bool:
         """
         在架构树中查找指定的一级或二级菜单模块，并清空其所有子节点（重置为空分支），

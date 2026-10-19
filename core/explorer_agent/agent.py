@@ -53,7 +53,7 @@ class ExplorerAgent:
         self.generated_cases_dir = get_run_generated_cases_dir(self.run_id)
 
         # 核心拓扑架构底座
-        self.page_tree: Dict[str, Any] = PageMapBuilder.load_baseline_skeleton()
+        self.page_tree: Dict[str, Any] = PageMapBuilder.load_global_tree()
         self.failed_counts: Dict[str, int] = {}
         self.current_path: List[str] = ["首页"]
 
