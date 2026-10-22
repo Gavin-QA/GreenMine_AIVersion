@@ -572,18 +572,31 @@ class PageMapBuilder:
         return base_tree
 
     @staticmethod
-    def _create_topology_snapshot(source_file: Path) -> None:
-        """自动为全局架构树创建带时间戳的版本快照，防止模型幻觉或脏数据覆盖历史基线"""
+    def _create_topology_snapshot(source_file: Path, app: str = None) -> None:
+        """
+        自动为全局架构树创建带时间戳的应用专属版本快照，防止模型幻觉或脏数据覆盖历史基线。
+        快照按项目应用维度（如 page_tree_zhaiwan_*.json）严格物理隔离并独立滚动淘汰，项目间绝不误删。
+        """
         try:
             if not source_file.exists() or source_file.stat().st_size == 0:
                 return
             TOPOLOGY_SNAPSHOTS_DIR.mkdir(parents=True, exist_ok=True)
+
+            # 解析应用标识
+            if not app:
+                from config.settings import settings
+                app = getattr(settings, "active_app", None)
+            if not app or app == "default":
+                name_match = re.search(r"global_page_tree_([a-zA-Z0-9_-]+)", source_file.name)
+                app = name_match.group(1) if name_match else "default"
+
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-            snapshot_file = TOPOLOGY_SNAPSHOTS_DIR / f"page_tree_{ts}.json"
+            snapshot_file = TOPOLOGY_SNAPSHOTS_DIR / f"page_tree_{app}_{ts}.json"
             shutil.copy2(source_file, snapshot_file)
-            
-            # 限制历史快照数量（最多保留 20 份），滚动清理旧快照
-            snapshots = sorted(TOPOLOGY_SNAPSHOTS_DIR.glob("page_tree_*.json"), key=lambda p: p.stat().st_mtime)
+
+            # 限制单个应用的专属历史快照数量（各应用独立最多保留 20 份），滚动清理旧快照
+            app_pattern = f"page_tree_{app}_*.json"
+            snapshots = sorted(TOPOLOGY_SNAPSHOTS_DIR.glob(app_pattern), key=lambda p: p.stat().st_mtime)
             if len(snapshots) > 20:
                 for old_snap in snapshots[:-20]:
                     try:
