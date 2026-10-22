@@ -936,7 +936,7 @@ class ReportHub:
          <div id="modalHeader" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
             <div id="modalBugId" style="font-family:var(--font-mono);font-size:16px;color:#f8fafc;font-weight:700;background:rgba(255,255,255,0.06);padding:6px 12px;border-radius:6px;border:1px solid rgba(255,255,255,0.12);">BUG-XXX</div>
             <div id="modalStatus"></div>
-            <div id="modalSeverity" style="background:rgba(245,158,11,0.12);color:#f59e0b;padding:6px 12px;border-radius:6px;font-weight:700;border:1px solid rgba(245,158,11,0.3);font-size:14px;">🔥 3</div>
+            <div id="modalSeverity"></div>
          </div>
          <button onclick="document.getElementById('bugModalOverlay').style.display='none'" style="background:transparent;border:none;color:#94a3b8;font-size:26px;cursor:pointer;line-height:1;transition:color 0.2s;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#94a3b8'">&times;</button>
       </div>
