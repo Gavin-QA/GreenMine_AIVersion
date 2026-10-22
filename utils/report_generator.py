@@ -191,6 +191,8 @@ class ReportGenerator:
 
         # 5. 解析接口大盘与业务页面覆盖度
         api_file = self.run_dir / "screenshots" / "api_registry.json"
+        if not api_file.exists():
+            api_file = self.run_dir / "api_registry.json"
         raw_scopes = set()
         if api_file.exists():
             try:
@@ -198,7 +200,12 @@ class ReportGenerator:
                     api_data = json.load(f)
                 data["api_summary"] = api_data
                 summary_meta = api_data.get("summary", {})
-                data["kpi"]["apis_count"] = summary_meta.get("total_unique_endpoints", len(api_data.get("global_flat_apis", {})))
+                if "total_unique_endpoints" in summary_meta:
+                    data["kpi"]["apis_count"] = summary_meta["total_unique_endpoints"]
+                elif "global_flat_apis" in api_data:
+                    data["kpi"]["apis_count"] = len(api_data["global_flat_apis"])
+                else:
+                    data["kpi"]["apis_count"] = len([k for k in api_data.keys() if k not in ["summary", "page_scopes"]])
                 raw_scopes.update(api_data.get("page_scopes", {}).keys())
             except Exception as e:
                 logger.warning(f"读取 api_registry 失败: {e}")
@@ -284,22 +291,23 @@ class ReportGenerator:
             data["kpi"]["max_steps"] = "-"
             data["kpi"]["max_time"] = "-"
 
-        # 宏观目标提取
-        macro_match = re.search(r"🚀 开启自主探索模式 \| 目标: (.*?)(?=\n|\Z)", text)
+        # 宏观目标提取 (高兼容性容错匹配)
+        macro_match = re.search(r"🚀\s*(?:\[ExplorerAgent\])?\s*启动自主探索[，,]\s*目标[:：]\s*['\"]?(.*?)['\"]?(?:[，,]\s*最大步数|\n|\Z)", text)
+        if not macro_match:
+            macro_match = re.search(r"🚀 开启自主探索模式 \| 目标:\s*['\"]?(.*?)['\"]?(?=\n|\Z)", text)
+        if not macro_match:
+            macro_match = re.search(r"🕵️‍♂️ \[Planner\] 思考宏观目标:\s*['\"]?(.*?)['\"]?(?=\n|\Z)", text)
+        if not macro_match:
+            macro_match = re.search(r"探题目[:：]\s*(.*?)(?=\n|\Z)", text)
+        if not macro_match:
+            macro_match = re.search(r"▶️ 开始执行巡检用例:\s*(.*?)(?=\n|\Z)", text)
+        
         if macro_match:
-            data["macro_objective"] = macro_match.group(1).strip()
+            data["macro_objective"] = macro_match.group(1).strip().strip("'\"")
         else:
-            macro_match2 = re.search(r"探题目[:：]\s*(.*?)(?=\n|\Z)", text)
-            if macro_match2:
-                data["macro_objective"] = macro_match2.group(1).strip()
-            else:
-                macro_match3 = re.search(r"▶️ 开始执行巡检用例: (.*?)(?=\n|\Z)", text)
-                if macro_match3:
-                    data["macro_objective"] = macro_match3.group(1).strip()
-                else:
-                    smoke_match = re.search(r"🚀 启动【(.*?)全量冒烟巡检模式】", text)
-                    if smoke_match:
-                        data["macro_objective"] = "全量二级业务菜单冒烟巡检"
+            smoke_match = re.search(r"🚀 启动【(.*?)全量冒烟巡检模式】", text)
+            if smoke_match:
+                data["macro_objective"] = "全量二级业务菜单冒烟巡检"
 
         # 统计 Planner 次数
         data["kpi"]["planner_phases"] = len(re.findall(r"🧠 \[Planner Phase\]", text))

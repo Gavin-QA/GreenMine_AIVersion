@@ -253,7 +253,14 @@ class ExplorerAgent:
             except Exception as e:
                 logger.warning(f"导出用例失败: {e}")
 
-        # 2. 生成交互式 HTML 大盘报告
+        # 2. 导出接口大盘快照 (确保报告能统计出全量业务接口)
+        try:
+            shots_api_file = self.run_dir / "screenshots" / "api_registry.json"
+            self.driver.dump_api_registry(str(shots_api_file))
+        except Exception as api_err:
+            logger.warning(f"导出接口大盘异常: {api_err}")
+
+        # 3. 生成交互式 HTML 大盘报告
         try:
             from utils.report_generator import ReportGenerator
             reporter = ReportGenerator(self.run_dir)

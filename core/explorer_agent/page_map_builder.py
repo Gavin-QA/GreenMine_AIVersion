@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, List
 
+from config.settings import settings
 from utils.paths import TOPOLOGY_DIR, TOPOLOGY_SNAPSHOTS_DIR, DOCS_DIR
 
 logger = logging.getLogger("explorer_agent.page_map")
@@ -437,23 +438,40 @@ class PageMapBuilder:
                 target[k] = v
 
     @staticmethod
-    def load_global_tree() -> dict:
-        """从 artifacts/topology/global_page_tree.json 加载累积架构树，若无则从 docs/explore_rules.md 加载基准底座"""
-        base_tree = PageMapBuilder.parse_base_rules()
-        global_file = TOPOLOGY_DIR / "global_page_tree.json"
-        
-        # 兼容性回退检查：若新路径不存在则尝试读取 docs/ 下的历史数据
-        if not global_file.exists():
-            legacy_file = DOCS_DIR / "global_page_tree.json"
+    def get_global_tree_file() -> Path:
+        """获取当前激活应用专属的全局拓扑架构树文件路径 (多项目彻底隔离)"""
+        active_app = getattr(settings, "active_app", "default")
+        app_file = TOPOLOGY_DIR / f"global_page_tree_{active_app}.json"
+        # 针对默认寨湾项目，若专属文件不存在则兼容历史旧文件
+        if not app_file.exists() and active_app == "zhaiwan":
+            legacy_file = TOPOLOGY_DIR / "global_page_tree.json"
             if legacy_file.exists():
-                global_file = legacy_file
-                
+                return legacy_file
+            legacy_docs_file = DOCS_DIR / "global_page_tree.json"
+            if legacy_docs_file.exists():
+                return legacy_docs_file
+        return app_file
+
+    @staticmethod
+    def load_global_tree() -> dict:
+        """从当前应用专属的 global_page_tree 加载累积架构树，并以当前规则底座为白名单严格剪枝"""
+        base_tree = PageMapBuilder.parse_base_rules()
+        global_file = PageMapBuilder.get_global_tree_file()
+
         if global_file.exists():
             try:
                 with open(global_file, "r", encoding="utf-8") as f:
                     history_tree = json.load(f)
                 PageMapBuilder._deep_merge(base_tree, history_tree)
-                logger.info(f"📚 成功继承历史全局架构树: {global_file}")
+                
+                # 核心防污染防线：以当前应用的 base_tree 为权威白名单，彻底剔除不存在的一级主模块
+                valid_l1_keys = set(PageMapBuilder.parse_base_rules().keys())
+                pruned_keys = [k for k in base_tree.keys() if k not in valid_l1_keys]
+                for k in pruned_keys:
+                    del base_tree[k]
+                    logger.debug(f"✂️ [PageMapBuilder] 裁剪非当前应用的一级模块: 【{k}】")
+
+                logger.info(f"📚 成功继承历史全局架构树: {global_file} (已对齐当前应用基准)")
             except Exception as e:
                 logger.warning(f"加载全局历史架构树失败: {e}")
         return base_tree
@@ -494,8 +512,9 @@ class PageMapBuilder:
         reset_ok = _clear_in_dict(tree)
 
         # 同步清空持久化文件
-        for target_file in [TOPOLOGY_DIR / "global_page_tree.json", DOCS_DIR / "global_page_tree.json"]:
-            if target_file.exists():
+        targets = [PageMapBuilder.get_global_tree_file(), DOCS_DIR / "global_page_tree.json"]
+        for target_file in targets:
+            if target_file and target_file.exists():
                 try:
                     with open(target_file, "r", encoding="utf-8") as f:
                         history_tree = json.load(f)
@@ -543,12 +562,12 @@ class PageMapBuilder:
             DOCS_DIR.mkdir(parents=True, exist_ok=True)
             
             artifacts_map_path = TOPOLOGY_DIR / "auto_page_map.md"
-            artifacts_global_file = TOPOLOGY_DIR / "global_page_tree.json"
+            artifacts_global_file = PageMapBuilder.get_global_tree_file()
 
             # 1. 加载基准骨架并清洗导航噪音节点
             base_tree = PageMapBuilder.parse_base_rules()
             
-            # 确保 6 个一级菜单与 33 个二级菜单底座绝对存在
+            # 确保当前应用的基准骨架底座存在
             merged_tree = {}
             for l1, l2_dict in base_tree.items():
                 merged_tree[l1] = dict(l2_dict)
@@ -565,6 +584,12 @@ class PageMapBuilder:
                 
             # 将本次探索到的数据合入全局树
             PageMapBuilder._deep_merge(merged_tree, page_tree)
+
+            # 核心防污染防线：以当前应用的 base_tree 为权威白名单，彻底剔除不存在的一级主模块
+            valid_l1_keys = set(base_tree.keys())
+            pruned_keys = [k for k in merged_tree.keys() if k not in valid_l1_keys]
+            for k in pruned_keys:
+                del merged_tree[k]
 
             # 2. 深度清洗与去噪
             clean_tree = PageMapBuilder.sanitize_page_tree(merged_tree, base_rules=base_tree)
