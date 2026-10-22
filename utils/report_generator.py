@@ -308,16 +308,16 @@ class ReportGenerator:
         shots_dir = self.run_dir / "screenshots"
         
         # 按 Planner Phase 切分
-        planner_blocks = re.split(r"🧠 \[Planner Phase\] 开始规划", text)
+        planner_blocks = re.split(r"🧠 \[Planner Phase\] 开始(?:宏观)?规划", text)
         if len(planner_blocks) > 1:
             for p_idx, p_block in enumerate(planner_blocks[1:]):
                 planner_phase_num = p_idx + 1
                 
                 # 解析 Planner 信息
-                ts_m = re.search(r"^，当前进度.*?\n(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})", p_block) or re.search(r"\n(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})", p_block)
+                ts_m = re.search(r"^，当前.*?进度.*?\n(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})", p_block) or re.search(r"\n(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})", p_block)
                 ts = ts_m.group(1) if ts_m else ""
                 
-                prog_m = re.search(r"^，当前进度[：:]\s*(.*?)(?=\n)", p_block)
+                prog_m = re.search(r"^，当前(?:总步数)?进度[：:]\s*(.*?)(?=\n)", p_block)
                 global_prog = prog_m.group(1).strip() if prog_m else ""
                 
                 plan_shot_m = re.search(r"截图已保存至: .*?screenshots[\\/](plan_step_\d+\.png)", p_block)

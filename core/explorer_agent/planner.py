@@ -54,7 +54,7 @@ class ExplorerPlanner:
         """
         container_stack = container_stack or []
         logger.info(f"\n" + "=" * 40)
-        logger.info(f"🧠 [Planner Phase] 开始宏观规划，当前总步数进度: {steps_taken}/{max_steps}")
+        logger.info(f"🧠 [Planner Phase] 开始规划，当前进度: {steps_taken}/{max_steps}")
 
         try:
             # 1. 捕获规划快照 (启用背景熄灯聚焦)
