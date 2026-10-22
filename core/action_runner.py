@@ -161,6 +161,10 @@ class ActionRunner:
                         self.driver.drag(int(from_x), int(from_y), int(to_x), int(to_y), button=btn)
                     else:
                         logger.warning("drag 步骤缺少具体坐标参数！")
+                elif step_type in ("back", "go_back", "navigate_back"):
+                    self.driver.navigate_back()
+                elif step_type in ("reload", "refresh"):
+                    self.driver.reload_page()
                 elif step_type == "wait":
                     wait_sec = float(step.get("seconds", 2.0))
                     self.driver.wait(wait_sec)
@@ -329,11 +333,14 @@ class ActionRunner:
             action_type = "scroll"
             direction = "down"
             prompt = prompt.strip()[8:].strip()
-        elif prompt_upper.startswith("[SLIDE]"):
-            action_type = "slide"
-            prompt = prompt.strip()[7:].strip()
+        elif prompt_upper.startswith("[BACK]"):
+            action_type = "back"
+            prompt = prompt.strip()[6:].strip()
+        elif prompt_upper.startswith("[RELOAD]"):
+            action_type = "reload"
+            prompt = prompt.strip()[8:].strip()
 
-        # 针对 3D 与连续手势动作分发
+        # 针对 3D、手势与路由回溯动作分发
         if action_type == "zoom":
             self._do_zoom(prompt=prompt if prompt else None, direction=direction)
             return
@@ -345,6 +352,12 @@ class ActionRunner:
             return
         elif action_type == "slide":
             self._do_slide(prompt=prompt if prompt else None)
+            return
+        elif action_type == "back":
+            self.driver.navigate_back()
+            return
+        elif action_type == "reload":
+            self.driver.reload_page()
             return
 
         # 2. Cognition

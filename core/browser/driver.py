@@ -531,6 +531,44 @@ class ElectronDriver(NetworkMonitorMixin, DomExtractorMixin, ScreenshotMixin, Ch
         logger.info(f"⏳ 等待 {seconds} 秒...")
         time.sleep(seconds)
 
+    def navigate_back(self, delay_after: float = 1.5):
+        """
+        执行路由历史回退 (支持单页路由 history.back 或快捷键 Alt+Left)
+        """
+        if not self.page:
+            raise RuntimeError("页面未就绪！")
+
+        logger.info("🔙 执行路由/页面历史回退 (Back)...")
+        try:
+            self.page.go_back(timeout=3000)
+        except Exception:
+            try:
+                self.page.evaluate("() => { if (window.history.length > 1) window.history.back(); }")
+            except Exception:
+                try:
+                    self.page.keyboard.press("Alt+ArrowLeft")
+                except Exception as e_back:
+                    logger.warning(f"历史回退快捷键执行异常: {e_back}")
+
+        if delay_after > 0:
+            time.sleep(delay_after)
+
+    def reload_page(self, delay_after: float = 2.0):
+        """
+        执行当前视口刷新与状态重置 (用于清洗污染的表单过滤死锁或卡死界面)
+        """
+        if not self.page:
+            raise RuntimeError("页面未就绪！")
+
+        logger.info("🔄 刷新视口与重置页面状态 (Reload)...")
+        try:
+            self.page.reload(timeout=10000)
+        except Exception as e_reload:
+            logger.warning(f"页面重载异常: {e_reload}")
+
+        if delay_after > 0:
+            time.sleep(delay_after)
+
     def close(self):
         """清理连接与释放进程资源"""
         logger.info("正在关闭 Electron 驱动底座并释放资源...")
