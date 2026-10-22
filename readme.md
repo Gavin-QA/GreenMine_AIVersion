@@ -287,9 +287,10 @@ steps:
 electron_ai_vision/
 ├── artifacts/             # 💎 【长期持久资产区】（体积极小，永久保护）
 │   ├── bugs/
-│   │   └── global_bugs.json   # 全局缺陷知识库（去重后合并的权威 Bug 库）
+│   │   └── global_bugs_<app>.json   # 应用专属全局缺陷知识库（去重后合并的权威 Bug 库）
 │   └── topology/
-│       └── global_page_tree.json # 全局架构拓扑底座
+│       ├── snapshots/               # 带项目前缀的版本快照库 (page_tree_<app>_*.json)
+│       └── global_page_tree_<app>.json # 应用专属全局架构拓扑底座 (单一真理源)
 │
 └── reports/
     └── runs/              # 📦 【单次运行工作区】

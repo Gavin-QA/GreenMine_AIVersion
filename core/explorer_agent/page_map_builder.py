@@ -439,18 +439,9 @@ class PageMapBuilder:
 
     @staticmethod
     def get_global_tree_file() -> Path:
-        """获取当前激活应用专属的全局拓扑架构树文件路径 (多项目彻底隔离)"""
+        """获取当前激活应用专属的全局拓扑架构树文件路径 (多项目彻底物理隔离)"""
         active_app = getattr(settings, "active_app", "default")
-        app_file = TOPOLOGY_DIR / f"global_page_tree_{active_app}.json"
-        # 针对默认寨湾项目，若专属文件不存在则兼容历史旧文件
-        if not app_file.exists() and active_app == "zhaiwan":
-            legacy_file = TOPOLOGY_DIR / "global_page_tree.json"
-            if legacy_file.exists():
-                return legacy_file
-            legacy_docs_file = DOCS_DIR / "global_page_tree.json"
-            if legacy_docs_file.exists():
-                return legacy_docs_file
-        return app_file
+        return TOPOLOGY_DIR / f"global_page_tree_{active_app}.json"
 
     @staticmethod
     def load_global_tree() -> dict:
@@ -511,19 +502,18 @@ class PageMapBuilder:
 
         reset_ok = _clear_in_dict(tree)
 
-        # 同步清空持久化文件
-        targets = [PageMapBuilder.get_global_tree_file(), DOCS_DIR / "global_page_tree.json"]
-        for target_file in targets:
-            if target_file and target_file.exists():
-                try:
-                    with open(target_file, "r", encoding="utf-8") as f:
-                        history_tree = json.load(f)
-                    if _clear_in_dict(history_tree):
-                        with open(target_file, "w", encoding="utf-8") as f:
-                            json.dump(history_tree, f, ensure_ascii=False, indent=2)
-                        reset_ok = True
-                except Exception as e:
-                    logger.warning(f"同步重置 {target_file.name} 失败: {e}")
+        # 同步清空持久化文件 (仅精准清空当前应用专属文件)
+        target_file = PageMapBuilder.get_global_tree_file()
+        if target_file and target_file.exists():
+            try:
+                with open(target_file, "r", encoding="utf-8") as f:
+                    history_tree = json.load(f)
+                if _clear_in_dict(history_tree):
+                    with open(target_file, "w", encoding="utf-8") as f:
+                        json.dump(history_tree, f, ensure_ascii=False, indent=2)
+                    reset_ok = True
+            except Exception as e:
+                logger.warning(f"同步重置 {target_file.name} 失败: {e}")
 
         return reset_ok
 
@@ -545,27 +535,20 @@ class PageMapBuilder:
         base_tree = PageMapBuilder.parse_base_rules(reload=True)
 
         # 3. 写入应用专属拓扑树 (JSON 是机器唯一的 Single Source of Truth)
-        targets = [global_file]
-        if active_app == "zhaiwan":
-            legacy_file = TOPOLOGY_DIR / "global_page_tree.json"
-            if legacy_file != global_file:
-                targets.append(legacy_file)
+        try:
+            global_file.parent.mkdir(parents=True, exist_ok=True)
+            with open(global_file, "w", encoding="utf-8") as f:
+                json.dump(base_tree, f, ensure_ascii=False, indent=2)
+            logger.info(f"🧹 [PageMapBuilder] 已重置长期架构树为纯净骨架: {global_file}")
+        except Exception as e:
+            logger.error(f"重置 {global_file} 失败: {e}")
 
-        for target in targets:
-            try:
-                target.parent.mkdir(parents=True, exist_ok=True)
-                with open(target, "w", encoding="utf-8") as f:
-                    json.dump(base_tree, f, ensure_ascii=False, indent=2)
-                logger.info(f"🧹 [PageMapBuilder] 已重置长期架构树为纯净骨架: {target}")
-            except Exception as e:
-                logger.error(f"重置 {target} 失败: {e}")
-
-        # 4. 主动清理遗留的陈旧 .md 文件（若存在）
-        for md_name in ["auto_page_map.md", f"auto_page_map_{active_app}.md"]:
-            old_md = TOPOLOGY_DIR / md_name
-            if old_md.exists():
+        # 4. 主动清理遗留的陈旧 .md 文件与旧无后缀 legacy 文件（若存在）
+        for old_file_name in ["auto_page_map.md", f"auto_page_map_{active_app}.md", "global_page_tree.json"]:
+            old_f = TOPOLOGY_DIR / old_file_name
+            if old_f.exists():
                 try:
-                    old_md.unlink()
+                    old_f.unlink()
                 except Exception:
                     pass
 
