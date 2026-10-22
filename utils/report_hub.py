@@ -1501,9 +1501,11 @@ class ReportHub:
                 <div style="color:#38bdf8;font-size:11px;font-weight:600;margin-bottom:4px;">📍 ${{escapeHtml(b.ui_path || '首页')}}</div>
                 <div style="font-weight:600;margin-bottom:4px;color:#f8fafc;">${{escapeHtml(b.title)}}</div>
                 ${{(() => {{
-                    if (!b.step || b.step.trim() === (b.ui_path || '').trim()) return '';
+                    const stepStr = String(b.step || '').trim();
+                    const uiPathStr = String(b.ui_path || '').trim();
+                    if (!stepStr || stepStr === uiPathStr) return '';
                     const stepPrefix = b.step_num ? `<span style="color:#a5b4fc;font-weight:600;">[Step ${{b.step_num}}]</span> ` : '';
-                    return `<div style="color:#94a3b8;font-family:var(--font-mono);font-size:11px;margin-top:2px;line-height:1.4;">${{stepPrefix}}${{escapeHtml(b.step)}}</div>`;
+                    return `<div style="color:#94a3b8;font-family:var(--font-mono);font-size:11px;margin-top:2px;line-height:1.4;">${{stepPrefix}}${{escapeHtml(stepStr)}}</div>`;
                 }})()}}
             </td>
             <td><div style="font-family:var(--font-mono);font-size:11px;color:#fca5a5;max-height:80px;overflow-y:auto;line-height:1.4;word-break:break-all;padding-right:8px;">${{escapeHtml(b.actual || '')}}</div></td>
