@@ -146,6 +146,7 @@ class ExplorerWorker:
                 self.driver.set_page_scope(current_ui_path[0])
 
             if action_type == "finish":
+                logger.info(f"🤖 [Worker] 决定: [FINISH] -> 目标: {element_desc or '子任务达成'}")
                 logger.info("🏁 [Worker] 判定当前子任务已圆满达成，交还控制权给 Planner。")
                 break
 
@@ -153,8 +154,14 @@ class ExplorerWorker:
             batch_chart_handled = False
             worker_finished_early = False
 
-            if action_type in ("click", "hover"):
-                logger.info(f"🤖 [Worker] 决定: [{action_type.upper()}] -> 目标: {element_desc}")
+            logger.info(f"🤖 [Worker] 决定: [{action_type.upper()}] -> 目标: {element_desc or '无明确目标'}")
+
+            if action_type == "wait":
+                wait_sec = 2.0
+                logger.info(f"⏳ [Worker] 执行智能等待 {wait_sec} 秒以待界面稳定或跳转完成...")
+                time.sleep(wait_sec)
+                action_success = True
+            elif action_type in ("click", "hover"):
                 try:
                     logger.info(f"⚡ 开始对目标 '{element_desc}' 进行 DOM 与视觉二次精确定位...")
                     dom_elements = self.driver.extract_interactive_elements()

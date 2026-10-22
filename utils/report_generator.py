@@ -414,9 +414,25 @@ class ReportGenerator:
                     sub = sub_m.group(1) if sub_m else ""
                     w_th_m = re.search(r"💡 \[Worker\] 思考链: (.*?)(?=\n\d{4}|\Z)", block, re.DOTALL)
                     w_thought = w_th_m.group(1).strip() if w_th_m else ""
-                    act_m = re.search(r"🤖 \[Worker\] 决定: \[(\w+)\] -> 目标: (.*?)(?=\n|\Z)", block)
-                    w_action = act_m.group(1).upper() if act_m else "UNKNOWN"
-                    w_target = act_m.group(2).strip() if act_m else ""
+                    act_m = re.search(r"🤖 \[Worker\] 决定: \[(\w+)\](?: -> 目标: (.*?))?(?=\n|\Z)", block)
+                    if act_m:
+                        w_action = act_m.group(1).upper()
+                        w_target = (act_m.group(2) or "").strip()
+                    elif "判定当前子任务已圆满达成" in block or "交还控制权给 Planner" in block:
+                        w_action = "FINISH"
+                        w_target = "子任务达成"
+                    elif "wait 操作" in block.lower() or "执行 wait" in block or "等待页面" in block:
+                        w_action = "WAIT"
+                        w_target = "等待页面响应"
+                    elif "hover" in block.lower():
+                        w_action = "HOVER"
+                        w_target = ""
+                    elif "click" in block.lower():
+                        w_action = "CLICK"
+                        w_target = ""
+                    else:
+                        w_action = "FINISH"
+                        w_target = "完成"
                     path_m = re.search(r"📍 \[Worker\] 当前推断路径: (\[.*?\])", block)
                     ui_path = path_m.group(1) if path_m else "[]"
                     has_bug = "🚨 [" in block
@@ -2833,6 +2849,7 @@ class ReportGenerator:
           const cleanUrl = rawUrl.startsWith('./') ? rawUrl.substring(2) : (rawUrl.startsWith('/') ? rawUrl.substring(1) : rawUrl);
           const reportTarget = cleanUrl ? (hubRoot + cleanUrl) : (hubRoot + (r.rel_path || r.run_id) + '/report.html');
           const appBadge = r.app === 'liwutong' ? '<span style="color:#34d399;font-weight:700;">[里伍铜]</span> ' : '<span style="color:#818cf8;font-weight:700;">[寨湾]</span> ';
+          const modeLabel = (r.run_id && r.run_id.startsWith('explore')) ? '自主探索' : '全量冒烟';
           html += `
             <a href="${{reportTarget}}" class="sidebar-item ${{isActive}}">
               <div class="sidebar-item-title">${{appBadge}}${{r.run_id}}</div>
