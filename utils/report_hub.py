@@ -315,6 +315,9 @@ class ReportHub:
         for r in runs:
             summary_runs.append({
                 "run_id": r.get("run_id"),
+                "app": r.get("app"),
+                "app_name": r.get("app_name"),
+                "rel_path": r.get("rel_path"),
                 "duration": r.get("duration", "未知"),
                 "start_time": r.get("start_time", "未知"),
                 "end_time": r.get("end_time", "未知"),

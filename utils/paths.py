@@ -112,15 +112,24 @@ def get_all_run_folders() -> List[Path]:
     for p in RUNS_DIR.iterdir():
         if not p.is_dir() or p.name.startswith((".", "__")):
             continue
-        # 判断当前目录是否直接为单次运行目录（例如包含 report.html，或包含 log 文件，或前缀为常见模式）
-        is_single_run = (p / "report.html").exists() or any(p.name.startswith(pre) for pre in ["explore_", "smoke_", "yaml_", "202"])
-        if is_single_run:
-            folders.append(p.resolve())
+        
+        # 探测 p 是否包含子运行目录 (如 reports/runs/zhaiwan/explore_xxx)
+        sub_run_dirs = [
+            sub for sub in p.iterdir() 
+            if sub.is_dir() and not sub.name.startswith((".", "__")) and (
+                (sub / "report.html").exists() or 
+                any(sub.name.startswith(pre) for pre in ["explore_", "smoke_", "yaml_", "202"])
+            )
+        ]
+        
+        if sub_run_dirs:
+            # 说明 p 是被测应用归类目录 (如 zhaiwan, liwutong)，收敛其下的全部单次运行
+            folders.extend([s.resolve() for s in sub_run_dirs])
         else:
-            # 说明 p 是被测应用归类目录 (如 liwutong, zhaiwan)，下潜一层扫描具体的测试运行
-            for sub in p.iterdir():
-                if sub.is_dir() and not sub.name.startswith((".", "__")):
-                    folders.append(sub.resolve())
+            # 说明 p 是旧单层结构直接存放在 reports/runs 下的单次运行
+            is_single_run = (p / "report.html").exists() or any(p.name.startswith(pre) for pre in ["explore_", "smoke_", "yaml_", "202"])
+            if is_single_run:
+                folders.append(p.resolve())
     return sorted(folders, key=lambda d: d.stat().st_mtime, reverse=True)
 
 
