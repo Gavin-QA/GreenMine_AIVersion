@@ -78,3 +78,13 @@
       </div>
     </div>
   </div>
+
+  <!-- Global Toast Notification Component -->
+  <div id="globalToast" style="display:none;position:fixed;top:28px;right:28px;z-index:999999;min-width:340px;max-width:520px;background:rgba(15,23,42,0.95);border:1px solid rgba(16,185,129,0.5);border-radius:10px;padding:14px 18px;box-shadow:0 12px 30px rgba(0,0,0,0.7), 0 0 20px rgba(16,185,129,0.25);backdrop-filter:blur(10px);display:none;align-items:flex-start;gap:12px;transition:opacity 0.25s ease, transform 0.25s ease;transform:translateY(-10px);opacity:0;">
+    <div id="toastIcon" style="font-size:22px;line-height:1;flex-shrink:0;">✅</div>
+    <div style="flex:1;">
+      <div id="toastTitle" style="color:#f8fafc;font-size:14px;font-weight:700;margin-bottom:4px;">操作成功</div>
+      <div id="toastMessage" style="color:#94a3b8;font-size:12px;line-height:1.5;">缺陷库已同步持久化</div>
+    </div>
+    <button onclick="hideToast()" style="background:transparent;border:none;color:#64748b;font-size:20px;cursor:pointer;line-height:1;padding:0 4px;transition:color 0.2s;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#64748b'">&times;</button>
+  </div>

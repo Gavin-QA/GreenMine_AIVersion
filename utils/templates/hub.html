@@ -1275,7 +1275,7 @@
 
       // 6. 底部切换保存与取消按钮
       document.getElementById('modalActionFooter').innerHTML = `
-        <button onclick="saveBugDetail('${escapeHtml(b.id)}')" style="background:#10b981;color:#fff;border:none;font-size:13px;font-weight:700;padding:8px 20px;border-radius:6px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;box-shadow:0 4px 12px rgba(16,185,129,0.3);">💾 保存修改</button>
+        <button id="saveBugBtn" onclick="saveBugDetail('${escapeHtml(b.id)}')" style="background:#10b981;color:#fff;border:none;font-size:13px;font-weight:700;padding:8px 20px;border-radius:6px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;box-shadow:0 4px 12px rgba(16,185,129,0.3);transition:all 0.2s;">💾 保存修改</button>
         <button onclick="showBugModal('${escapeHtml(b.id)}')" style="background:var(--bg-card);border:1px solid rgba(255,255,255,0.15);color:var(--text-muted);font-size:13px;padding:8px 16px;border-radius:6px;cursor:pointer;">取消</button>
       `;
     }
@@ -1283,6 +1283,14 @@
     function saveBugDetail(bugId) {
       const b = allBugs.find(x => x.id === bugId);
       if (!b) return;
+
+      const saveBtn = document.getElementById('saveBugBtn');
+      if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = '⏳ 正在写入缺陷库...';
+        saveBtn.style.opacity = '0.7';
+        saveBtn.style.cursor = 'not-allowed';
+      }
 
       const newStatus = document.getElementById('editBugStatus').value;
       const newSeverity = parseInt(document.getElementById('editBugSeverity').value) || 3;
@@ -1325,12 +1333,75 @@
               // 退出编辑模式并重新渲染大盘
               showBugModal(bugId);
               renderBugs();
+
+              const updatedFiles = (data.updated && data.updated.length > 0) ? data.updated.join(', ') : 'global_bugs.json';
+              showToast('✅ 缺陷库已持久化写入', `已成功同步保存至 ${updatedFiles}，大盘已联动更新！`, 'success', 4000);
           } else {
-              alert('保存失败: ' + (data.error || '未知错误'));
+              if (saveBtn) {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = '💾 保存修改';
+                saveBtn.style.opacity = '1';
+                saveBtn.style.cursor = 'pointer';
+              }
+              showToast('❌ 保存失败', data.error || '未知后端错误', 'error', 5000);
           }
       }).catch(err => {
-          alert('保存失败: ' + (err.message || err) + '\\n\\n请确认同主机的 8080 Python 服务已启动: python utils/report_hub.py --serve');
+          if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = '💾 保存修改';
+            saveBtn.style.opacity = '1';
+            saveBtn.style.cursor = 'pointer';
+          }
+          showToast('❌ 接口请求异常', `${err.message || err} (请确认 8080 服务已启动)`, 'error', 6000);
       });
+    }
+
+    let toastTimer = null;
+    function showToast(title, message, type = 'success', duration = 3500) {
+      const toast = document.getElementById('globalToast');
+      if (!toast) return;
+      const icon = document.getElementById('toastIcon');
+      const titleEl = document.getElementById('toastTitle');
+      const msgEl = document.getElementById('toastMessage');
+
+      if (type === 'success') {
+        toast.style.borderColor = 'rgba(16, 185, 129, 0.6)';
+        toast.style.boxShadow = '0 12px 30px rgba(0,0,0,0.7), 0 0 20px rgba(16, 185, 129, 0.25)';
+        icon.innerText = '✅';
+      } else if (type === 'error') {
+        toast.style.borderColor = 'rgba(244, 63, 94, 0.6)';
+        toast.style.boxShadow = '0 12px 30px rgba(0,0,0,0.7), 0 0 20px rgba(244, 63, 94, 0.25)';
+        icon.innerText = '❌';
+      } else {
+        toast.style.borderColor = 'rgba(99, 102, 241, 0.6)';
+        toast.style.boxShadow = '0 12px 30px rgba(0,0,0,0.7), 0 0 20px rgba(99, 102, 241, 0.25)';
+        icon.innerText = 'ℹ️';
+      }
+
+      titleEl.innerText = title;
+      msgEl.innerText = message;
+
+      toast.style.display = 'flex';
+      void toast.offsetWidth;
+      toast.style.opacity = '1';
+      toast.style.transform = 'translateY(0)';
+
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
+        hideToast();
+      }, duration);
+    }
+
+    function hideToast() {
+      const toast = document.getElementById('globalToast');
+      if (!toast) return;
+      toast.style.opacity = '0';
+      toast.style.transform = 'translateY(-10px)';
+      setTimeout(() => {
+        if (toast.style.opacity === '0') {
+          toast.style.display = 'none';
+        }
+      }, 250);
     }
 
     document.addEventListener('keydown', (e) => {

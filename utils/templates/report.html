@@ -2027,15 +2027,192 @@
       const shotsContainer = document.getElementById('modalScreenshot') || document.getElementById('modalScreenshots');
       if (shotsContainer) shotsContainer.innerHTML = shotsHtml;
       
-      // 底部操作栏: 跳转至执行树步骤
+      // 底部操作栏: 跳转至执行树步骤与编辑
       let footerHtml = '';
       if (b.step_num) {
         footerHtml += `<button class="jump-btn" onclick="closeBugModal(); jumpToStep(${b.step_num});">🎬 跳转至执行树对应步骤 (Step ${b.step_num}) ➔</button>`;
       }
+      footerHtml += `<button class="jump-btn" style="background:rgba(99,102,241,0.18);border:1px solid var(--primary);color:#a5b4fc;cursor:pointer;" onclick="enterBugEditMode('${escapeHtml(b.id || cardId)}')">✏️ 编辑 Bug 详情</button>`;
       footerHtml += `<button class="jump-btn" style="background:var(--bg-card);border:1px solid var(--border-subtle);color:var(--text-muted);" onclick="closeBugModal()">关闭</button>`;
       document.getElementById('modalActionFooter').innerHTML = footerHtml;
       
       document.getElementById('bugModalOverlay').style.display = 'flex';
+    }
+
+    function enterBugEditMode(bugId) {
+      const b = allBugs.find(x => x.id === bugId || x.card_id === bugId);
+      if (!b) return;
+
+      const curStatus = (b.status === 'Open' || !b.status) ? '激活' : b.status;
+      const curSev = parseInt(b.severity) || 3;
+
+      // 1. 状态变为下拉选择
+      document.getElementById('modalStatus').innerHTML = `
+        <select id="editBugStatus" style="background:#0f172a;color:#38bdf8;border:1px solid var(--primary);padding:6px 10px;border-radius:6px;font-size:13px;font-weight:700;outline:none;">
+          <option value="激活" ${curStatus==='激活'?'selected':''}>🔴 激活</option>
+          <option value="已解决" ${curStatus==='已解决'?'selected':''}>🟢 已解决</option>
+          <option value="已提单" ${curStatus==='已提单'?'selected':''}>🔵 已提单</option>
+          <option value="已关闭" ${curStatus==='已关闭'?'selected':''}>⚪ 已关闭</option>
+          <option value="误报" ${curStatus==='误报'?'selected':''}>🛡️ 误报</option>
+        </select>
+      `;
+
+      // 2. 严重度变为下拉选择
+      document.getElementById('modalSeverity').innerHTML = `
+        <select id="editBugSeverity" style="background:#0f172a;color:#fbbf24;border:1px solid var(--primary);padding:6px 10px;border-radius:6px;font-size:13px;font-weight:700;outline:none;">
+          <option value="1" ${curSev===1?'selected':''}>🔥 1 致命</option>
+          <option value="2" ${curSev===2?'selected':''}>⚡ 2 严重</option>
+          <option value="3" ${curSev===3?'selected':''}>⚠️ 3 一般 (默认)</option>
+          <option value="4" ${curSev===4?'selected':''}>ℹ️ 4 轻微</option>
+        </select>
+      `;
+
+      // 3. 处理人变为输入框
+      document.getElementById('modalAssignee').innerHTML = `
+        <input type="text" id="editBugAssignee" value="${escapeHtml(b.assignee || 'Unassigned')}" style="width:100%;background:#0f172a;border:1px solid rgba(255,255,255,0.2);color:#fff;padding:6px 8px;border-radius:4px;font-size:12px;outline:none;">
+      `;
+
+      // 4. 业务路径变为输入框
+      const details = b.details || {};
+      const uiPath = b.ui_path || details.step || b.step || '首页';
+      document.getElementById('modalUiPath').innerHTML = `
+        <input type="text" id="editBugUiPath" value="${escapeHtml(uiPath)}" style="width:100%;background:#0f172a;border:1px solid rgba(255,255,255,0.2);color:#38bdf8;padding:8px 10px;border-radius:6px;font-size:13px;font-weight:600;outline:none;">
+      `;
+
+      // 5. 分析备注变为多行文本输入框
+      document.getElementById('modalAnalysis').innerHTML = `
+        <textarea id="editBugAnalysis" rows="4" style="width:100%;background:#0f172a;border:1px solid var(--primary);color:#f8fafc;padding:10px;border-radius:6px;font-size:13px;line-height:1.5;outline:none;resize:vertical;" placeholder="在此输入原因分析、关闭理由、误报归因或复盘结论...">${escapeHtml(b.analysis_notes || '')}</textarea>
+      `;
+
+      // 6. 底部切换保存与取消按钮
+      document.getElementById('modalActionFooter').innerHTML = `
+        <button id="saveBugBtn" onclick="saveBugDetail('${escapeHtml(b.id || bugId)}')" style="background:#10b981;color:#fff;border:none;font-size:13px;font-weight:700;padding:8px 20px;border-radius:6px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;box-shadow:0 4px 12px rgba(16,185,129,0.3);transition:all 0.2s;">💾 保存修改</button>
+        <button onclick="showBugModal('${escapeHtml(b.card_id || b.id || bugId)}')" style="background:var(--bg-card);border:1px solid rgba(255,255,255,0.15);color:var(--text-muted);font-size:13px;padding:8px 16px;border-radius:6px;cursor:pointer;">取消</button>
+      `;
+    }
+
+    function saveBugDetail(bugId) {
+      const b = allBugs.find(x => x.id === bugId || x.card_id === bugId);
+      if (!b) return;
+
+      const saveBtn = document.getElementById('saveBugBtn');
+      if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = '⏳ 正在写入缺陷库...';
+        saveBtn.style.opacity = '0.7';
+        saveBtn.style.cursor = 'not-allowed';
+      }
+
+      const newStatus = document.getElementById('editBugStatus').value;
+      const newSeverity = parseInt(document.getElementById('editBugSeverity').value) || 3;
+      const newAssignee = document.getElementById('editBugAssignee').value.trim() || 'Unassigned';
+      const newUiPath = document.getElementById('editBugUiPath').value.trim() || '首页';
+      const newAnalysis = document.getElementById('editBugAnalysis').value.trim();
+
+      let apiBase = '';
+      if (location.protocol === 'file:') {
+          apiBase = 'http://localhost:8080';
+      } else if (location.port !== '8080') {
+          apiBase = `${location.protocol}//${location.hostname}:8080`;
+      }
+      const apiUrl = `${apiBase}/api/update_bug_detail`;
+
+      fetch(apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+              bug_id: b.id || bugId,
+              status: newStatus,
+              severity: newSeverity,
+              assignee: newAssignee,
+              ui_path: newUiPath,
+              analysis_notes: newAnalysis
+          })
+      }).then(async res => {
+          if (!res.ok) {
+              throw new Error(`HTTP ${res.status} 响应异常`);
+          }
+          return res.json();
+      }).then(data => {
+          if (data.success) {
+              b.status = newStatus;
+              b.severity = newSeverity;
+              b.assignee = newAssignee;
+              b.ui_path = newUiPath;
+              b.analysis_notes = newAnalysis;
+
+              // 退出编辑模式并重新渲染
+              showBugModal(b.card_id || b.id || bugId);
+              renderBugs();
+
+              const updatedFiles = (data.updated && data.updated.length > 0) ? data.updated.join(', ') : 'global_bugs.json';
+              showToast('✅ 缺陷库已持久化写入', `已成功同步保存至 ${updatedFiles}！`, 'success', 4000);
+          } else {
+              if (saveBtn) {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = '💾 保存修改';
+                saveBtn.style.opacity = '1';
+                saveBtn.style.cursor = 'pointer';
+              }
+              showToast('❌ 保存失败', data.error || '未知后端错误', 'error', 5000);
+          }
+      }).catch(err => {
+          if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = '💾 保存修改';
+            saveBtn.style.opacity = '1';
+            saveBtn.style.cursor = 'pointer';
+          }
+          showToast('❌ 接口请求异常', `${err.message || err} (请确认 8080 服务已启动)`, 'error', 6000);
+      });
+    }
+
+    let toastTimer = null;
+    function showToast(title, message, type = 'success', duration = 3500) {
+      const toast = document.getElementById('globalToast');
+      if (!toast) return;
+      const icon = document.getElementById('toastIcon');
+      const titleEl = document.getElementById('toastTitle');
+      const msgEl = document.getElementById('toastMessage');
+
+      if (type === 'success') {
+        toast.style.borderColor = 'rgba(16, 185, 129, 0.6)';
+        toast.style.boxShadow = '0 12px 30px rgba(0,0,0,0.7), 0 0 20px rgba(16, 185, 129, 0.25)';
+        icon.innerText = '✅';
+      } else if (type === 'error') {
+        toast.style.borderColor = 'rgba(244, 63, 94, 0.6)';
+        toast.style.boxShadow = '0 12px 30px rgba(0,0,0,0.7), 0 0 20px rgba(244, 63, 94, 0.25)';
+        icon.innerText = '❌';
+      } else {
+        toast.style.borderColor = 'rgba(99, 102, 241, 0.6)';
+        toast.style.boxShadow = '0 12px 30px rgba(0,0,0,0.7), 0 0 20px rgba(99, 102, 241, 0.25)';
+        icon.innerText = 'ℹ️';
+      }
+
+      titleEl.innerText = title;
+      msgEl.innerText = message;
+
+      toast.style.display = 'flex';
+      void toast.offsetWidth;
+      toast.style.opacity = '1';
+      toast.style.transform = 'translateY(0)';
+
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
+        hideToast();
+      }, duration);
+    }
+
+    function hideToast() {
+      const toast = document.getElementById('globalToast');
+      if (!toast) return;
+      toast.style.opacity = '0';
+      toast.style.transform = 'translateY(-10px)';
+      setTimeout(() => {
+        if (toast.style.opacity === '0') {
+          toast.style.display = 'none';
+        }
+      }, 250);
     }
 
     function closeBugModal(event) {
