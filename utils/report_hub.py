@@ -1149,9 +1149,9 @@ class ReportHub:
         if (currentFilter === 'yaml' && !runId.startsWith('yaml_')) return false;
 
         if (searchQuery) {{
-          const matchId = runId.includes(searchQuery);
-          const matchObj = (r.macro_objective || '').toLowerCase().includes(searchQuery);
-          const matchStart = (r.start_time || '').toLowerCase().includes(searchQuery);
+          const matchId = String(runId).includes(searchQuery);
+          const matchObj = String(r.macro_objective || '').toLowerCase().includes(searchQuery);
+          const matchStart = String(r.start_time || '').toLowerCase().includes(searchQuery);
           if (!matchId && !matchObj && !matchStart) return false;
         }}
         return true;
@@ -1328,12 +1328,12 @@ class ReportHub:
 
         // 3. 模糊搜索：缺陷编号、RUN ID、业务路径与目标、异常详情
         if (bugSearchQuery) {{
-          const matchId = (b.id || '').toLowerCase().includes(bugSearchQuery);
-          const matchRunId = (b.run_id || '').toLowerCase().includes(bugSearchQuery);
-          const matchUiPath = (b.ui_path || '').toLowerCase().includes(bugSearchQuery);
-          const matchTitle = (b.title || '').toLowerCase().includes(bugSearchQuery);
-          const matchStep = (b.step || '').toLowerCase().includes(bugSearchQuery);
-          const matchActual = (b.actual || '').toLowerCase().includes(bugSearchQuery);
+          const matchId = String(b.id || '').toLowerCase().includes(bugSearchQuery);
+          const matchRunId = String(b.run_id || '').toLowerCase().includes(bugSearchQuery);
+          const matchUiPath = String(b.ui_path || '').toLowerCase().includes(bugSearchQuery);
+          const matchTitle = String(b.title || '').toLowerCase().includes(bugSearchQuery);
+          const matchStep = String(b.step || '').toLowerCase().includes(bugSearchQuery);
+          const matchActual = String(b.actual || '').toLowerCase().includes(bugSearchQuery);
           if (!matchId && !matchRunId && !matchUiPath && !matchTitle && !matchStep && !matchActual) return false;
         }}
         return true;
