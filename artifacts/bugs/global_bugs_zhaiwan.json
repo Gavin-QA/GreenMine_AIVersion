@@ -1542,8 +1542,8 @@
     "severity": 3,
     "status": "已关闭",
     "date": "2026-10-01",
-    "occurrences": 1,
-    "last_seen": "2026-10-01",
+    "occurrences": 2,
+    "last_seen": "2026-10-22",
     "global_step": 283,
     "action_type": "",
     "ui_path": "[CLICK] 核验: 验证点击‘采矿许可证’卡片后展示的详细信息（如单位名称、注册地址、有效期等）与后台接口返回的原始JSON数据是否一致 (路径: 首页 -> 证照管理)",
@@ -1993,17 +1993,24 @@
   },
   {
     "id": "BUG-20261011-003",
-    "run_id": "explore_20261021_114451",
+    "run_id": "explore_20261022_093146",
     "title": "[explore_20261010_182539] 探索操作 '底部溜井标签栏中的【810溜井】标签' 触发底层异常",
-    "severity": 3,
+    "severity": "Medium",
     "status": "激活",
     "date": "2026-10-11",
-    "occurrences": 8,
-    "last_seen": "2026-10-21",
+    "occurrences": 9,
+    "last_seen": "2026-10-22",
     "step": "[CLICK] 交互目标: '底部溜井标签栏中的【810溜井】标签' (页面路径: 智控管理 -> 智能溜破)",
     "actual": "[page_error] Cannot read properties of undefined (reading 'map')",
-    "screenshot": "reports/runs/zhaiwan/explore_20261021_114451/bugs/BUG-20261011-003.png",
-    "ui_path": "智控管理 -> 智能溜破"
+    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/explore_20261022_093146/bugs/BUG-20261011-003.png",
+    "ui_path": "路径: 智控管理 -> 智能溜破",
+    "action_type": "HOVER",
+    "target_element": "核验: 验证‘810溜破锤’卡片中实时状态、运行状态及关联参数是否与后台接口数据一致",
+    "tags": [
+      "HOVER",
+      "路径: 智控管理",
+      "智能溜破"
+    ]
   },
   {
     "id": "BUG-20261011-004",
@@ -2205,5 +2212,27 @@
     "actual": "[network_error] \n[console_error (代码位置: getCurUserMessageList:0)] \n[console_error (代码位置: index-CakHSA1M.js:4416)] \n[page_error] \n[network_error] \n[console_error (代码位置: getLeaderDutyStatistic:0)] \n[console_error (代码位置: index-CakHSA1M.js:4416)] \n[network_error] \n[console_error (代码位置: getPositionAttendanceInfo:0)] \n[console_error (代码位置: index-CakHSA1M.js:4416)] \n[page_error] \n[page_error] ",
     "app": "zhaiwan",
     "screenshot": "reports/runs/zhaiwan/explore_20261021_114451/bugs/BUG-20261021-001.png"
+  },
+  {
+    "id": "BUG-20261022-001",
+    "run_id": "explore_20261022_093146",
+    "title": "[explore_20261022_093146] UI数据与接口原始报文不匹配: '右侧报警阈值配置区域（含O₂、CO₂、CO、NO₂、温度阈值条）'",
+    "severity": "Medium",
+    "status": "激活",
+    "date": "2026-10-22",
+    "occurrences": 1,
+    "last_seen": "2026-10-22",
+    "step": "[HOVER] 核验: 验证右侧报警阈值配置区中O₂、CO₂、CO、NO₂、温度的阈值设定（如O₂≤18%）与后台接口返回的预警阈值参数是否一致 (路径: 安全管理 -> 环境监测)",
+    "actual": "数据断言失败: 经比对，接口  `getFdcMonitoringEquipmentList` 中返回的阈值与截图不一致：O₂阈值为≤20%（截图≤18%）、CO₂阈值为≥0.5ppm（截图≥5%）、NO₂阈值为≥2.5ppm（截图≥20PPM）；仅CO阈值（≥24ppm）一致；且截图中的‘温度’阈值在接口数据中无对应项。存在多处明显数值与单位冲突，判定为不一致。",
+    "app": "zhaiwan",
+    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/explore_20261022_093146/bugs/BUG-20261022-001.png",
+    "action_type": "HOVER",
+    "target_element": "核验: 验证右侧报警阈值配置区中O₂、CO₂、CO、NO₂、温度的阈值设定（如O₂≤18%）与后台接口返回的预警阈值参数是否一致",
+    "ui_path": "路径: 安全管理 -> 环境监测",
+    "tags": [
+      "HOVER",
+      "路径: 安全管理",
+      "环境监测"
+    ]
   }
 ]
