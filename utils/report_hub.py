@@ -181,7 +181,10 @@ class ReportHub:
                 rel_run_path = r_id
                 rel_shot = ""
 
-            step_text = gb.get("step") or gb.get("global_step") or ""
+            raw_step = gb.get("step")
+            if raw_step is None:
+                raw_step = gb.get("global_step") or ""
+            step_text = str(raw_step).strip()
             raw_ui_path = gb.get("ui_path", "")
             if not raw_ui_path or raw_ui_path == "无":
                 raw_ui_path = extract_ui_path_from_step(step_text, default="首页")
@@ -255,7 +258,8 @@ class ReportHub:
                     if before_shot and target_run_dir and not (target_run_dir / before_shot).exists():
                         before_shot = ""
 
-                    step_val = (b.get("details") or {}).get("step", b.get("step", ""))
+                    raw_step = (b.get("details") or {}).get("step", b.get("step", ""))
+                    step_val = str(raw_step if raw_step is not None else "").strip()
                     run_ui_path = b.get("ui_path")
                     if not run_ui_path or run_ui_path == "无":
                         run_ui_path = extract_ui_path_from_step(step_val, default="首页")
