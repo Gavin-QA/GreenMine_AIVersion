@@ -33,6 +33,7 @@ def parse_args():
     parser.add_argument("--tour", "--smoke", dest="tour", action="store_true", help="二级菜单全量冒烟巡检模式：单次启动依次遍历当前软件的全部二级业务菜单，验证两级跳转与页面轻量交互（纯日志，不生成Mermaid架构图）")
     parser.add_argument("--explore-context", type=str, action="append", help="指定针对探索模式的项目背景知识或交互规则，可多次使用，支持纯文本或文件路径")
     parser.add_argument("--resume-from", type=str, help="指定上一次探索的运行目录（如 reports/runs/explore_xxx 或旧 logs/xxx），以实现断点续传（继承记忆与页面架构树）")
+    parser.add_argument("--reset-memory", "--clean-memory", action="store_true", help="清空当前应用的长期拓扑树记忆，重置为纯净菜单骨架后全新从零探索")
     parser.add_argument("--reexplore", type=str, nargs="?", const="auto", help="强制重新探索指定模块（即使已在架构树中存在）。可指定模块名（如 智能通风），若不带参数则自动从 --explore 提示词中提取")
     parser.add_argument("--max-steps", type=int, default=20, help="自主探索的最大步数限制（默认: 20）")
     parser.add_argument("--max-times", type=int, default=10, help="自主探索的最大时间限制(分钟，默认: 10)")
@@ -284,6 +285,16 @@ def main():
     logger_manager.switch_file_handler("startup")
     logger = logger_manager.logger
     logger.name = "main"
+
+    # 处理一键重置长期记忆指令 (--reset-memory / --clean-memory)
+    if getattr(args, "reset_memory", False):
+        from core.explorer_agent.page_map_builder import PageMapBuilder
+        logger.info("🧹 收到 --reset-memory 指令，正在自动留存快照并彻底清空长期拓扑树记忆...")
+        PageMapBuilder.reset_global_memory()
+        logger.info("✅ [Reset-Memory] 长期拓扑树记忆已成功重置为纯净基准骨架！")
+        if not args.explore and not args.case and not args.all and not getattr(args, "tour", False):
+            logger.info("🎯 记忆重置任务已完成，程序正常退出。")
+            sys.exit(0)
 
     cases_to_run = collect_yaml_cases(args, logger)
     if not cases_to_run and not args.explore and not getattr(args, "tour", False):

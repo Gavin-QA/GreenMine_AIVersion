@@ -528,6 +528,50 @@ class PageMapBuilder:
         return reset_ok
 
     @staticmethod
+    def reset_global_memory() -> dict:
+        """
+        清空当前应用的长期拓扑树记忆，重置为仅包含当前规则底座的纯净菜单骨架。
+        在清空前会自动留存带时间戳的完整快照，保证历史数据绝不丢失。
+        """
+        from config.settings import settings
+        active_app = getattr(settings, "active_app", "default")
+        global_file = PageMapBuilder.get_global_tree_file()
+
+        # 1. 自动为旧拓扑树创建版本快照
+        if global_file.exists():
+            PageMapBuilder._create_topology_snapshot(global_file)
+
+        # 2. 重新解析规则底座，得到纯净骨架
+        base_tree = PageMapBuilder.parse_base_rules(reload=True)
+
+        # 3. 写入应用专属拓扑树 (JSON 是机器唯一的 Single Source of Truth)
+        targets = [global_file]
+        if active_app == "zhaiwan":
+            legacy_file = TOPOLOGY_DIR / "global_page_tree.json"
+            if legacy_file != global_file:
+                targets.append(legacy_file)
+
+        for target in targets:
+            try:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                with open(target, "w", encoding="utf-8") as f:
+                    json.dump(base_tree, f, ensure_ascii=False, indent=2)
+                logger.info(f"🧹 [PageMapBuilder] 已重置长期架构树为纯净骨架: {target}")
+            except Exception as e:
+                logger.error(f"重置 {target} 失败: {e}")
+
+        # 4. 主动清理遗留的陈旧 .md 文件（若存在）
+        for md_name in ["auto_page_map.md", f"auto_page_map_{active_app}.md"]:
+            old_md = TOPOLOGY_DIR / md_name
+            if old_md.exists():
+                try:
+                    old_md.unlink()
+                except Exception:
+                    pass
+
+        return base_tree
+
+    @staticmethod
     def _create_topology_snapshot(source_file: Path) -> None:
         """自动为全局架构树创建带时间戳的版本快照，防止模型幻觉或脏数据覆盖历史基线"""
         try:
@@ -552,18 +596,12 @@ class PageMapBuilder:
     @staticmethod
     def export_page_map(page_tree: dict):
         """
-        统一导出页面架构地图：
-        包含【纯 Markdown 结构化组件拓扑大纲】与【Mermaid 辅助图】
-        自动与 artifacts/topology/global_page_tree.json 持久化合并，并自动留存历史快照，永不因清空日志丢失历史记录！
-        同时镜像同步至 docs/auto_page_map.md 保证 IDE 即时预览。
+        统一持久化页面架构树：
+        自动与 artifacts/topology/global_page_tree_<app>.json 持久化合并，并自动留存历史快照，永不因清空日志丢失历史记录！
+        注：已全面舍弃冗余的 .md 文本，纯粹以结构化 .json 作为系统唯一的单一真理源 (Single Source of Truth)。
         """
         try:
             TOPOLOGY_DIR.mkdir(parents=True, exist_ok=True)
-            DOCS_DIR.mkdir(parents=True, exist_ok=True)
-            
-            artifacts_map_path = TOPOLOGY_DIR / "auto_page_map.md"
-            active_app = getattr(settings, "active_app", "default")
-            app_map_path = TOPOLOGY_DIR / f"auto_page_map_{active_app}.md" if active_app and active_app != "default" else None
             artifacts_global_file = PageMapBuilder.get_global_tree_file()
 
             # 1. 加载基准骨架并清洗导航噪音节点
@@ -596,47 +634,19 @@ class PageMapBuilder:
             # 2. 深度清洗与去噪
             clean_tree = PageMapBuilder.sanitize_page_tree(merged_tree, base_rules=base_tree)
 
-            # 3. 列表折叠与优化
-            optimized_tree = PageMapBuilder.fold_duplicate_list_items(clean_tree)
-
-            # 4. 自动创建版本快照 (防坏账备份)
+            # 3. 自动创建版本快照 (防坏账备份)
             PageMapBuilder._create_topology_snapshot(artifacts_global_file)
 
-            # 5. 实时持久化 global_page_tree.json (主存 artifacts/topology/)
+            # 4. 实时持久化 global_page_tree_<app>.json (主存 artifacts/topology/)
             try:
                 with open(artifacts_global_file, "w", encoding="utf-8") as f:
                     json.dump(clean_tree, f, ensure_ascii=False, indent=2)
             except Exception as e:
                 logger.warning(f"持久化 global_page_tree.json 失败: {e}")
 
-            # 6. 渲染纯 Markdown 树与 Mermaid
-            markdown_tree = PageMapBuilder.render_markdown_tree(optimized_tree)
-            mermaid_str = PageMapBuilder.dict_to_mermaid_string(optimized_tree)
-
-            lines = [
-                "# 自动化产出：动态 UI 组件架构拓扑\n",
-                "> 💡 **说明**：以 `docs/explore_rules.md` 为全局不变骨架，结合 **Post-Click Diff 双图差分** 与 **Component Awareness 组件感知** 动态延申业务页面内部的组件与弹窗拓扑。\n",
-                "## 🌳 纯 Markdown 组件拓扑树\n",
-                "```text",
-                markdown_tree,
-                "```\n",
-                "## 🗺️ Mermaid 拓扑图 (辅助参考)\n",
-                "```mermaid",
-                mermaid_str,
-                "```\n"
-            ]
-            content = "\n".join(lines)
-
-            # 写入当前生效的 auto_page_map.md 与应用专属文件
-            with open(artifacts_map_path, "w", encoding="utf-8") as f:
-                f.write(content)
-            if app_map_path:
-                with open(app_map_path, "w", encoding="utf-8") as f:
-                    f.write(content)
-
-            logger.info(f"🗺️ 已成功渲染动态 UI 架构树 (Markdown + Mermaid): {artifacts_map_path}")
+            logger.info(f"🗺️ 已成功更新全局动态 UI 架构树 (JSON): {artifacts_global_file}")
         except Exception as e:
-            logger.error(f"❌ 渲染架构图失败: {e}")
+            logger.error(f"❌ 更新全局架构树失败: {e}")
 
     @staticmethod
     def export_mermaid_map(page_tree: dict):
