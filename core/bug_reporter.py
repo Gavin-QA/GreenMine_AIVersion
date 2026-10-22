@@ -77,16 +77,9 @@ class BugReporter:
         else:
             bug_id = self._create_new_bug(run_id, title, step_prompt, actual_result, now_date)
             bug_record = self.global_bugs[-1]
-            logger.info(f"✨ 确认是全新问题，新建缺陷档案: [{bug_id}]")
-            
-        # Ensure run_id is always up to date
-        if bug_record:
-            bug_record["run_id"] = run_id
-            
         # 2. 将案发现场截图复制一份到专属目录，实现物理隔离，防止 logs 被清理
         new_img_path = None
         if crash_image_path and Path(crash_image_path).exists():
-            # 兼容带有时间戳的文件名，或者统一用 bug_id.png
             img_suffix = Path(crash_image_path).suffix
             new_img_path = run_dir / f"{bug_id}{img_suffix}"
             if new_img_path.exists():
@@ -95,18 +88,54 @@ class BugReporter:
             try:
                 import shutil
                 shutil.copy2(crash_image_path, new_img_path)
-                # 更新 bug_record 里的 screenshot 为最新复现截图
                 if bug_record:
                     bug_record["screenshot"] = str(new_img_path).replace('\\', '/')
             except Exception as e:
                 logger.warning(f"复制案发现场截图失败: {e}")
                 new_img_path = None
-                
+
+        # 提取与智能推导元数据字段 (action_type, target_element, ui_path, tags, global_step, severity)
+        action_type = kwargs.get("action_type")
+        target_element = kwargs.get("target_element")
+        ui_path = kwargs.get("ui_path")
+        global_step = kwargs.get("global_step")
+        severity = kwargs.get("severity", "Medium")
+        tags = kwargs.get("tags")
+        analysis_notes = kwargs.get("analysis_notes", "")
+
+        import re
+        if not action_type or not target_element or not ui_path:
+            m = re.search(r"\[([A-Z_]+)\]\s*(?:交互目标[:：]\s*)?['\"]?(.*?)['\"]?\s*(?:\((?:页面路径[:：]\s*)?(.*?)\))?$", step_prompt)
+            if m:
+                if not action_type: action_type = m.group(1).strip()
+                if not target_element: target_element = m.group(2).strip()
+                if not ui_path and m.group(3): ui_path = m.group(3).strip()
+
+        if not tags:
+            auto_tags = []
+            if action_type: auto_tags.append(action_type)
+            if ui_path and ui_path != "无": auto_tags.extend([p.strip() for p in ui_path.split("->") if p.strip()])
+            if target_element:
+                for k in ["一级菜单", "二级菜单", "按钮", "图表", "弹窗", "折线图", "柱状图", "表格"]:
+                    if k in target_element and k not in auto_tags: auto_tags.append(k)
+            tags = list(dict.fromkeys(auto_tags)) if auto_tags else ["常规交互"]
+
+        # Ensure run_id and metadata in bug_record is always up to date
+        if bug_record:
+            bug_record["run_id"] = run_id
+            if action_type: bug_record["action_type"] = action_type
+            if target_element: bug_record["target_element"] = target_element
+            if ui_path: bug_record["ui_path"] = ui_path
+            if global_step: bug_record["global_step"] = global_step
+            if tags: bug_record["tags"] = tags
+            if severity: bug_record["severity"] = severity
+            if analysis_notes: bug_record["analysis_notes"] = analysis_notes
+
         # 3. 创建单次运行的 JSON 详细报告
         bug_detail = {
             "id": bug_id,
             "title": title,
-            "severity": "Medium", # 默认严重级别
+            "severity": severity,
             "status": "激活",     # 默认状态
             "creation_date": now_date,
             "details": {
@@ -114,7 +143,13 @@ class BugReporter:
                 "expected": "执行该操作时不应报错，界面按预期进行交互或跳转",
                 "actual": actual_result,
             },
-            "crash_screenshot": str(new_img_path) if new_img_path else None
+            "crash_screenshot": str(new_img_path) if new_img_path else None,
+            "action_type": action_type or "无",
+            "target_element": target_element or "无",
+            "ui_path": ui_path or "无",
+            "global_step": global_step,
+            "tags": tags or [],
+            "analysis_notes": analysis_notes
         }
         
         detail_path = run_dir / f"{bug_id}.json"

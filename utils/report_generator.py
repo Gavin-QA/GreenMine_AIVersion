@@ -153,6 +153,43 @@ class ReportGenerator:
                                 if k in ["status", "severity", "assignee", "tags", "analysis_notes", "occurrences", "last_seen"] or k not in b_info or not b_info[k] or b_info[k] == "Medium":
                                     b_info[k] = gb[k]
 
+                    # 智能元数据增强：从 step 文本自动推导缺失的 action_type, target_element, ui_path, tags
+                    step_str = str((b_info.get("details") or {}).get("step") or b_info.get("step") or "")
+                    if not b_info.get("action_type") or b_info.get("action_type") == "无":
+                        m_act = re.search(r"\[([A-Z_]+)\]", step_str)
+                        if m_act:
+                            b_info["action_type"] = m_act.group(1).strip()
+                    if not b_info.get("target_element") or b_info.get("target_element") == "无":
+                        m_tgt = re.search(r"交互目标[:：]\s*['\"]?(.*?)['\"]?\s*(?:\(|$)", step_str)
+                        if m_tgt:
+                            b_info["target_element"] = m_tgt.group(1).strip()
+                    if not b_info.get("ui_path") or b_info.get("ui_path") in ("无", "首页"):
+                        m_path = re.search(r"(?:页面路径|路径)[:：]\s*(.*?)\)", step_str)
+                        if m_path:
+                            b_info["ui_path"] = m_path.group(1).strip()
+                    if not b_info.get("step_num") and b_info.get("global_step"):
+                        try:
+                            b_info["step_num"] = int(re.search(r"\d+", str(b_info["global_step"])).group(0))
+                            before_file = f"explore_step_{b_info['step_num']}.png"
+                            if (shots_dir / before_file).exists() and not b_info.get("before_screenshot"):
+                                b_info["before_screenshot"] = f"screenshots/{before_file}"
+                        except Exception:
+                            pass
+                    # 智能推导业务标签
+                    if not b_info.get("tags") or b_info.get("tags") == "无" or b_info.get("tags") == []:
+                        auto_tags = []
+                        if b_info.get("action_type") and b_info["action_type"] != "无":
+                            auto_tags.append(b_info["action_type"])
+                        u_path = b_info.get("ui_path", "")
+                        if u_path and u_path != "无":
+                            auto_tags.extend([p.strip() for p in u_path.split("->") if p.strip()])
+                        t_elem = b_info.get("target_element", "")
+                        if t_elem and t_elem != "无":
+                            for k in ["一级菜单", "二级菜单", "按钮", "图表", "弹窗", "折线图", "柱状图", "表格"]:
+                                if k in t_elem and k not in auto_tags:
+                                    auto_tags.append(k)
+                        b_info["tags"] = list(dict.fromkeys(auto_tags)) if auto_tags else ["常规交互"]
+
                     data["bugs"].append(b_info)
                 except Exception as e:
                     logger.warning(f"读取 Bug 文件 {bug_json.name} 失败: {e}")
@@ -2643,8 +2680,21 @@ class ReportGenerator:
       const sm = statusMeta[curStatus] || {{ bg: 'rgba(100,116,139,0.15)', color: '#94a3b8', border: 'rgba(100,116,139,0.3)' }};
       document.getElementById('modalStatus').innerHTML = `<div style="background:${{sm.bg}};color:${{sm.color}};padding:6px 12px;border-radius:6px;font-size:13px;font-weight:700;border:1px solid ${{sm.border}}">${{curStatus}}</div>`;
       
-      const sev = b.severity || 3;
-      document.getElementById('modalSeverity').innerText = `🔥 严重度: ${{sev}}`;
+      const sevRaw = b.severity || 3;
+      let sevLevel = 3;
+      if (sevRaw === 1 || sevRaw === '1' || sevRaw === 'Critical' || sevRaw === '致命') sevLevel = 1;
+      else if (sevRaw === 2 || sevRaw === '2' || sevRaw === 'High' || sevRaw === '严重') sevLevel = 2;
+      else if (sevRaw === 4 || sevRaw === '4' || sevRaw === 'Low' || sevRaw === '轻微') sevLevel = 4;
+      else sevLevel = 3;
+
+      const sevBadgeConfig = {{
+        1: {{ label: '🔥 1 致命', color: '#ef4444', bg: 'rgba(239,68,68,0.15)', border: 'rgba(239,68,68,0.3)' }},
+        2: {{ label: '⚡ 2 严重', color: '#f97316', bg: 'rgba(249,115,22,0.15)', border: 'rgba(249,115,22,0.3)' }},
+        3: {{ label: '⚠️ 3 一般', color: '#eab308', bg: 'rgba(234,179,8,0.15)', border: 'rgba(234,179,8,0.3)' }},
+        4: {{ label: 'ℹ️ 4 轻微', color: '#94a3b8', bg: 'rgba(148,163,184,0.15)', border: 'rgba(148,163,184,0.3)' }}
+      }};
+      const sb = sevBadgeConfig[sevLevel] || sevBadgeConfig[3];
+      document.getElementById('modalSeverity').innerHTML = `<span style="background:${{sb.bg}};color:${{sb.color}};border:1px solid ${{sb.border}};padding:4px 10px;border-radius:6px;font-size:12px;font-weight:700;">${{sb.label}}</span>`;
       
       document.getElementById('modalRunId').innerText = b.run_id || "{data['run_id']}";
       document.getElementById('modalDate').innerText = b.creation_date || b.date || '无';
@@ -2655,8 +2705,12 @@ class ReportGenerator:
       document.getElementById('modalTargetElement').innerText = b.target_element || '无';
       document.getElementById('modalAssignee').innerText = b.assignee || 'Unassigned';
       
-      const tags = Array.isArray(b.tags) ? b.tags.join(', ') : (b.tags || '无');
-      document.getElementById('modalTags').innerText = tags;
+      const tagsList = Array.isArray(b.tags) ? b.tags : (b.tags && b.tags !== '无' ? String(b.tags).split(',').map(s => s.trim()) : []);
+      if (tagsList.length > 0) {{
+        document.getElementById('modalTags').innerHTML = tagsList.map(t => `<span style="background:rgba(99,102,241,0.15);color:#a5b4fc;border:1px solid rgba(99,102,241,0.3);padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;margin-right:4px;">${{escapeHtml(t)}}</span>`).join('');
+      }} else {{
+        document.getElementById('modalTags').innerHTML = '<span style="color:var(--text-dim);">无</span>';
+      }}
       
       document.getElementById('modalTitleText').innerText = b.title || '无标题';
       
