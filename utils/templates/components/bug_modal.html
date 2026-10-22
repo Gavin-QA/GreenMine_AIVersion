@@ -1,0 +1,80 @@
+  <!-- Bug Modal Overlay Component -->
+  <div id="bugModalOverlay" style="display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.85);z-index:9998;align-items:center;justify-content:center;backdrop-filter:blur(6px);" onclick="if(event.target===this)this.style.display='none'">
+    <div id="bugModalContent" style="background:var(--bg-base);width:85vw;max-width:1050px;max-height:90vh;border-radius:14px;border:1px solid rgba(255,255,255,0.12);display:flex;flex-direction:column;z-index:9999;box-shadow:0 25px 50px -12px rgba(0,0,0,0.85);overflow:hidden;" onclick="event.stopPropagation()">
+      <div style="padding:16px 24px;border-bottom:1px solid rgba(255,255,255,0.08);background:var(--bg-surface);display:flex;justify-content:space-between;align-items:center;">
+         <div id="modalHeader" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+            <div id="modalBugId" style="font-family:var(--font-mono);font-size:16px;color:#f8fafc;font-weight:700;background:rgba(255,255,255,0.06);padding:6px 12px;border-radius:6px;border:1px solid rgba(255,255,255,0.12);">BUG-XXX</div>
+            <div id="modalStatus"></div>
+            <div id="modalSeverity"></div>
+         </div>
+         <button onclick="document.getElementById('bugModalOverlay').style.display='none'" style="background:transparent;border:none;color:#94a3b8;font-size:26px;cursor:pointer;line-height:1;transition:color 0.2s;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#94a3b8'">&times;</button>
+      </div>
+      <div id="modalBody" style="padding:24px;overflow-y:auto;display:flex;flex-direction:column;gap:16px;background:var(--bg-surface);">
+        <!-- Metadata Grid -->
+        <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:16px;">
+          <div style="background:var(--bg-card);padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.05);">
+            <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:6px;">▮ 所属运行 (RUN ID)</div>
+            <div id="modalRunId" style="color:#f8fafc;font-family:var(--font-mono);font-size:13px;">-</div>
+          </div>
+          <div style="background:var(--bg-card);padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.05);">
+            <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:6px;">▮ 发现日期</div>
+            <div id="modalDate" style="color:#f8fafc;font-family:var(--font-mono);font-size:13px;">-</div>
+          </div>
+          <div style="background:var(--bg-card);padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.05);">
+            <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:6px;">▮ 历史累计复现</div>
+            <div id="modalOccurrences" style="color:#f8fafc;font-family:var(--font-mono);font-size:13px;">-</div>
+          </div>
+          <div style="background:var(--bg-card);padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.05);">
+            <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:6px;">▮ 最近一次出现</div>
+            <div id="modalLastSeen" style="color:#f8fafc;font-family:var(--font-mono);font-size:13px;">-</div>
+          </div>
+          <div style="background:var(--bg-card);padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.05);">
+            <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:6px;">▮ 本次对应步骤</div>
+            <div id="modalGlobalStep" style="color:#f8fafc;font-family:var(--font-mono);font-size:13px;">-</div>
+          </div>
+          <div style="background:var(--bg-card);padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.05);">
+            <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:6px;">▮ 操作类型</div>
+            <div id="modalActionType" style="color:#f8fafc;font-family:var(--font-mono);font-size:13px;">-</div>
+          </div>
+          <div style="background:var(--bg-card);padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.05);">
+            <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:6px;">▮ 目标元素</div>
+            <div id="modalTargetElement" style="color:#f8fafc;font-size:13px;">-</div>
+          </div>
+          <div style="background:var(--bg-card);padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.05);">
+            <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:6px;">▮ 缺陷处理人</div>
+            <div id="modalAssignee" style="color:#f8fafc;font-size:13px;">-</div>
+          </div>
+          <div style="background:var(--bg-card);padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.05);">
+            <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:6px;">▮ 业务标签</div>
+            <div id="modalTags" style="color:#f8fafc;font-size:13px;display:flex;flex-wrap:wrap;gap:4px;align-items:center;">-</div>
+          </div>
+        </div>
+
+        <!-- Full Width Fields -->
+        <div style="background:var(--bg-card);padding:16px;border-radius:8px;border:1px solid rgba(255,255,255,0.05);">
+          <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:8px;">▮ 缺陷标题 (TITLE)</div>
+          <div id="modalTitleText" style="color:#f8fafc;font-size:14px;line-height:1.5;">-</div>
+        </div>
+        <div style="background:var(--bg-card);padding:16px;border-radius:8px;border:1px solid rgba(255,255,255,0.05);">
+          <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:8px;">▮ 业务路径 / 触发步骤</div>
+          <div id="modalUiPath" style="color:#cbd5e1;font-size:13px;line-height:1.5;">-</div>
+        </div>
+        <div style="background:var(--bg-card);padding:16px;border-radius:8px;border:1px solid rgba(255,255,255,0.05);">
+          <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:8px;">▮ 异常诊断结果 / 堆栈</div>
+          <div id="modalActual" style="color:#fca5a5;font-family:var(--font-mono);font-size:13px;line-height:1.6;white-space:pre-wrap;">-</div>
+        </div>
+        <div style="background:var(--bg-card);padding:16px;border-radius:8px;border:1px solid rgba(255,255,255,0.05);">
+          <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:8px;">▮ 归因分析备注</div>
+          <div id="modalAnalysis" style="color:#cbd5e1;font-size:13px;line-height:1.6;white-space:pre-wrap;">-</div>
+        </div>
+        <div style="background:var(--bg-card);padding:16px;border-radius:8px;border:1px solid rgba(255,255,255,0.05);">
+          <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:8px;">▮ 案发现场截图凭据 (操作前 vs 报错现场)</div>
+          <div id="modalScreenshot" style="margin-top:8px;">-</div>
+        </div>
+
+        <div id="modalActionFooter" style="display:flex;justify-content:flex-end;gap:12px;margin-top:4px;">
+        </div>
+
+      </div>
+    </div>
+  </div>
