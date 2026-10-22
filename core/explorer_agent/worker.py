@@ -13,9 +13,13 @@ from __future__ import annotations
 
 import json
 import logging
+import math
+import re
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+
+from PIL import Image, ImageChops
 
 from .guards import ExplorerGuards
 from .post_click_diff import PostClickDetector
@@ -72,6 +76,10 @@ class ExplorerWorker:
         task_trajectory: List[Dict[str, Any]] = []
         steps_used = 0
         current_step = start_step
+
+        last_action_record: Optional[Dict[str, Any]] = None
+        tested_targets_in_scope = set()
+        consecutive_redundant_count = 0
 
         for worker_step in range(1, budget + 1):
             if current_step >= max_steps:
@@ -220,6 +228,44 @@ class ExplorerWorker:
                 except Exception as e:
                     logger.warning(f"⚠️ 无法在截图 {step_img_path.name} 上绘制准星: {e}")
 
+                # -------------------------------------------------------------
+                # 🛡️ 防御 1: 差分状态感知防死循环熔断 (State-Diff Anti-Loop Fuse)
+                # -------------------------------------------------------------
+                is_stuck_loop = False
+                if last_action_record is not None and x is not None and y is not None:
+                    lx = last_action_record.get("x")
+                    ly = last_action_record.get("y")
+                    la = last_action_record.get("action")
+                    ld = last_action_record.get("diff_ratio", 1.0)
+                    if lx is not None and ly is not None:
+                        dist = math.hypot(x - lx, y - ly)
+                        # 判定条件：坐标极度重合 (< 25px) AND 同类型操作 AND 上一步执行后画面差分 < 1.0% (零状态响应)
+                        if dist < 25 and action_type in ("click", "hover") and action_type == la and ld < 0.01:
+                            is_stuck_loop = True
+
+                if is_stuck_loop:
+                    logger.warning(f"🛑 [Anti-Loop Fuse] 触发确定性防死循环熔断！目标坐标 ({x}, {y}) 连续执行 [{action_type.upper()}] 且无任何状态响应！")
+                    logger.info("🏁 [Anti-Loop Fuse] 坚决拒绝原地空转打转，提前结束当前子任务交还控制权给 Planner！")
+                    worker_finished_early = True
+                    break
+
+                # -------------------------------------------------------------
+                # 🛡️ 防御 2: 页面饱和度动态退场 (Page Saturation Dynamic Exit Guard)
+                # -------------------------------------------------------------
+                norm_desc = re.sub(r'[\s\d_【】\(\)\[\]\-]+', '', element_desc).lower()
+                if norm_desc and worker_step >= 3:
+                    if norm_desc in tested_targets_in_scope:
+                        consecutive_redundant_count += 1
+                        if consecutive_redundant_count >= 2:
+                            logger.info(f"🏁 [Saturation Guard] 当前页面核心交互已饱和 (连续重访已测元素: '{element_desc}')，优雅提前交还控制权！")
+                            worker_finished_early = True
+                            break
+                    else:
+                        consecutive_redundant_count = 0
+                        tested_targets_in_scope.add(norm_desc)
+                elif norm_desc:
+                    tested_targets_in_scope.add(norm_desc)
+
                 is_chart_target = (action_type not in ("zoom", "rotate_3d", "scroll", "slide", "input")) and ((element_type == "chart") or any(k in element_desc for k in ["折线图", "柱状图", "面积图", "数据拐点", "趋势图", "七天风量", "风量数据"]))
 
                 # --- 分支 A: 图表全量批量嗅探引擎 ---
@@ -325,6 +371,16 @@ class ExplorerWorker:
                             hover_img_path = self.explore_dir / f"explore_step_{current_step}_hover.png"
                             hover_b64 = self.driver.capture_screenshot_base64(str(hover_img_path))
                             logger.info(f"📸 捕获悬停状态快照 (含 Tooltip 浮层): {hover_img_path.name}")
+                            hover_diff_ratio = 0.0
+                            try:
+                                img_pre = Image.open(step_img_path).convert("L")
+                                img_post = Image.open(hover_img_path).convert("L")
+                                diff_chops = ImageChops.difference(img_pre, img_post)
+                                hist = diff_chops.histogram()
+                                hover_diff_ratio = sum(hist[25:]) / (img_pre.width * img_pre.height)
+                            except Exception:
+                                hover_diff_ratio = 0.05
+                            last_action_record = {"x": x, "y": y, "action": action_type, "diff_ratio": hover_diff_ratio}
                         elif action_type == "zoom":
                             direction = decision.get("direction", "in")
                             steps = int(decision.get("steps", 3))
@@ -448,6 +504,8 @@ class ExplorerWorker:
                                 )
                                 transition = diff_res.get("transition")
                                 trans_container = diff_res.get("container_name")
+                                click_diff = diff_res.get("change_ratio", 0.0) if isinstance(diff_res, dict) else 0.0
+                                last_action_record = {"x": x, "y": y, "action": action_type, "diff_ratio": click_diff}
 
                                 if transition == "modal_open" and trans_container:
                                     if trans_container not in container_stack:

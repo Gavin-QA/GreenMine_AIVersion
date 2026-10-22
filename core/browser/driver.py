@@ -328,6 +328,58 @@ class ElectronDriver(NetworkMonitorMixin, DomExtractorMixin, ScreenshotMixin, Ch
         if delay_after > 0:
             time.sleep(delay_after)
 
+    def cascade_click_with_probe(self, l1_x: int, l1_y: int, l2_x: int, l2_y: int, timeout_sec: float = 0.8) -> bool:
+        """
+        带安全气囊的原子级级联点击：
+        1. 物理悬停一级菜单
+        2. 毫秒级 DOM 探针检测二级菜单浮层是否真正激活弹出
+        3. 若浮层已展开，立即在 200ms 内点击二级菜单（绝不给浮层失焦缩回的机会）
+        4. 若探针未检测到浮层弹出，立刻安全刹车放弃点击，坚决防止盲目点击击穿背景！
+        :return: True 表示级联成功点击；False 表示未展开浮层安全放弃
+        """
+        if not self.page:
+            raise RuntimeError("页面未就绪！")
+
+        logger.info(f"⚡ [Cascade Click] 启动级联点击安全序列: 一级锚点({l1_x}, {l1_y}) -> 二级锚点({l2_x}, {l2_y})")
+        # 1. 执行真人体感平滑悬停
+        self.hover(l1_x, l1_y, delay_after=0.1)
+
+        # 2. 毫秒级 DOM 探针检测是否有下拉菜单/弹层容器可见
+        start_t = time.time()
+        dropdown_active = False
+        while time.time() - start_t < timeout_sec:
+            try:
+                dropdown_active = self.page.evaluate("""() => {
+                    const selectors = [
+                        '.el-dropdown-menu', '.ant-dropdown', '.dropdown-menu', 
+                        '.sub-menu', '[class*="dropdown"]', '[class*="submenu"]',
+                        '[class*="menu-item"]', '[class*="popover"]'
+                    ];
+                    for (const sel of selectors) {
+                        const nodes = document.querySelectorAll(sel);
+                        for (const n of nodes) {
+                            if (n.offsetParent !== null && window.getComputedStyle(n).display !== 'none') {
+                                return true;
+                            }
+                        }
+                    }
+                    return false;
+                }""")
+                if dropdown_active:
+                    break
+            except Exception:
+                pass
+            time.sleep(0.08)
+
+        # 3. 闭环决策：验货成功才允许发射点击
+        if dropdown_active:
+            logger.info("🛡️ [Cascade Probe] 探针验证成功：二级菜单浮层已稳定展开，立即执行原子点击！")
+            self.click(l2_x, l2_y, button="left", delay_after=0.5)
+            return True
+        else:
+            logger.warning("🛑 [Cascade Probe] 安全气囊生效：未检测到下拉浮层展开！为防止击空或误触背景，安全放弃第二步点击！")
+            return False
+
     def drag(self, from_x: int, from_y: int, to_x: int, to_y: int, button: str = "left", steps: int = 15, delay_after: float = 0.5):
         """
         按住鼠标指定按键从 (from_x, from_y) 平滑拖拽至 (to_x, to_y)
