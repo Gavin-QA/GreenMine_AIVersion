@@ -59,7 +59,11 @@ def collect_yaml_cases(args, logger: logging.Logger) -> list:
     if args.all:
         cases_dir = Path("test_cases")
         if cases_dir.exists():
-            cases_to_run.extend([str(p) for p in cases_dir.glob("*.yaml")])
+            for p in cases_dir.glob("*.yaml"):
+                if p.is_file() and p.stat().st_size > 0:
+                    cases_to_run.append(str(p))
+                else:
+                    logger.warning(f"⚠️ 跳过无效空用例文件 (0字节): {p.name}")
         else:
             logger.error("未找到 test_cases 目录！")
             sys.exit(1)

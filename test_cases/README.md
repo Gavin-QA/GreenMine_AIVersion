@@ -8,7 +8,6 @@
 
 1. **人工基线用例 (手工编写)**：
    - 直接存放在 `test_cases/` 根目录下，如：
-     - `test_home_cert.yaml`（证照管理回归用例）
      - `test_home_mine_intro.yaml`（矿山简介回归用例）
      - `test_roam_only.yaml`（3D 漫游专项用例）
 

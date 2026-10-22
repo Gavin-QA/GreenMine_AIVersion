@@ -3,7 +3,7 @@
 
 架构分层体系：
 1. 💎 全局持久资产 (artifacts/) - 长期沉淀、永不因日常日志清理误删
-   - artifacts/bugs/              全局缺陷大盘总库 (global_bugs.json, global_bugs.md, global_bugs.csv)
+   - artifacts/bugs/              全局缺陷大盘总库 (global_bugs_<app>.json)
    - artifacts/topology/          全局 UI 拓扑基线 (global_page_tree_<app>.json, 系统单一真理源)
    - artifacts/topology/snapshots/ 历史架构拓扑版本快照 (防止模型幻觉改坏树结构)
 

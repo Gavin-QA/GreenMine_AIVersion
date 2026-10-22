@@ -99,9 +99,8 @@ class ReportGenerator:
         global_bugs_map = {}
         bugs_base = Path(__file__).resolve().parent.parent / "artifacts" / "bugs"
         from config.settings import settings
-        active_app = getattr(settings, "active_app", "")
-        app_bugs_path = bugs_base / f"global_bugs_{active_app}.json" if active_app and active_app != "default" else None
-        global_bugs_path = app_bugs_path if (app_bugs_path and app_bugs_path.exists()) else (bugs_base / "global_bugs.json")
+        active_app = getattr(settings, "active_app", "default")
+        global_bugs_path = bugs_base / f"global_bugs_{active_app}.json"
         if global_bugs_path.exists():
             try:
                 with open(global_bugs_path, "r", encoding="utf-8") as f:
@@ -111,7 +110,7 @@ class ReportGenerator:
                             if "id" in gb:
                                 global_bugs_map[gb["id"]] = gb
             except Exception as e:
-                logger.debug(f"加载 global_bugs.json 失败: {e}")
+                logger.debug(f"加载应用缺陷库 {global_bugs_path.name} 失败: {e}")
 
         shots_dir = self.run_dir / "screenshots"
         bugs_dir = self.run_dir / "bugs"

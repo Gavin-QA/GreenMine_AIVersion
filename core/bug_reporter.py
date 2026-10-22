@@ -1,6 +1,5 @@
 import os
 import json
-import csv
 import shutil
 import logging
 from datetime import datetime
@@ -20,12 +19,8 @@ class BugReporter:
         
         from config.settings import settings
         self.active_app = getattr(settings, "active_app", "default")
-        if self.active_app and self.active_app != "default":
-            self.global_json = self.global_bugs_dir / f"global_bugs_{self.active_app}.json"
-            if not self.global_json.exists() and self.active_app == "zhaiwan" and (self.global_bugs_dir / "global_bugs.json").exists():
-                self.global_json = self.global_bugs_dir / "global_bugs.json"
-        else:
-            self.global_json = self.global_bugs_dir / "global_bugs.json"
+        # 严格按应用专属文件管理 (多项目彻底物理隔离，绝不生成无后缀 legacy 文件)
+        self.global_json = self.global_bugs_dir / f"global_bugs_{self.active_app}.json"
         
         # 允许外部传入已有的 VisionAgent，若没有则自己实例化一个用于 LLM 推理
         self.vision = vision_agent if vision_agent else VisionAgent()
