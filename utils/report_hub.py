@@ -20,6 +20,7 @@ import logging
 import os
 import re
 import sys
+import threading
 import time
 from datetime import datetime
 from pathlib import Path
@@ -55,6 +56,26 @@ from utils.bug_enricher import extract_ui_path_from_step, normalize_severity, en
 class ReportHub:
     def __init__(self, runs_dir: Optional[Path | str] = None):
         self.runs_dir = Path(runs_dir).resolve() if runs_dir else RUNS_DIR.resolve()
+        self._rebuild_timer: Optional[threading.Timer] = None
+        self._rebuild_lock = threading.Lock()
+
+    def trigger_async_rebuild(self, delay: float = 1.0):
+        """异步防抖重构静态大盘与 runs_data.js，避免高频写入引起磁盘 I/O 拥堵"""
+        with self._rebuild_lock:
+            if self._rebuild_timer is not None:
+                self._rebuild_timer.cancel()
+
+            def _rebuild():
+                try:
+                    logger.info("🔄 [后台异步] 触发大盘数据静态重构...")
+                    self.build_index_html()
+                    logger.info("🎉 [后台异步] 大盘数据静态重构完成！")
+                except Exception as be:
+                    logger.warning(f"Background rebuilding index.html warning: {be}")
+
+            self._rebuild_timer = threading.Timer(delay, _rebuild)
+            self._rebuild_timer.daemon = True
+            self._rebuild_timer.start()
 
     def collect_all_runs(self) -> List[Dict[str, Any]]:
         """扫描所有运行目录（支持按应用分层与旧单层），聚合元数据与项目归属"""
@@ -434,11 +455,8 @@ class ReportHub:
                                     logger.warning(f"更新运行目录 Bug 文件异常 ({run_bug_file}): {re_err}")
 
                         if success:
-                            # 同步重构静态大盘与 runs_data.js，保持数据双向实时一致
-                            try:
-                                hub_instance.build_index_html()
-                            except Exception as be:
-                                logger.warning(f"Rebuilding index.html after bug update warning: {be}")
+                            # 异步防抖重构静态大盘与 runs_data.js，立即返回 HTTP 响应，毫秒级响应
+                            hub_instance.trigger_async_rebuild(delay=1.0)
                             resp_data = {"success": True, "bug_id": bug_id, "updated": updated_targets}
                         else:
                             resp_data = {"success": False, "bug_id": bug_id, "error": f"在全局库及各运行目录中均未找到编号为 '{bug_id}' 的缺陷记录"}
@@ -462,12 +480,14 @@ class ReportHub:
                     self.send_error(404, "Not Found")
 
         Handler = APIHandler
-        # 支持端口复用
-        socketserver.TCPServer.allow_reuse_address = True
 
-        with socketserver.TCPServer(("", port), Handler) as httpd:
+        class ThreadedHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
+            daemon_threads = True
+            allow_reuse_address = True
+
+        with ThreadedHTTPServer(("", port), Handler) as httpd:
             print("\n" + "=" * 65)
-            print(f"🚀 Electron Vision AI 全量巡检大盘门户已启动！")
+            print(f"🚀 Electron Vision AI 全量巡检大盘门户已启动 (多线程并发并发引擎)！")
             print(f"👉 本地访问地址: http://localhost:{port}/")
             print(f"👉 局域网访问:   http://0.0.0.0:{port}/ (或使用你的内网 IP)")
             print(f"📁 根目录指向:   {self.runs_dir}")
