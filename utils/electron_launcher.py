@@ -33,6 +33,28 @@ class ElectronLauncher:
         except Exception:
             return False
 
+    def _cleanup_orphan_instances(self):
+        """清理未开启 CDP 调试端口的同名孤儿进程，防止单实例锁导致新进程静默退出"""
+        if not self.exe_path:
+            return
+        exe_name = os.path.basename(self.exe_path)
+        try:
+            res = subprocess.run(
+                ["tasklist", "/FI", f"IMAGENAME eq {exe_name}", "/FO", "CSV", "/NH"],
+                capture_output=True,
+                text=True,
+                encoding="gbk",
+                errors="ignore"
+            )
+            lines = [line.strip() for line in res.stdout.strip().splitlines() if line.strip() and not line.startswith("INFO:")]
+            if lines:
+                logger.warning(f"⚠️ 检测到后台存在 {len(lines)} 个未开启调试端口的残留进程 【{exe_name}】，正在自动清理以防单实例互斥死锁...")
+                subprocess.run(["taskkill", "/F", "/IM", exe_name, "/T"], capture_output=True)
+                time.sleep(1.0)
+                logger.info(f"✅ 残留进程 【{exe_name}】 清理完毕，准备以调试模式启动新实例。")
+        except Exception as e:
+            logger.debug(f"检查孤儿进程时跳过: {e}")
+
     def start_app(self):
         """启动 Electron 客户端并暴露 CDP 调试端口"""
         if self.is_cdp_alive():
@@ -42,6 +64,10 @@ class ElectronLauncher:
 
         if not self.exe_path or not os.path.exists(self.exe_path):
             raise FileNotFoundError(f"❌ 找不到 Electron 可执行文件: '{self.exe_path}'，请检查 config.yaml 配置！")
+
+        # 核心防死锁防线：若调试端口未就绪但后台存在残留孤儿进程，必须先安全回收
+        # 否则会触发 Electron 单实例锁 (Single Instance Lock)，导致新带 --remote-debugging-port 实例闪退
+        self._cleanup_orphan_instances()
 
         logger.info(f"正在启动 Electron 客户端: {self.exe_path} on port {self.port}...")
 
