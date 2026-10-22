@@ -157,8 +157,94 @@ class ScreenshotMixin:
             logger.error(f"截图压缩失败，降级回传原始截图: {e}")
             return base64.b64encode(png_bytes).decode("utf-8")
 
-    @staticmethod
+    def get_element_container_bounding_box(self, x: int, y: int) -> Optional[Dict[str, int]]:
+        """
+        通过 CDP 运行时在坐标 (x, y) 处向上回溯智能嗅探所属的业务容器 (Card / Table / Panel / Form)
+        返回该业务容器在视口中的完整物理包围盒 (x, y, width, height)
+        """
+        page = getattr(self, "page", None)
+        if not page:
+            return None
+        try:
+            js_script = """
+            (coords) => {
+                const { x, y } = coords;
+                let el = document.elementFromPoint(x, y);
+                if (!el) return null;
+
+                const isSemanticContainer = (node) => {
+                    if (!node || node === document.body || node === document.documentElement) return false;
+                    const tag = node.tagName.toLowerCase();
+                    if (['table', 'form', 'section', 'article'].includes(tag)) return true;
+                    
+                    const className = (typeof node.className === 'string') ? node.className.toLowerCase() : '';
+                    const idName = (typeof node.id === 'string') ? node.id.toLowerCase() : '';
+                    const combined = className + ' ' + idName;
+                    
+                    if (/card|table|panel|module|widget|chart|block|box|content|wrapper|view|sub|item-group/.test(combined)) {
+                        return true;
+                    }
+                    
+                    try {
+                        const style = window.getComputedStyle(node);
+                        if (style.boxShadow && style.boxShadow !== 'none') return true;
+                        if (style.borderWidth && parseFloat(style.borderWidth) > 0 && style.borderStyle !== 'none') return true;
+                        if (style.backgroundColor && style.backgroundColor !== 'rgba(0, 0, 0, 0)' && style.backgroundColor !== 'transparent') {
+                            return true;
+                        }
+                    } catch(e) {}
+                    
+                    return false;
+                };
+
+                let curr = el;
+                let bestContainer = null;
+                let depth = 0;
+
+                while (curr && curr !== document.body && curr !== document.documentElement && depth < 12) {
+                    const rect = curr.getBoundingClientRect();
+                    // 刚性尺寸防线：大屏卡片宽 >= 350, 高 >= 160
+                    if (rect.width >= 350 && rect.height >= 160) {
+                        // 避免向上过冲占据整个屏幕
+                        if (rect.width > window.innerWidth * 0.92 && rect.height > window.innerHeight * 0.92) {
+                            break;
+                        }
+                        if (isSemanticContainer(curr)) {
+                            bestContainer = rect;
+                            const tag = curr.tagName.toLowerCase();
+                            const cls = (typeof curr.className === 'string') ? curr.className.toLowerCase() : '';
+                            if (tag === 'table' || cls.includes('el-table') || cls.includes('card') || cls.includes('panel')) {
+                                break;
+                            }
+                        } else if (!bestContainer) {
+                            bestContainer = rect;
+                        }
+                    }
+                    curr = curr.parentElement;
+                    depth++;
+                }
+
+                if (bestContainer) {
+                    return {
+                        x: Math.round(bestContainer.left),
+                        y: Math.round(bestContainer.top),
+                        width: Math.round(bestContainer.width),
+                        height: Math.round(bestContainer.height)
+                    };
+                }
+                return null;
+            }
+            """
+            box = page.evaluate(js_script, {"x": x, "y": y})
+            if box and box.get("width", 0) >= 300 and box.get("height", 0) >= 140:
+                logger.info(f"📐 [Container Snapping] 成功吸附到业务容器边界: x={box['x']}, y={box['y']}, w={box['width']}, h={box['height']}")
+                return box
+        except Exception as e:
+            logger.debug(f"容器嗅探异常: {e}")
+        return None
+
     def crop_roi_base64(
+        self,
         image_path: str,
         center_x: int,
         center_y: int,
@@ -169,7 +255,8 @@ class ScreenshotMixin:
     ) -> Optional[str]:
         """
         从已有全屏截图中截取目标元素局部 ROI (如 Tooltip、卡片浮层) 并返回 Base64 编码。
-        专为 API 双向核验设计，提供充分视野避免截偏，并防止大模型受远端异物干扰。
+        方案 A：优先通过 CDP 向上回溯吸附完整卡片/表格容器边界 (Bounding Box)；
+        未命中时安全降级为中心几何矩形。四周施加安全边距膨胀，防止截偏或切断文字。
         """
         try:
             from PIL import Image
@@ -182,23 +269,38 @@ class ScreenshotMixin:
             im = Image.open(img_file)
             w, h = im.size
 
-            px = int(center_x * dpr)
-            py = int(center_y * dpr)
+            # 1. 尝试自适应吸附业务容器（如 Table、Card、Form、Panel）
+            box = None
+            if hasattr(self, "get_element_container_bounding_box"):
+                box = self.get_element_container_bounding_box(center_x, center_y)
 
-            crop_w = int(roi_width * dpr)
-            crop_h = int(roi_height * dpr)
-
-            # 智能偏置：若目标在右半屏，卡片文字通常向右延展；若在左半屏向右延展；居中则居中
-            if px > w * 0.55:
-                x1 = max(0, min(w - crop_w, px - int(80 * dpr)))
-            elif px < w * 0.45:
-                x1 = max(0, min(w - crop_w, px - int(60 * dpr)))
+            if box:
+                # 宁大勿小：向外各膨胀 45px 边距防切边，保留卡片外壳完整视觉
+                pad_x = int(45 * dpr)
+                pad_y = int(35 * dpr)
+                x1 = max(0, int(box["x"] * dpr) - pad_x)
+                y1 = max(0, int(box["y"] * dpr) - pad_y)
+                x2 = min(w, int((box["x"] + box["width"]) * dpr) + pad_x)
+                y2 = min(h, int((box["y"] + box["height"]) * dpr) + pad_y)
+                logger.info(f"📸 [Container ROI] 智能截取完整业务卡片框框: 尺寸={x2-x1}x{y2-y1}px (含安全留白)")
             else:
-                x1 = max(0, min(w - crop_w, px - crop_w // 2))
+                # 2. 降级：未命中 DOM 容器（如 Canvas、3D视角），使用大号物理几何中心框
+                px = int(center_x * dpr)
+                py = int(center_y * dpr)
+                crop_w = int(roi_width * dpr)
+                crop_h = int(roi_height * dpr)
 
-            y1 = max(0, min(h - crop_h, py - crop_h // 3))
-            x2 = min(w, x1 + crop_w)
-            y2 = min(h, y1 + crop_h)
+                if px > w * 0.55:
+                    x1 = max(0, min(w - crop_w, px - int(80 * dpr)))
+                elif px < w * 0.45:
+                    x1 = max(0, min(w - crop_w, px - int(60 * dpr)))
+                else:
+                    x1 = max(0, min(w - crop_w, px - crop_w // 2))
+
+                y1 = max(0, min(h - crop_h, py - crop_h // 3))
+                x2 = min(w, x1 + crop_w)
+                y2 = min(h, y1 + crop_h)
+                logger.info(f"📸 [Fallback ROI] 采用几何中心自适应裁切: 尺寸={x2-x1}x{y2-y1}px")
 
             cropped = im.crop((x1, y1, x2, y2))
 
