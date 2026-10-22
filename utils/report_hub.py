@@ -92,7 +92,7 @@ class ReportHub:
             generator = ReportGenerator(d)
             if not report_file.exists():
                 try:
-                    generator.generate_html()
+                    generator.generate_html(disable_push=True, update_hub=False)
                 except Exception as e:
                     logger.warning(f"为 {d.name} 补充生成 report.html 失败: {e}")
 
