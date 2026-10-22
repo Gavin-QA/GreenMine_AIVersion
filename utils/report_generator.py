@@ -37,6 +37,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from utils.paths import RUNS_DIR, find_run_dir, get_all_run_folders
+from utils.bug_enricher import enrich_bug_metadata
 
 logger = logging.getLogger("report_generator")
 
@@ -153,42 +154,8 @@ class ReportGenerator:
                                 if k in ["status", "severity", "assignee", "tags", "analysis_notes", "occurrences", "last_seen"] or k not in b_info or not b_info[k] or b_info[k] == "Medium":
                                     b_info[k] = gb[k]
 
-                    # 智能元数据增强：从 step 文本自动推导缺失的 action_type, target_element, ui_path, tags
-                    step_str = str((b_info.get("details") or {}).get("step") or b_info.get("step") or "")
-                    if not b_info.get("action_type") or b_info.get("action_type") == "无":
-                        m_act = re.search(r"\[([A-Z_]+)\]", step_str)
-                        if m_act:
-                            b_info["action_type"] = m_act.group(1).strip()
-                    if not b_info.get("target_element") or b_info.get("target_element") == "无":
-                        m_tgt = re.search(r"交互目标[:：]\s*['\"]?(.*?)['\"]?\s*(?:\(|$)", step_str)
-                        if m_tgt:
-                            b_info["target_element"] = m_tgt.group(1).strip()
-                    if not b_info.get("ui_path") or b_info.get("ui_path") in ("无", "首页"):
-                        m_path = re.search(r"(?:页面路径|路径)[:：]\s*(.*?)\)", step_str)
-                        if m_path:
-                            b_info["ui_path"] = m_path.group(1).strip()
-                    if not b_info.get("step_num") and b_info.get("global_step"):
-                        try:
-                            b_info["step_num"] = int(re.search(r"\d+", str(b_info["global_step"])).group(0))
-                            before_file = f"explore_step_{b_info['step_num']}.png"
-                            if (shots_dir / before_file).exists() and not b_info.get("before_screenshot"):
-                                b_info["before_screenshot"] = f"screenshots/{before_file}"
-                        except Exception:
-                            pass
-                    # 智能推导业务标签
-                    if not b_info.get("tags") or b_info.get("tags") == "无" or b_info.get("tags") == []:
-                        auto_tags = []
-                        if b_info.get("action_type") and b_info["action_type"] != "无":
-                            auto_tags.append(b_info["action_type"])
-                        u_path = b_info.get("ui_path", "")
-                        if u_path and u_path != "无":
-                            auto_tags.extend([p.strip() for p in u_path.split("->") if p.strip()])
-                        t_elem = b_info.get("target_element", "")
-                        if t_elem and t_elem != "无":
-                            for k in ["一级菜单", "二级菜单", "按钮", "图表", "弹窗", "折线图", "柱状图", "表格"]:
-                                if k in t_elem and k not in auto_tags:
-                                    auto_tags.append(k)
-                        b_info["tags"] = list(dict.fromkeys(auto_tags)) if auto_tags else ["常规交互"]
+                    # 智能元数据增强：单一源头统一推导缺失的 action_type, target_element, ui_path, tags
+                    enrich_bug_metadata(b_info, shots_dir=shots_dir, matched_step=matched_step)
 
                     data["bugs"].append(b_info)
                 except Exception as e:

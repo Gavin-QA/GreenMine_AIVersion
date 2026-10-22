@@ -48,72 +48,7 @@ APP_NAME_MAP = {
 }
 
 
-def extract_ui_path_from_step(step_str: Any, default: str = "首页") -> str:
-    """从 step 描述中智能提炼业务路径，例如从 '(路径: 生产管理 -> 能耗监测)' 中提取"""
-    if not step_str:
-        return default
-    s = str(step_str).strip()
-    m = re.search(r'\(?(?:页面)?路径[:：]\s*([^)]+)\)?', s)
-    if m:
-        extracted = m.group(1).strip()
-        if extracted and extracted != "无":
-            return extracted
-    return default
-
-
-def normalize_severity(val: Any) -> int:
-    """与禅道标准对齐：1(致命), 2(严重), 3(一般,默认), 4(轻微)"""
-    if val is None or val == "" or val == "无":
-        return 3
-    s = str(val).lower().strip()
-    if s in ["1", "critical", "fatal", "blocker", "致命"]:
-        return 1
-    if s in ["2", "high", "major", "严重"]:
-        return 2
-    if s in ["3", "medium", "normal", "一般"]:
-        return 3
-    if s in ["4", "low", "minor", "trivial", "轻微"]:
-        return 4
-    try:
-        num = int(s)
-        if 1 <= num <= 4:
-            return num
-    except Exception:
-        pass
-    return 3
-
-
-def enrich_bug_metadata_dict(b_dict: dict) -> None:
-    """智能元数据增强：从 step 文本自动推导缺失的 action_type, target_element, ui_path, tags"""
-    step_str = str(b_dict.get("step") or (b_dict.get("details") or {}).get("step") or "")
-    if not b_dict.get("action_type") or b_dict.get("action_type") == "无":
-        m_act = re.search(r"\[([A-Z_]+)\]", step_str)
-        if m_act:
-            b_dict["action_type"] = m_act.group(1).strip()
-    if not b_dict.get("target_element") or b_dict.get("target_element") == "无":
-        m_tgt = re.search(r"交互目标[:：]\s*['\"]?(.*?)['\"]?\s*(?:\(|$)", step_str)
-        if m_tgt:
-            b_dict["target_element"] = m_tgt.group(1).strip()
-    if not b_dict.get("ui_path") or b_dict.get("ui_path") in ("无", "首页"):
-        m_path = re.search(r"(?:页面路径|路径)[:：]\s*(.*?)\)", step_str)
-        if m_path:
-            b_dict["ui_path"] = m_path.group(1).strip()
-    
-    # 智能推导业务标签
-    raw_tags = b_dict.get("tags")
-    if not raw_tags or raw_tags == "无" or raw_tags == [] or raw_tags == "":
-        auto_tags = []
-        if b_dict.get("action_type") and b_dict["action_type"] != "无":
-            auto_tags.append(b_dict["action_type"])
-        u_path = b_dict.get("ui_path", "")
-        if u_path and u_path != "无":
-            auto_tags.extend([p.strip() for p in u_path.split("->") if p.strip()])
-        t_elem = b_dict.get("target_element", "")
-        if t_elem and t_elem != "无":
-            for k in ["一级菜单", "二级菜单", "按钮", "图表", "弹窗", "折线图", "柱状图", "表格"]:
-                if k in t_elem and k not in auto_tags:
-                    auto_tags.append(k)
-        b_dict["tags"] = list(dict.fromkeys(auto_tags)) if auto_tags else ["常规交互"]
+from utils.bug_enricher import extract_ui_path_from_step, normalize_severity, enrich_bug_metadata
 
 
 
@@ -255,7 +190,7 @@ class ReportHub:
                 "ui_path": raw_ui_path,
                 "analysis_notes": raw_analysis
             }
-            enrich_bug_metadata_dict(all_bugs_dict[b_id])
+            enrich_bug_metadata(all_bugs_dict[b_id])
 
         # 2. 从当前存在的 runs 中补充截图等确切数据，或新增尚未并入 global 的 bug
         for r in runs:
@@ -294,7 +229,7 @@ class ReportHub:
                         all_bugs_dict[b_id]["target_element"] = b["target_element"]
                     if b.get("tags") and b["tags"] != "无":
                         all_bugs_dict[b_id]["tags"] = b["tags"]
-                    enrich_bug_metadata_dict(all_bugs_dict[b_id])
+                    enrich_bug_metadata(all_bugs_dict[b_id])
                 else:
                     if rel_shot and target_run_dir and not (target_run_dir / rel_shot).exists():
                         rel_shot = ""
@@ -339,7 +274,7 @@ class ReportHub:
                         "ui_path": run_ui_path,
                         "analysis_notes": run_analysis
                     }
-                    enrich_bug_metadata_dict(all_bugs_dict[b_id])
+                    enrich_bug_metadata(all_bugs_dict[b_id])
                     
         # 3. 生成 all_bugs 并修正总数
         all_bugs = list(all_bugs_dict.values())
