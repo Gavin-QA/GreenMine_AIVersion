@@ -1,178 +1,315 @@
-# Electron AI Vision — 纯视觉驱动的 UI 自动化巡检框架
+# 📖 Electron AI Vision 纯视觉 UI 自动化巡检框架使用手册
 
-本项目是一个专门针对复杂 Electron 桌面端（大屏展示、图表渲染、高频接口、3D/UE 数字孪生）设计的**纯视觉驱动 AI 智能体（Agent）测试框架**。彻底抛弃传统的 DOM/XPath 定位逻辑，采用自然语言编写用例，通过大模型（如 Qwen-VL / GPT-4o）的多模态视觉能力实现 UI 的“感知、决策与交互”。
+本项目是一个专门针对复杂 Electron 桌面端（矿山大屏、3D/UE 数字孪生、高频业务看板、数字看板）设计的**多模态 AI 驱动 UI 自动化测试巡检框架**。
 
----
-
-## 🤖 System Context for LLMs (大模型阅读指南)
-**[CRITICAL INSTRUCTION FOR AI AGENTS]** 
-如果你是正在辅助开发本项目的 AI 助手，请严格遵守以下架构规约：
-1. **No Hardcoded Selectors (Hybrid Architecture)**: 本项目彻底摒弃传统的 POM 模式与硬编码选择器。**测试脚本中绝对不能出现** `id`、`xpath` 或 `css`。在底层驱动上，框架采用 **DOM 节点实时抽取 + 纯视觉回退 (Hybrid DOM/Vision)** 机制，由 AI 在运行时动态将自然语言意图与提取到的 DOM 元素（如没有 DOM，则回退到视觉绝对坐标）进行对齐映射。
-2. **Vision-First Execution**: 所有的页面交互（点击、输入）与断言，均需通过 `core/vision_agent.py` 将屏幕截图与底层数据包发送给多模态大模型，由大模型返回目标元素的 DOM 标识、绝对坐标 `(x, y)` 或是语义状态验证结果。
-3. **Natural Language Cases**: 正式回归用例一律在 `test_cases/` 目录下以 `.yaml` 格式使用自然语言编写，Python 代码仅作为底层执行器。
-4. **Tiered Artifacts Lifecycle**: 框架严格区分**长期持久资产 (`artifacts/`)** 与 **单次运行工作区 (`reports/runs/<run_id>/`)**。所有单次运行过程产物必须严格收敛在对应的 `run_id` 目录下，严禁在工程根目录下随意新增散落文件夹。
+彻底告别传统的 Page Object Model (POM) 模式与脆弱易碎的 XPath/CSS/ID 硬编码选择器，用纯自然语言意图驱动，借助多模态视觉大模型（如 Qwen-VL / GPT-4o）实现桌面端大屏的**“感知、规划、物理操作与双向数据断言”**。
 
 ---
 
-## ✨ 核心特性
-
-本项目打破了传统的“死板脚本”模式，采用了双 Agent（智能体）驱动机制，能够满足从核心流程回归到边缘缺陷挖掘的全方位自动化需求：
-
-1. **双 Agent（执行者 ActionRunner / 探索者 ExplorerAgent）支持 3 种工作流**：
-   - **实体一：执行者 (ActionRunner)**
-     - 对应工作流 ① **【确定性用例回归】**：严格根据人类编写的 YAML 自然语言指令流，由 AI 动态解析并执行点击、输入与双向数据断言，自带三层递进式语义自愈机制。
-   - **实体二：探索者 (ExplorerAgent)**
-     - 对应工作流 ② **【自主混沌探索 (Exploration)】**：输入一句话宏观目标，采用 **Planner-Worker (规划者-执行者) 双层架构**自主游走找深层 Bug，动态绘制拓扑树并沉淀回归用例。
-     - 对应工作流 ③ **【全量二级菜单冒烟巡检 (Smoke Tour)】**：单次启动 Electron 进程，由 ExplorerAgent 驱动流水线式依次遍历 6 大一级模块下的全部 **33 个二级业务菜单**，完成两级跳转验证与页面宏观视觉健康度体检，零重启极速巡检全屏。
-2. **长短期记忆机制与断点续跑 (Checkpoint Memory)**：在探索模式下，内置短期防死循环记忆（规避局部无意义重复）与全局长效记忆（记录已访问的模块与熔断目标）。记忆实时持久化在 `reports/runs/<run_id>/checkpoint/` 中，支持通过 `--resume-from` 跨批次断点续跑，彻底避免 AI 走回头路。
-3. **降维打击复杂大屏与黑盒渲染**：传统 API 拦截无法校验 Canvas/UE 图表渲染是否正确，传统 DOM 定位无法穿透黑盒。本框架通过 AI“看图”与底层数据双重校验，既能比对图表形态、重叠与白屏问题，又能严格核对渲染数值。
-4. **超强自我容错与网络重试**：脱离底层 `class` 与 `id` 的绑定，不仅能应对前端组件重构，还具备底层大模型请求的防超时/断网自动重试恢复能力。
-5. **智能视觉等待 (Intelligent Visual Wait)**：彻底抛弃低效的“死等(sleep)”，支持传入自然语言条件（如“等待左侧菜单树渲染完毕”），由 AI 轮询屏幕直到满足条件，将启动与跳转的空耗延迟降至最低。
-6. **全自动零配置接口校验 (Auto-API Assertion)**：独创的底层静默抓包与大模型视觉双重比对机制。无需配置任何接口 URL 或抽取规则，框架在后台维护滑动网络数据池。只需一句自然语言，大模型即可自主从底层 JSON 中提取数据，并与 UI 渲染的文字、图表进行深度交叉验证。
-7. **动态组件拓扑树与双图状态跃迁 (Post-Click Diff & Component Awareness)**：
-   - **Post-Click Diff 双图差分**：每次点击前后抓取屏幕快照与 DOM 状态，通过“DOM 模态监听 + PIL 图像差分”双擎，毫秒级判定当前是打开弹窗（压栈）、关闭弹窗（出栈）、页面跳转还是局部刷新。
-   - **Component Awareness 组件感知**：自动识别控件类型（🔲 按钮、📝 输入框、🔽 下拉框、☑️ 勾选框、📋 列表、🗺️ 地图等）及其所属的父容器。
-   - **不变骨架延伸基座**：严格基于 `docs/explore_rules.md` 中的 6 大一级模块与 33 个二级业务菜单作为全局不可变底座，定点延伸已探索页面的内部组件。
-   - **纯 Markdown 拓扑树大纲**：实时生成结构化的大纲树并附带 Mermaid 图，同步更新至 `docs/auto_page_map.md`。
-   - **自动版本快照机制**：每次持久化前自动在 `artifacts/topology/snapshots/` 备份快照，彻底防止大模型幻觉污染历史基线，支持随时回滚。
-8. **用例隔离与晋升机制 (Case Isolation & Promotion)**：探索模式沉淀的 YAML 测试脚本自动保存在每次运行专属的 `reports/runs/<run_id>/generated_cases/` 目录下，彻底杜绝未经人工核验的探索脚本污染正式回归用例库 `test_cases/`；确认高质量后可人工晋升（Promote）。
-9. **智能自愈与前置补救 (Semantic Self-Healing)**：内置“三层防线”自愈机制。当物理重试耗尽时，AI 调取案发现场截图分析失败根因，自动给出点击前置 Tab、收起遮挡层或滚动查找等补救动作，实现无人值守的自我修复。
-10. **解耦式缺陷闭环与大模型查重 (Auto Bug Reporting & Deduplication)**：深度集成完全解耦的 `BugReporter` 模块。当执行或探索发现控制台异常或断言失败时，案发现场大图与报错 JSON 物理收敛至本次运行目录，并调用大模型进行语义特征查重，在 `artifacts/bugs/` 下自动生成全局去重 JSON 数据库，并可一键生成全量交互式 Web 门户。
-11. **资产与产物分层治理 (Tiered Lifecycle Architecture)**：
-    - **长期核心资产 (`artifacts/`)**：仅包含全局 Bug 知识库、拓扑基线与用例归档，体积不足 1 MB，绝不因清理日志误删。
-    - **单次运行工作区 (`reports/runs/<run_id>/`)**：一次运行对应一个唯一文件夹，包含专属日志、检查点记忆、缺陷证据与探索用例。
-12. **安全瘦身与磁盘生命周期管理工具 (`utils/cleaner.py`)**：内置专业的磁盘大盘诊断与清理工具，可一键释放数十 GB 的临时过程截图，同时**100% 绝对保护**所有的 Bug 现场截图、记忆检查点与日志。
+## 目录
+- [1. 首次使用环境准备 (Getting Started)](#1-首次使用环境准备-getting-started)
+- [2. 配置文件全项详解与默认配置 (Configuration)](#2-配置文件全项详解与默认配置-configuration)
+- [3. 核心功能全景 (Core Capabilities)](#3-核心功能全景-core-capabilities)
+- [4. 常用运行命令速查 (CLI Cheat Sheet)](#4-常用运行命令速查-cli-cheat-sheet)
+- [5. YAML 自然语言用例编写指南 (YAML Specification)](#5-yaml-自然语言用例编写指南-yaml-specification)
+- [6. 测试资产与大盘门户查阅 (Reports & Dashboard)](#6-测试资产与大盘门户查阅-reports--dashboard)
 
 ---
 
-## 🏗️ 核心架构
+## 1. 首次使用环境准备 (Getting Started)
 
-框架采用 **感知 -> 决策 -> 执行** 的 ReAct 闭环：
-1. **底座层 (Playwright over CDP)**：负责通过远程调试端口直连 Electron 进程，执行全屏截图、**交互式 DOM 树特征抽取**、**网络 API 接口静默拦截**，并根据指令精准模拟鼠标物理动作。
-2. **大脑层 (Vision Agent)**：底层中枢神经基建。接收上下文指令、当前截图、压缩版 DOM 树以及最近的 API JSON 包，利用多模态大模型强大的推理能力，精准映射目标 UI 元素或执行深度业务双重断言。
-3. **编排层 (两大业务智能体实体)**：
-   - **执行者 (ActionRunner)**：串行解析 YAML 自然语言用例，调度大模型精准执行步骤并处理三层异常自愈（对应工作流 ① 确定性回归）。
-   - **探索者 (ExplorerAgent)**：基于 Planner-Worker 双层设计，自主分解目标游走挖掘深层 Bug，动态渲染全景架构树并沉淀回归用例（对应工作流 ② 自主探索 与 工作流 ③ 全量二级菜单冒烟巡检）。
+### 1.1 系统要求
+- **操作系统**：Windows 10 / Windows 11 (64-bit)
+- **Python 版本**：Python 3.10 及以上（推荐 3.10 或 3.11）
+- **显卡/网络**：能正常启动运行被测 Electron 客户端及 3D/UE 伴生引擎，且能正常访问视觉大模型 API 服务。
 
----
+### 1.2 源码克隆与虚拟环境创建
+建议在独立的虚拟环境中安装运行，以避免包依赖冲突：
 
-## 📂 规范目录结构
+```powershell
+# 1. 进入项目根目录
+cd d:\Auto\electron_ai_vision
 
-```text
-electron_ai_vision/
-├── config.yaml            # 全局环境基础配置 (应用路径、LLM配置、视口尺寸等)
-├── .env                   # 敏感环境变量 (如 LLM_API_KEY, 严防泄露)
-├── config/                # 框架配置模块
-│   └── settings.py        # 环境变量与 YAML 配置文件的读取与合并
-├── core/                  # 框架底层核心驱动
-│   ├── action_runner.py   # [用例引擎] 解析 YAML 自然语言步骤，调度底层执行与三层自愈
-│   ├── bug_reporter.py    # [缺陷闭环] 完全解耦的智能缺陷记录与大模型语义查重模块
-│   ├── browser/           # [驱动层] 封装 Electron 启动、CDP 连接与底层数据抓取
-│   │   ├── driver.py            # 核心生命周期管理与鼠标键盘物理动作模拟
-│   │   ├── dom_extractor.py     # Hybrid DOM 元素提取器 (集成 Component Awareness)
-│   │   ├── network_monitor.py   # 底层 API 静默抓包池与网络/控制台报错监控
-│   │   └── screenshot.py        # 截图裁剪与 Base64 预处理
-│   ├── explorer_agent/    # [探索层] 混沌探索者智能引擎
-│   │   ├── agent.py             # ReAct Planner-Worker 循环调度引擎 (维护容器调用栈与记忆)
-│   │   ├── post_click_diff.py   # [状态跃迁] 点击前后双图与 DOM 差分探测器
-│   │   ├── page_map_builder.py  # 纯 Markdown 组件拓扑树生成、Mermaid 渲染与版本快照
-│   │   └── trajectory_exporter.py # 操作轨迹结构化记录与 YAML 用例自动生成
-│   └── vision/            # [感知层] 视觉大模型连接层
-│       ├── agent.py             # 封装多模态大模型 API 请求与 JSON 结果解析
-│       └── prompts.py           # 集中管控所有 AI System Prompts (速查文档头管理)
-│
-├── artifacts/             # 💎 【长期持久资产区】轻量核心数据 (~200KB)，永久保留防误删
-│   ├── bugs/                    # 全局去重缺陷大盘总库 (global_bugs.json)
-│   ├── topology/                # 全局架构树基线 (global_page_tree.json, auto_page_map.md)
-│   │   └── snapshots/           # 拓扑历史版本快照备份 (带时间戳，防模型幻觉改坏)
-│
-├── reports/               # 📦 【运行时产物收敛区】一次运行 = 一个独立完整目录
-│   └── runs/<run_id>/           # 单次运行工作区
-│       ├── run.log              # 本次运行完整日志
-│       ├── checkpoint/          # 检查点记忆 (global_history.json, failed_counts.json)
-│       ├── bugs/                # 本次捕获的缺陷凭证 (现场大图 + 报错 JSON)
-│       ├── screenshots/         # 过程临时大图 (背景熄灯图、过渡图，可通过 cleaner 安全清理)
-│       └── generated_cases/     # 本次探索闭环生成的 YAML 脚本 (隔离保存，避免污染用例库)
-│
-├── docs/                  # 文档与只读规范区
-│   ├── explore_rules.md   # 探索模式基础骨架 (6大模块+33个业务菜单) 与业务规矩
-│   └── auto_page_map.md   # 动态组件架构拓扑实时预览镜像 (纯 Markdown 树 + Mermaid 图)
-│
-├── test_cases/            # 📝 【正式回归用例库】原则上仅存放人工确认的基线用例
-│   ├── README.md                # 用例编写与晋升规范
-│   ├── test_home_cert.yaml      # 证照管理回归用例
-│   ├── test_home_mine_intro.yaml# 矿山简介回归用例
-│   └── test_roam_only.yaml      # 3D 漫游巡检用例
-│
-├── utils/                 # 通用基础设施工具
-│   ├── paths.py           # 统一产物路径与生命周期管理器
-│   ├── report_generator.py# 离线交互式测试报告(HTML)单次运行生成器
-│   ├── report_hub.py      # 全量巡检与大盘门户服务引擎
-│   ├── cleaner.py         # 磁盘存储大盘诊断与安全瘦身维护工具
-│   ├── logger.py          # 框架集中日志管理，支持 Unicode 防乱码与彩色输出
-│   └── electron_launcher.py # Electron 进程管理辅助工具
-│
-├── requirements.txt       # Python 依赖清单
-└── main.py                # 项目启动主入口，执行全量巡检、单条测试或自主探索
+# 2. 创建 Python 虚拟环境 (.venv)
+python -m venv .venv
+
+# 3. 激活虚拟环境 (Windows PowerShell)
+.\.venv\Scripts\Activate.ps1
+```
+
+### 1.3 安装核心依赖
+激活虚拟环境后，安装框架所需的基础依赖以及底座外设：
+
+```powershell
+# 1. 安装核心 Python 依赖包 (Playwright, PyAutoGUI, Pillow, PyYAML 等)
+pip install -r requirements.txt
+
+# 2. 安装 Playwright 底座外设依赖
+playwright install chromium
 ```
 
 ---
 
-## 🚀 快速上手 (Quick Start)
+## 2. 配置文件全项详解与默认配置 (Configuration)
 
-### 1. 运行 33 个二级菜单全量冒烟巡检 (Smoke Tour)
-单次启动客户端，零重启极速巡检全屏 33 个二级菜单：
+### 2.1 首次运行必改项 Checklist（拉取代码后必须配置）
+使用者拉取代码后，**仅需核对并修改以下 2 处配置**即可一键跑通：
+
+1. **配置大模型密钥 (`.env`)**：
+   在工程根目录创建或编辑 `.env` 文件，填入视觉大模型的 API Key：
+   ```ini
+   # 必填：用于调用多模态视觉大模型 (默认使用阿里百炼 DashScope 兼容接口)
+   LLM_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+   ```
+2. **配置客户端本地可执行路径 (`config.yaml`)**：
+   打开 `config.yaml`，确认对应项目的 `exe_path` 是否为您电脑上的真实绝对路径：
+   ```yaml
+   active_app: "zhaiwan"   # 激活的项目
+   apps:
+     zhaiwan:
+       exe_path: "D:\\LargeScreen\\zhaiwan2\\project\\se-launcher-zhaiwan\\se-launcher-zhaiwan.exe"  # 👈 改为你本地的真实安装路径
+   ```
+
+---
+
+### 2.2 默认配置速查表 (Default Settings)
+
+框架开箱即附带针对大屏场景优化的高稳定性默认参数：
+
+| 配置项 | 所在文件 | 默认值 | 作用与含义说明 |
+| :--- | :--- | :--- | :--- |
+| `active_app` | `config.yaml` | `"zhaiwan"` | 当前激活测试的应用方案（如 `zhaiwan` 寨湾 或 `liwutong` 里伍铜） |
+| `debug_port` | `config.yaml` | `9223` | Electron 远程 CDP 调试通信端口（启动时通过 `--remote-debugging-port=9223` 挂载） |
+| `viewport` | `config.yaml` | `2560 x 1440` | 默认渲染视口尺寸，专为 2K/4K 大屏高保真呈现设计 |
+| `device_pixel_ratio` | `config.yaml` | `1.5` | 高分屏 DPI 缩放比，确保坐标换算与物理像素点 1:1 严格对齐 |
+| `start_delay` | `config.yaml` | `15.0 秒` | 应用启动后的物理等待缓冲时间，确保三维引擎与前端数据完全加载 |
+| `llm.provider` | `config.yaml` | `"openai"` | 大模型通信协议格式（使用通用 OpenAI 兼容协议） |
+| `llm.model` | `config.yaml` | `"qwen3-vl-plus"` | 默认多模态视觉大模型（兼具高精度 OCR、图表数值抽取与低推理延迟） |
+| `llm.base_url` | `config.yaml` | `阿里云百炼 DashScope` | 默认服务请求接口地址 |
+| `llm.temperature` | `config.yaml` | `0.1` | 模型采样温度，采用极低温度以确保坐标预测和数据断言的稳定性 |
+| `env_check.enabled` | `config.yaml` | `true` | 前置环境准入巡检，启动前自动核验目标后台接口环境（防测试环境串味） |
+
+---
+
+### 2.3 配置文件详细结构说明
+
+#### `config.yaml` 核心结构
+```yaml
+active_app: "zhaiwan"   # 极简无感秒切：直接修改为 "zhaiwan" 或 "liwutong"
+
+apps:
+  zhaiwan:
+    exe_path: "D:\\LargeScreen\\zhaiwan2\\project\\se-launcher-zhaiwan\\se-launcher-zhaiwan.exe"
+    rules_file: "docs/explore_rules_zhaiwan.md"  # 业务菜单基准与探索规则
+    debug_port: 9223                             # CDP 端口
+    ue_process_name: "zhaiwan.exe"               # 伴生 UE 进程名 (监控其存活)
+    expected_page_url: "main.html"               # 目标大屏 URL 关键字
+    expected_page_title: "主界面"                 # 目标大屏标题关键字
+    startup_timeout: 40.0                        # 启动跃迁超时(秒)
+    start_delay: 15.0                            # 首屏稳定缓冲(秒)
+    viewport:
+      width: 2560
+      height: 1440
+      device_pixel_ratio: 1.5
+    env_check:
+      enabled: true                              # 启用前置环境准入校验
+      expected_env: "prod"                       # 期望环境: "prod" 或 "test"
+      strict: true                               # 环境不符时直接阻断退出
+      environments:
+        prod: "http://221.234.48.197:8808"
+        test: "http://121.43.58.203:8783"
+
+llm:
+  provider: "openai"
+  api_key: ""                                    # 留空，通过 .env 读取防泄露
+  base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+  model: "qwen3-vl-plus"
+  timeout: 60                                    # 单次推理超时保障(秒)
+  temperature: 0.1
+
+reports:
+  dir: "reports"
+  feishu_webhook: "https://open.feishu.cn/..."   # 飞书群机器人推送地址 (可选)
+  feishu_secret: "..."                           # 飞书机器人安全密钥 (可选)
+  report_base_url: "http://192.168.1.156"        # 局域网访问基础地址 (如 IIS 服务)
+```
+
+---
+
+## 3. 核心功能全景 (Core Capabilities)
+
+框架突破传统自动化模式，构建了“确定性回归”与“自主黑客探索”双引擎：
+
+1. **🎬 确定性用例回归 (ActionRunner)**：
+   - 严格按照人类编写的自然语言 YAML 指令流逐步执行；
+   - 支持纯视觉点击、文本输入、视觉语义断言与后台 API 双向交叉比对；
+   - 内置**三层语义自愈机制**（遇到遮挡、未展开或微偏时，AI 自动进行前置补救与重试）。
+
+2. **🚀 全量二级业务菜单冒烟巡检 (Smoke Tour)**：
+   - 单次启动 Electron 客户端，流水线式自动化遍历全部 **6 大主模块与 33 个二级业务菜单**；
+   - 零重启、零误触，极速完成所有菜单的两级路由跃迁与页面核心业务组件宏观体检。
+
+3. **🕵️ 自主混沌探索与深挖 (ExplorerAgent)**：
+   - 采用 **Planner-Worker (规划统帅-执行单兵)** 双层架构；
+   - Planner 纵览全局，基于历史记忆与业务骨架分解出短期战术子目标并分配预算步数；
+   - Worker 负责单兵落地与连续交互，探索深层弹窗、抽屉面板与未测盲区；
+   - **智能防死锁与双门限停止机制**：满足 `--max-steps`（最大步数）或 `--max-times`（最大时间）任一条件即停，若架构已 100% 覆盖则触发 **Smart Early Stop** 提前优雅收工。
+
+4. **🔍 全自动零配置接口核验 (Auto-API Assertion)**：
+   - 底层静默维护最新 25 个网络报文的滑动窗口；
+   - 截图中肉眼看到的指标数值（如“当前出矿量 3200 吨”）自动与后台拦截到的真实 JSON 原文字段双向比对，防范前端数据张冠李戴。
+
+5. **🧊 智能防假死检测 (Freeze Check)**：
+   - 专为 3D 场景与动态大屏设计；
+   - 毫秒级抓取时序双图进行差分运算，精准判定三维推流引擎是否冻结卡死、动画跑马灯是否停滞。
+
+6. **🐞 智能缺陷闭环与语义查重 (BugReporter)**：
+   - 当执行失败或捕获底层报错时，自动隔离现场大图并生成 JSON 档案；
+   - 归档前调用大模型与全局缺陷库进行**语义查重**，同类本质问题自动合并并累加复现频次，从源头解决 Bug 泛滥去重难题。
+
+7. **🗺️ 动态架构拓扑测绘与用例反哺**：
+   - 探索过程中动态推断当前 UI 路径（如 `安全管理 -> 人员安全档案`）；
+   - 自动生成结构化的 Markdown 架构树与 Mermaid 图；
+   - 将走通的高价值探索路径自动编译输出为确定性的 `.yaml` 回归测试用例。
+
+---
+
+## 4. 常用运行命令速查 (CLI Cheat Sheet)
+
+所有模式均通过项目主入口 `main.py` 驱动：
+
+### 4.1 全量二级菜单极速冒烟巡检 (Smoke Tour)
 ```powershell
+# 单进程快速巡检全屏全部 33 个二级菜单（推荐日常版本发布前快速排查）
+python main.py --tour
+# 或使用别名
 python main.py --smoke
 ```
 
-### 2. 运行预设 YAML 业务巡检用例
+### 4.2 运行确定性 YAML 业务回归用例
 ```powershell
-# 运行单一自然语言用例
+# 1. 运行单一自然语言用例
 python main.py --case test_cases/test_home_mine_intro.yaml
 
-# 运行 test_cases/ 下的所有正式回归用例
+# 2. 批量运行 test_cases/ 目录下的所有正式回归用例
 python main.py --all
 
-# 指定智能视觉等待就绪条件 (AI 轮询截屏直至就绪)
-python main.py --case test_cases/test_home_mine_intro.yaml --wait-ready "主界面左侧菜单树和右侧面板渲染完成"
+# 3. 带全局报错忽略（即使中间某步失败也强制跑完全流程）
+python main.py --case test_cases/test_home_mine_intro.yaml --ignore-errors
+
+# 4. 指定智能视觉等待（AI 轮询等待画面特定自然语言特征出现，替代死等）
+python main.py --case test_cases/test_home_mine_intro.yaml --wait-ready "主界面左侧菜单树和右侧面板完全渲染完成" --wait-timeout 60.0
 ```
 
-### 3. 启动自主探索与架构生成 (ExplorerAgent)
+### 4.3 开启自主黑客式探索 (ExplorerAgent)
 ```powershell
-# 在指定模块下自主探索 20 步，自动寻找深层 Bug 并更新架构拓扑树
-python main.py --explore "在智控管理模块下自主探索智能通风与供配电" --max-steps 20
+# 1. 发起地毯式探索（限定 20 步，默认快速试跑）
+python main.py --explore "地毯式探索全系统，遍历所有一级与二级菜单，重点寻找白屏与崩溃" --max-steps 20
 
-# 继承历史记忆进行断点续跑
-python main.py --explore "继续探索设备管理" --resume-from explore_20260924_175815
+# 2. 无人值守长效深度探索（设定上限 2000 步或 840 分钟，挂载业务规则库）
+python main.py --explore "开启全栈地毯式扫荡：深度遍历所有的顶级菜单与二级业务菜单，测试图表与深层弹窗" --max-steps 2000 --max-times 840 --ignore-errors --explore-context docs/explore_rules_zhaiwan.md
 
-# 强制重新探索某个业务模块 (清空该模块历史子树，展开全新探索)
-python main.py --explore "重新探索智能通风" --reexplore
+# 3. 继承历史记忆进行断点续跑 (避免走回头路)
+python main.py --explore "继续深度探索设备管理模块" --resume-from reports/runs/explore_20261015_182652
+
+# 4. 强制重新探索某个指定模块 (清空该模块子树重新深挖)
+python main.py --explore "重新探索智能通风模块" --reexplore "智能通风"
 ```
 
-### 4. 磁盘大盘诊断与安全瘦身工具
+### 4.4 启动统一测试大盘与缺陷知识库门户
 ```powershell
-# 查看当前工程产物存储分布大盘 (全局资产、运行产物、临时截图占比)
+# 1. 仅重新构建静态大盘数据 (编译生成 index.html 与 runs_data.js)
+python utils/report_hub.py --build
+
+# 2. 启动常驻 Web 服务 (默认监听 8080 端口，局域网与外网均可实时访问)
+python utils/report_hub.py --serve --port 8080
+```
+
+### 4.5 磁盘空间诊断与安全清理瘦身 (Cleaner)
+长期进行高频截图测试会占用较多磁盘，工具提供**100% 保护 Bug 现场证据**的安全瘦身：
+```powershell
+# 1. 诊断查看当前工程磁盘分布（核心资产、运行产物、临时大图占用）
 python utils/cleaner.py --info
 
-# 安全瘦身：清理 7 天前的临时过程大图 (永久保留 Bug 崩溃现场大图与记忆检查点)
+# 2. 安全瘦身：清理 7 天前的临时过渡截图（永久保留所有 Bug 案发现场大图与检查点）
 python utils/cleaner.py --retain-days 7
-
-# 清理旧版历史残余目录 (释放数十 GB 冗余磁盘)
-python utils/cleaner.py --clean-legacy
-```
-
-### 5. 启动测试全景大盘门户
-```powershell
-# 自动合并所有历史运行数据并启动本地 Web 门户 (默认端口 8080)
-python utils/report_hub.py --serve
 ```
 
 ---
 
-## 📊 产出物查阅指南
+## 5. YAML 自然语言用例编写指南 (YAML Specification)
 
-- **动态全景 UI 架构树**：直接在编辑器中预览打开 [`docs/auto_page_map.md`](docs/auto_page_map.md)（或资产主库 [`artifacts/topology/auto_page_map.md`](artifacts/topology/auto_page_map.md)），查看层级分明的组件拓扑大纲与 Mermaid 图。
-- **全局缺陷与测试大盘**：执行 `python utils/report_hub.py --serve`，并在浏览器中访问 `http://localhost:8080`，查看经过大模型语义查重后的全局缺陷总览、按运行批次划分的完整步骤快照、以及交互式的全景图表报告。
-- **单次运行工作区**：在 `reports/runs/<run_id>/` 中可查阅当前次运行的完整控制台日志 (`run.log`)、案发现场证据 (`bugs/`)、交互式离线报告 (`report.html`)、续跑检查点 (`checkpoint/`) 以及本次闭环生成的 YAML 用例 (`generated_cases/`)。
-- **用例晋升**：若某次探索闭环生成的 YAML 用例业务价值高且运行稳定，可将其从 `reports/runs/<run_id>/generated_cases/` 复制并重命名至 `test_cases/`，正式纳入自动化回归体系。
+用例统一存放在 `test_cases/` 目录下，文件格式为 `.yaml`。框架支持以下 7 大核心动作指令：
+
+### 5.1 标准动作词汇表
+- `action`: 执行点击或寻找元素物理坐标。
+- `input`: 在指定的文本框或搜索框内输入字符。
+- `assert`: 纯视觉多模态断言（如“弹窗是否弹出”、“图表是否由蓝变红”）。
+- `api_assert`: UI 指标与底层真实 JSON 数据的双向交叉校验。
+- `wait_for`: 智能视觉轮询等待，直至出现某视觉状态。
+- `wait`: 物理强制停留（如等待 3D 渲染动画播放完毕）。
+- `freeze_check`: 双图时序对比防假死检测。
+
+### 5.2 完整范例用例 (`test_sample.yaml`)
+```yaml
+name: "矿山简介与核心指标巡检"
+description: "验证矿山简介基础面板切换、3D 漫游启动以及最新核实资源量接口数据一致性"
+
+steps:
+  # 1. 初始物理等待或视觉等待
+  - type: wait
+    seconds: 5
+
+  # 2. 模拟物理点击操作 (纯自然语言描述意图，禁用 CSS/XPath)
+  - type: action
+    prompt: "在画面左侧信息面板顶部，点击紧挨着'企业简介'右侧的'平台介绍'文本标签。"
+
+  # 3. 纯视觉断言
+  - type: assert
+    prompt: "检查左侧面板顶部的标签文本，确认原本的'平台介绍'是否已经成功切换为'入井须知'。"
+
+  # 4. 全自动接口数据交叉比对 (Auto-API)
+  - type: api_assert
+    prompt: "在画面右侧寻找'最新核实资源量'面板，提取其中各项指标数值，核对这些数值是否与底层接口 'getFdaConfigByKey' 响应的 JSON 原始数据完全一致。"
+
+  # 5. 3D 动态防假死校验
+  - type: freeze_check
+    prompt: "检测当前 3D 漫游画面是否处于流动播放状态，严禁出现三维场景卡死或静止白屏。"
+```
+
+---
+
+## 6. 测试资产与大盘门户查阅 (Reports & Dashboard)
+
+框架实行严格的**“长期核心资产”与“单次运行产物”分层治理**架构：
+
+```text
+electron_ai_vision/
+├── artifacts/             # 💎 【长期持久资产区】（体积极小，永久保护）
+│   ├── bugs/
+│   │   └── global_bugs.json   # 全局缺陷知识库（去重后合并的权威 Bug 库）
+│   └── topology/
+│       └── global_page_tree.json # 全局架构拓扑底座
+│
+└── reports/
+    └── runs/              # 📦 【单次运行工作区】
+        ├── index.html         # 统一自动化测试全景大盘
+        ├── runs_data.js       # 全局大盘数据源
+        └── <run_id>/          # 单次运行目录 (如 explore_20261015_182652)
+            ├── report.html        # 该次运行专属的高颜值交互式离线报告
+            ├── bugs/              # 该次运行捕获的 Bug 现场大图与元数据
+            ├── checkpoint/        # 该次运行的长短期记忆检查点
+            └── generated_cases/   # 该次运行自动闭环沉淀的 YAML 用例
+```
+
+### 6.1 查看可视化全景大盘
+启动服务后访问 `http://localhost:8080`：
+1. **历史巡检记录模块**：查看历次探索与回归的耗时、实际执行步数、缺陷发现数及各页面覆盖率；
+2. **全局缺陷知识库模块**：
+   - **模式筛选**：自主探索 / 冒烟测试 / 回归测试；
+   - **状态筛选**：激活 / 已解决 / 已提单 / 已关闭 / 误报；
+   - **全字段模糊检索**：毫秒级支持按缺陷单号 (`BUG-xxx`)、RUN ID、业务路径 (`安全管理 -> xxx`)、目标描述、异常详情模糊搜索；
+   - **弹窗详情与原地编辑**：点击查看现场对比大图，支持直接原地保存复盘分析结论与关闭原因。
+
+### 6.2 用例晋升机制 (Case Promotion)
+当在 `reports/runs/<run_id>/generated_cases/` 中发现某次探索自动生成的 YAML 用例业务价值极高且稳定走通时，只需将该文件复制至 `test_cases/` 目录下，即可直接纳为日常 CI/CD 的正式回归用例！
