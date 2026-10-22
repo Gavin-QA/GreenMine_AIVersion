@@ -161,7 +161,7 @@ class ExplorerWorker:
                 logger.info(f"⏳ [Worker] 执行智能等待 {wait_sec} 秒以待界面稳定或跳转完成...")
                 time.sleep(wait_sec)
                 action_success = True
-            elif action_type in ("click", "hover"):
+            elif action_type in ("click", "hover", "zoom", "rotate_3d"):
                 try:
                     logger.info(f"⚡ 开始对目标 '{element_desc}' 进行 DOM 与视觉二次精确定位...")
                     dom_elements = self.driver.extract_interactive_elements()
@@ -177,11 +177,17 @@ class ExplorerWorker:
                     x_pct = decision.get("x_percent")
                     y_pct = decision.get("y_percent")
                     if x_pct is None or y_pct is None:
-                        logger.error(f"❌ Worker 亦未返回可用坐标，跳过此步。")
-                        continue
-                    x = int(max(0, min(1, float(x_pct))) * width)
-                    y = int(max(0, min(1, float(y_pct))) * height)
-                    logger.info(f"🎯 使用纯视觉估算物理坐标: ({x}, {y})")
+                        if action_type in ("zoom", "rotate_3d"):
+                            x = width // 2
+                            y = height // 2
+                            logger.info(f"🌐 [3D Space] 未指定微观坐标，默认采用大屏 3D 主视口中央: ({x}, {y})")
+                        else:
+                            logger.error(f"❌ Worker 亦未返回可用坐标，跳过此步。")
+                            continue
+                    else:
+                        x = int(max(0, min(1, float(x_pct))) * width)
+                        y = int(max(0, min(1, float(y_pct))) * height)
+                        logger.info(f"🎯 使用纯视觉估算物理坐标: ({x}, {y})")
 
                 # 在当步截图上绘制准星
                 try:
@@ -190,7 +196,7 @@ class ExplorerWorker:
                 except Exception as e:
                     logger.warning(f"⚠️ 无法在截图 {step_img_path.name} 上绘制准星: {e}")
 
-                is_chart_target = (element_type == "chart") or any(k in element_desc for k in ["折线图", "柱状图", "面积图", "数据拐点", "趋势图", "七天风量", "风量数据"])
+                is_chart_target = (action_type not in ("zoom", "rotate_3d")) and ((element_type == "chart") or any(k in element_desc for k in ["折线图", "柱状图", "面积图", "数据拐点", "趋势图", "七天风量", "风量数据"]))
 
                 # --- 分支 A: 图表全量批量嗅探引擎 ---
                 if is_chart_target:
@@ -295,6 +301,74 @@ class ExplorerWorker:
                             hover_img_path = self.explore_dir / f"explore_step_{current_step}_hover.png"
                             hover_b64 = self.driver.capture_screenshot_base64(str(hover_img_path))
                             logger.info(f"📸 捕获悬停状态快照 (含 Tooltip 浮层): {hover_img_path.name}")
+                        elif action_type == "zoom":
+                            direction = decision.get("direction", "in")
+                            steps = int(decision.get("steps", 3))
+                            logger.info(f"🔭 [3D Zoom] 执行三维视点缩放: 方向={direction}, 步长={steps}, 视点坐标=({x}, {y})")
+                            self.driver.zoom_3d(x, y, direction=direction, steps=steps, delay_after=1.5)
+                            time.sleep(1.0)
+                            after_img_path = self.explore_dir / f"explore_step_{current_step}_after.png"
+                            after_b64 = self.driver.capture_screenshot_base64(str(after_img_path))
+                            logger.info(f"📸 捕获 3D 缩放后快照: {after_img_path.name}")
+                            # 3D 渲染健康度自检
+                            try:
+                                passed_3d, reason_3d = self.vision.assert_condition(
+                                    instruction="检查当前画面在 3D 缩放后是否正常渲染三维矿山场景，没有出现模型破面、全粉色材质丢失、纯黑屏、或像素流断开崩溃报错遮罩",
+                                    base64_image=after_b64
+                                )
+                                if not passed_3d:
+                                    logger.error(f"🚨 [3D RENDER CRASH] 三维缩放后渲染健康度检测失败: {reason_3d}")
+                                    path_str = " -> ".join(current_ui_path) if current_ui_path else "未知路径"
+                                    self.bug_reporter.report_bug(
+                                        run_id=self.run_id,
+                                        title=f"[{self.run_id}] 3D空间缩放后渲染崩溃/材质异常: '{element_desc}'",
+                                        step_prompt=f"[ZOOM] {direction} x {steps} (当前路径: {path_str})",
+                                        actual_result=f"3D健康度检测未通过: {reason_3d}",
+                                        crash_image_path=str(after_img_path),
+                                        action_type="ZOOM",
+                                        target_element=element_desc,
+                                        global_step=current_step,
+                                        severity="High",
+                                        ui_path=path_str
+                                    )
+                                else:
+                                    logger.info(f"🛡️ [3D Health] 三维缩放后画面健康度检测通过: {reason_3d}")
+                            except Exception as e_3d:
+                                logger.warning(f"⚠️ 3D 健康度自检异常: {e_3d}")
+                        elif action_type == "rotate_3d":
+                            direction = decision.get("direction", "left")
+                            distance = int(decision.get("distance", 250))
+                            logger.info(f"🌐 [3D Rotate] 执行三维视点旋转: 方向={direction}, 距离={distance}px, 旋转锚点=({x}, {y})")
+                            self.driver.rotate_3d(center_x=x, center_y=y, direction=direction, distance=distance, button="right", delay_after=1.5)
+                            time.sleep(1.0)
+                            after_img_path = self.explore_dir / f"explore_step_{current_step}_after.png"
+                            after_b64 = self.driver.capture_screenshot_base64(str(after_img_path))
+                            logger.info(f"📸 捕获 3D 旋转后快照: {after_img_path.name}")
+                            # 3D 渲染健康度自检
+                            try:
+                                passed_3d, reason_3d = self.vision.assert_condition(
+                                    instruction="检查当前画面在 3D 视点旋转后是否正常渲染三维矿山场景，没有出现模型破面、全粉色材质丢失、纯黑屏、或像素流断开崩溃报错遮罩",
+                                    base64_image=after_b64
+                                )
+                                if not passed_3d:
+                                    logger.error(f"🚨 [3D RENDER CRASH] 三维旋转后渲染健康度检测失败: {reason_3d}")
+                                    path_str = " -> ".join(current_ui_path) if current_ui_path else "未知路径"
+                                    self.bug_reporter.report_bug(
+                                        run_id=self.run_id,
+                                        title=f"[{self.run_id}] 3D视点旋转后渲染崩溃/材质异常: '{element_desc}'",
+                                        step_prompt=f"[ROTATE_3D] {direction} ({distance}px) (当前路径: {path_str})",
+                                        actual_result=f"3D健康度检测未通过: {reason_3d}",
+                                        crash_image_path=str(after_img_path),
+                                        action_type="ROTATE_3D",
+                                        target_element=element_desc,
+                                        global_step=current_step,
+                                        severity="High",
+                                        ui_path=path_str
+                                    )
+                                else:
+                                    logger.info(f"🛡️ [3D Health] 三维视点旋转后画面健康度检测通过: {reason_3d}")
+                            except Exception as e_3d:
+                                logger.warning(f"⚠️ 3D 健康度自检异常: {e_3d}")
                         else:
                             before_modals = PostClickDetector.get_current_modals(self.driver)
                             self.driver.click(x, y, button="left", delay_after=1.5)
@@ -496,11 +570,32 @@ class ExplorerWorker:
                     "current_ui_path": current_ui_path
                 })
                 if action_success:
-                    task_trajectory.append({
-                        "type": action_type,
-                        "prompt": element_desc,
-                        "thought": thought
-                    })
+                    if action_type == "zoom":
+                        dir_str = str(decision.get("direction", "in")).upper()
+                        steps_val = int(decision.get("steps", 3))
+                        task_trajectory.append({
+                            "type": "zoom",
+                            "prompt": f"[ZOOM_{dir_str}] {element_desc}",
+                            "direction": decision.get("direction", "in"),
+                            "steps": steps_val,
+                            "thought": thought
+                        })
+                    elif action_type == "rotate_3d":
+                        dir_str = str(decision.get("direction", "left")).upper()
+                        dist_val = int(decision.get("distance", 250))
+                        task_trajectory.append({
+                            "type": "rotate_3d",
+                            "prompt": f"[ROTATE_{dir_str}] {element_desc}",
+                            "direction": decision.get("direction", "left"),
+                            "distance": dist_val,
+                            "thought": thought
+                        })
+                    else:
+                        task_trajectory.append({
+                            "type": action_type,
+                            "prompt": element_desc,
+                            "thought": thought
+                        })
 
                 if worker_finished_early:
                     logger.info("✅ [Worker] 批量嗅探与集中核验已达成，提前交还控制权给 Planner。")

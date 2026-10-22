@@ -121,6 +121,29 @@ class ActionRunner:
                     timeout = float(step.get("timeout", 60.0))
                     interval = float(step.get("interval", 3.0))
                     self._do_wait_for(prompt, timeout, interval)
+                elif step_type in ("zoom", "zoom_3d"):
+                    direction = step.get("direction", "in")
+                    steps_cnt = int(step.get("steps", 3))
+                    self._do_zoom(prompt, direction=direction, steps=steps_cnt)
+                elif step_type in ("rotate_3d", "orbit"):
+                    direction = step.get("direction", "left")
+                    distance = int(step.get("distance", 250))
+                    button = step.get("button", "right")
+                    self._do_rotate_3d(prompt, direction=direction, distance=distance, button=button)
+                elif step_type in ("wheel", "mouse_wheel"):
+                    delta_x = float(step.get("delta_x", 0))
+                    delta_y = float(step.get("delta_y", -300))
+                    self._do_wheel(prompt, delta_x=delta_x, delta_y=delta_y)
+                elif step_type == "drag":
+                    from_x = step.get("from_x")
+                    from_y = step.get("from_y")
+                    to_x = step.get("to_x")
+                    to_y = step.get("to_y")
+                    btn = step.get("button", "left")
+                    if from_x is not None and from_y is not None and to_x is not None and to_y is not None:
+                        self.driver.drag(int(from_x), int(from_y), int(to_x), int(to_y), button=btn)
+                    else:
+                        logger.warning("drag 步骤缺少具体坐标参数！")
                 elif step_type == "wait":
                     wait_sec = float(step.get("seconds", 2.0))
                     self.driver.wait(wait_sec)
@@ -240,8 +263,9 @@ class ActionRunner:
         viewport = self.driver.get_viewport_info()
         dom_elements = self.driver.extract_interactive_elements()
         
-        # 解析动作类型 (支持 ExplorerAgent 自动生成的 [HOVER] / [CLICK] 前缀)
+        # 解析动作类型 (支持 ExplorerAgent 自动生成的各类 [TAG] 前缀)
         action_type = "click"
+        direction = "in"
         prompt_upper = prompt.strip().upper()
         if prompt_upper.startswith("[HOVER]"):
             action_type = "hover"
@@ -249,7 +273,42 @@ class ActionRunner:
         elif prompt_upper.startswith("[CLICK]"):
             action_type = "click"
             prompt = prompt.strip()[7:].strip()
-            
+        elif prompt_upper.startswith("[ZOOM_IN]"):
+            action_type = "zoom"
+            direction = "in"
+            prompt = prompt.strip()[9:].strip()
+        elif prompt_upper.startswith("[ZOOM_OUT]"):
+            action_type = "zoom"
+            direction = "out"
+            prompt = prompt.strip()[10:].strip()
+        elif prompt_upper.startswith("[ROTATE_3D]"):
+            action_type = "rotate_3d"
+            prompt = prompt.strip()[11:].strip()
+        elif prompt_upper.startswith("[ROTATE_LEFT]"):
+            action_type = "rotate_3d"
+            direction = "left"
+            prompt = prompt.strip()[13:].strip()
+        elif prompt_upper.startswith("[ROTATE_RIGHT]"):
+            action_type = "rotate_3d"
+            direction = "right"
+            prompt = prompt.strip()[14:].strip()
+        elif prompt_upper.startswith("[ROTATE_UP]"):
+            action_type = "rotate_3d"
+            direction = "up"
+            prompt = prompt.strip()[11:].strip()
+        elif prompt_upper.startswith("[ROTATE_DOWN]"):
+            action_type = "rotate_3d"
+            direction = "down"
+            prompt = prompt.strip()[13:].strip()
+
+        # 针对 3D 动作分发
+        if action_type == "zoom":
+            self._do_zoom(prompt=prompt if prompt else None, direction=direction)
+            return
+        elif action_type == "rotate_3d":
+            self._do_rotate_3d(prompt=prompt if prompt else None, direction=direction if direction != "in" else "left")
+            return
+
         # 2. Cognition
         x, y = self.vision.find_element(
             instruction=prompt,
@@ -258,7 +317,7 @@ class ActionRunner:
             viewport_height=viewport["height"],
             dom_elements=dom_elements
         )
-        
+
         # 3. Action
         if hasattr(self.driver, "mark_action_timestamp"):
             self.driver.mark_action_timestamp()
@@ -266,6 +325,69 @@ class ActionRunner:
             self.driver.hover(x, y)
         else:
             self.driver.click(x, y)
+
+    def _do_zoom(self, prompt: str = None, direction: str = "in", steps: int = 3):
+        """执行三维场景镜头推进或拉远"""
+        target_x, target_y = None, None
+        if prompt and prompt.strip():
+            try:
+                b64_img = self.driver.capture_screenshot_base64()
+                viewport = self.driver.get_viewport_info()
+                dom_elements = self.driver.extract_interactive_elements()
+                target_x, target_y = self.vision.find_element(
+                    instruction=prompt,
+                    base64_image=b64_img,
+                    viewport_width=viewport["width"],
+                    viewport_height=viewport["height"],
+                    dom_elements=dom_elements
+                )
+            except Exception:
+                pass
+        if hasattr(self.driver, "mark_action_timestamp"):
+            self.driver.mark_action_timestamp()
+        self.driver.zoom_3d(x=target_x, y=target_y, direction=direction, steps=steps)
+
+    def _do_rotate_3d(self, prompt: str = None, direction: str = "left", distance: int = 250, button: str = "right"):
+        """执行三维场景轨道平滑旋转"""
+        cx, cy = None, None
+        if prompt and prompt.strip():
+            try:
+                b64_img = self.driver.capture_screenshot_base64()
+                viewport = self.driver.get_viewport_info()
+                dom_elements = self.driver.extract_interactive_elements()
+                cx, cy = self.vision.find_element(
+                    instruction=prompt,
+                    base64_image=b64_img,
+                    viewport_width=viewport["width"],
+                    viewport_height=viewport["height"],
+                    dom_elements=dom_elements
+                )
+            except Exception:
+                pass
+        if hasattr(self.driver, "mark_action_timestamp"):
+            self.driver.mark_action_timestamp()
+        self.driver.rotate_3d(center_x=cx, center_y=cy, direction=direction, distance=distance, button=button)
+
+    def _do_wheel(self, prompt: str = None, delta_x: float = 0, delta_y: float = -300):
+        """执行鼠标滚轮滚动"""
+        tx, ty = None, None
+        if prompt and prompt.strip():
+            try:
+                b64_img = self.driver.capture_screenshot_base64()
+                viewport = self.driver.get_viewport_info()
+                dom_elements = self.driver.extract_interactive_elements()
+                tx, ty = self.vision.find_element(
+                    instruction=prompt,
+                    base64_image=b64_img,
+                    viewport_width=viewport["width"],
+                    viewport_height=viewport["height"],
+                    dom_elements=dom_elements
+                )
+            except Exception:
+                pass
+        if hasattr(self.driver, "mark_action_timestamp"):
+            self.driver.mark_action_timestamp()
+        self.driver.mouse_wheel(x=tx, y=ty, delta_x=delta_x, delta_y=delta_y)
 
     def _do_input(self, prompt: str, text: str):
         """执行视觉点击后输入文本"""

@@ -160,10 +160,13 @@ WORKER_SYSTEM_PROMPT = """你是一个高度智能的执行者 (Worker Agent)。
 9. **结构化组件感知**：请准确识别目标控件的类型 (`element_type`)：必须是 "button" | "input" | "select" | "checkbox" | "table" | "map" | "tab" | "chart" | "other" 之一。
 10. **【顶部导航栏属于全局骨架，严禁当作页面内部组件】**：系统顶部的一级业务菜单构成了全局导航栏。严禁将“顶部导航栏”、“下拉菜单”写进 `container_name` 或 `current_ui_path`！
 11. **任务完成即中止**：一旦确认目标状态已达成，立刻将 action 设为 "finish" 交还控制权，绝不为了耗尽预算而做无意义操作。
-12. **【三维/UE 像素流中心区域绝对禁触 (No UE 3D Operations)】**：
-    - 屏幕中央的三维矿山/采场模型属于 UE 推流渲染区，自动化底座目前暂未实现针对 3D 虚拟世界的物理交互指令。
-    - **绝对严禁**向中央三维地图及其中的设备点位、标签、模型发射 `[CLICK]` 或 `[HOVER]` 操作！
-    - 若 Planner 误下达了针对地图 3D 设备点位的子目标，Worker 必须识别出该目标属于中央 UE 区域，果断判定为无法交互或子目标已完成 (`action: "finish"`)，或者转为与周围真正的 2D 业务控件进行交互。
+12. **【三维数字孪生视界交互赋能 (3D Space & Digital Twin Interaction)】**：
+    - 屏幕中央的三维矿山/采场模型属于 UE 推流渲染区。底座现已全面装备专业的【镜头缩放 (zoom)】与【视点轨道旋转 (rotate_3d)】能力！
+    - **合法三维交互规范**：
+      - 当子目标涉及探测三维矿山场景、或进入包含 3D 数字孪生模型的主体页面时：
+      - 可执行 `action: "zoom"`（设置 `direction: "in"` 放大推进，或 `"out"` 缩小拉远，`steps: 3`）对三维视界推进/拉远，深度检测模型细节、贴图及 LOD 渲染是否正常；
+      - 可执行 `action: "rotate_3d"`（设置 `direction: "left"` / `"right"` / `"up"` / `"down"`，`distance: 250`）在三维中央视口按住右键进行视角轨道旋转，多角度探测井下巷道与设备建模健康度！
+      - **防呆禁令**：严禁向 3D 模型空白处盲目发射无意义的普通 2D `[CLICK]`！与 3D 虚拟世界的交互请使用专用的 `zoom` 或 `rotate_3d`！
 13. **【页面内 Tab 标签与设备视图层级规范】**：
     - 当页面包含多标签页/多设备切换（如底部的【1242回风竖井风机】、【980南回风斜井风机】标签）时：
       - 点击标签项时，`element_type` 请务必标记为 `"tab"`；
@@ -194,10 +197,13 @@ JSON 结构如下:
 {
   "thought": "结合子目标和历史记录，分析你为什么要执行这个动作",
   "current_ui_path": ["一级菜单", "二级菜单", "激活的子Tab/设备名称(可选)"], // 字符串数组。当前页面路径。
-  "action": "click", // 必须是 "click", "hover", "wait", "finish" 之一。如果子任务完成或无法继续，选择 finish
-  "element_desc": "准备交互的元素名称或描述（例如：‘顶部一级菜单【资源管理】’、‘下拉菜单项【资源储量】’、‘弹窗右上角关闭按钮❌’）",
+  "action": "click", // 必须是 "click", "hover", "zoom", "rotate_3d", "wait", "finish" 之一。如果子任务完成或无法继续，选择 finish
+  "element_desc": "准备交互的元素名称或描述（例如：‘顶部一级菜单【资源管理】’、‘三维矿山全景视点【向左旋转】’、‘弹窗右上角关闭按钮❌’）",
   "element_type": "button", // 控件类型：必须是 "button" | "input" | "select" | "checkbox" | "table" | "map" | "tab" | "chart" | "other" 之一
   "container_name": "顶部导航栏", // 可选。该元素直接所属的父容器/列表/卡片名称，若无明显容器可设为 null
+  "direction": "in", // 仅在 action 为 zoom ("in"|"out") 或 rotate_3d ("left"|"right"|"up"|"down") 时提供
+  "steps": 3, // 可选。针对 zoom 的滚轮滚动阶数 (默认 3)
+  "distance": 250, // 可选。针对 rotate_3d 的拖拽位移像素跨度 (默认 250)
   "x_percent": 0.5, // 仅在 click/hover 时需要。水平坐标百分比 (0.0 到 1.0)
   "y_percent": 0.5, // 仅在 click/hover 时需要。垂直坐标百分比 (0.0 到 1.0)
   "validate_api": false, // 可选。布尔值。当悬停出现 Tooltip 或页面有关键数据卡片需要与接口比对时设为 true

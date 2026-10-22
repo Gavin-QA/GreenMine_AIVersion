@@ -328,21 +328,91 @@ class ElectronDriver(NetworkMonitorMixin, DomExtractorMixin, ScreenshotMixin, Ch
         if delay_after > 0:
             time.sleep(delay_after)
 
-    def drag(self, from_x: int, from_y: int, to_x: int, to_y: int, steps: int = 15, delay_after: float = 0.5):
+    def drag(self, from_x: int, from_y: int, to_x: int, to_y: int, button: str = "left", steps: int = 15, delay_after: float = 0.5):
         """
-        按住鼠标从 (from_x, from_y) 拖拽至 (to_x, to_y)
+        按住鼠标指定按键从 (from_x, from_y) 平滑拖拽至 (to_x, to_y)
         """
         if not self.page:
             raise RuntimeError("页面未就绪！")
 
         self.last_mouse_pos = (to_x, to_y)
-        logger.info(f"👉 模拟拖拽: ({from_x}, {from_y}) -> ({to_x}, {to_y})")
+        logger.info(f"👉 模拟拖拽 [{button}]: ({from_x}, {from_y}) -> ({to_x}, {to_y})")
         self.page.mouse.move(from_x, from_y)
-        self.page.mouse.down()
+        self.page.mouse.down(button=button)
         self.page.mouse.move(to_x, to_y, steps=steps)
-        self.page.mouse.up()
+        self.page.mouse.up(button=button)
         if delay_after > 0:
             time.sleep(delay_after)
+
+    def mouse_wheel(self, x: int = None, y: int = None, delta_x: float = 0, delta_y: float = -300, delay_after: float = 1.0):
+        """
+        在指定坐标处触发鼠标滚轮滚动 (支持三维数字孪生视点缩放与长列表滚动)
+        :param x: 目标水平坐标 (若为空则默认屏幕中心)
+        :param y: 目标垂直坐标 (若为空则默认屏幕中心)
+        :param delta_x: 水平滚动偏移量
+        :param delta_y: 垂直滚动偏移量 (负值向上滚/放大，正值向下滚/缩小)
+        """
+        if not self.page:
+            raise RuntimeError("页面未就绪！")
+
+        vp = self.get_viewport_info()
+        target_x = x if x is not None else vp.get("width", self.default_width) // 2
+        target_y = y if y is not None else vp.get("height", self.default_height) // 2
+
+        self.last_mouse_pos = (target_x, target_y)
+        logger.info(f"🎡 触发鼠标滚轮: 坐标 ({target_x}, {target_y}) [deltaX={delta_x}, deltaY={delta_y}]")
+        self.page.mouse.move(target_x, target_y)
+        self.page.mouse.wheel(delta_x, delta_y)
+        if delay_after > 0:
+            time.sleep(delay_after)
+
+    def zoom_3d(self, x: int = None, y: int = None, direction: str = "in", steps: int = 3, delay_after: float = 1.0):
+        """
+        针对三维孪生视口执行镜头推进(Zoom In)或拉远(Zoom Out)
+        :param direction: "in" (放大推进) 或 "out" (缩小拉远)
+        :param steps: 滚轮滚动阶数
+        """
+        delta = -250 * steps if direction.lower() in ["in", "放大", "推进"] else 250 * steps
+        action_name = "放大镜头推进 (Zoom In)" if delta < 0 else "缩小镜头拉远 (Zoom Out)"
+        logger.info(f"🔭 执行 3D 数字孪生镜头缩放: {action_name} | 阶数: {steps}")
+        self.mouse_wheel(x=x, y=y, delta_y=delta, delay_after=delay_after)
+
+    def rotate_3d(self, center_x: int = None, center_y: int = None, direction: str = "left", distance: int = 250, button: str = "right", delay_after: float = 1.0):
+        """
+        针对三维数字孪生场景执行视点轨道旋转(Orbit / Pitch / Rotate)
+        支持 UE5 PixelStreaming / WebGL / Three.js 视角平滑拖拽变换
+        :param direction: 旋转方向 ("left" | "right" | "up" | "down")
+        :param distance: 拖拽滑动像素跨度
+        :param button: 触发旋转的鼠标按键 ("right" 默认右键 | "left")
+        """
+        if not self.page:
+            raise RuntimeError("页面未就绪！")
+
+        vp = self.get_viewport_info()
+        cx = center_x if center_x is not None else vp.get("width", self.default_width) // 2
+        cy = center_y if center_y is not None else vp.get("height", self.default_height) // 2
+
+        half = distance // 2
+        dir_clean = direction.lower().strip()
+        if dir_clean in ["left", "向左", "左"]:
+            from_x, from_y = cx + half, cy
+            to_x, to_y = cx - half, cy
+            desc = f"向左轨道旋转 3D 视角 ({distance}px)"
+        elif dir_clean in ["right", "向右", "右"]:
+            from_x, from_y = cx - half, cy
+            to_x, to_y = cx + half, cy
+            desc = f"向右轨道旋转 3D 视角 ({distance}px)"
+        elif dir_clean in ["up", "向上", "俯仰上", "上"]:
+            from_x, from_y = cx, cy + half
+            to_x, to_y = cx, cy - half
+            desc = f"向上俯仰 3D 视角 ({distance}px)"
+        else: # down
+            from_x, from_y = cx, cy - half
+            to_x, to_y = cx, cy + half
+            desc = f"向下俯仰 3D 视角 ({distance}px)"
+
+        logger.info(f"🔄 执行 3D 视点轨道旋转: {desc} | 核心原点 ({cx}, {cy})")
+        self.drag(from_x, from_y, to_x, to_y, button=button, steps=20, delay_after=delay_after)
 
     def type_text(self, text: str, delay_ms: int = 50, delay_after: float = 0.5):
         """
