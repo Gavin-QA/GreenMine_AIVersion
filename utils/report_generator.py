@@ -543,6 +543,14 @@ class ReportGenerator:
         apis_json = json.dumps(data["api_summary"], ensure_ascii=False)
         mermaid_raw = data["mermaid_str"]
 
+        # 计算当前 report 相对于 reports/runs 根目录的深度与相对前缀 (自适应 1 层或 2 层架构)
+        try:
+            rel_parts = self.run_dir.resolve().relative_to(RUNS_DIR.resolve()).parts
+            depth = len(rel_parts)
+            hub_root_rel = "../" * depth if depth > 0 else "./"
+        except Exception:
+            hub_root_rel = "../../" if "/" in str(self.run_dir).replace("\\", "/") else "../"
+
         # 缺陷卡片改为前端 JS 基于 allBugs 动态分页渲染，支持双图对比与双向跳转定位
 
         # 预先构建 API 列表 HTML
@@ -1702,7 +1710,7 @@ class ReportGenerator:
     }}
 
   </style>
-  <script src="../runs_data.js"></script>
+  <script src="{hub_root_rel}runs_data.js"></script>
 </head>
 <body>
 
@@ -1710,7 +1718,7 @@ class ReportGenerator:
   <!-- Left Sidebar -->
   <div class="sidebar">
     <div class="sidebar-header">
-      <a href="../index.html" class="back-btn">
+      <a href="{hub_root_rel}index.html" class="back-btn">
         <span style="font-size: 16px;">⬅️</span> 返回大盘
       </a>
       <div style="font-size: 14px; font-weight: 700; color: #fff; margin-top: 8px;">📋 历史测试报告导航</div>
@@ -2764,12 +2772,16 @@ class ReportGenerator:
       // 按照修改时间降序排序 (mtime)
       const sortedRuns = [...window.GLOBAL_RUNS_LIST].sort((a, b) => (b.mtime || 0) - (a.mtime || 0));
       
+      const hubRoot = "{hub_root_rel}";
       sortedRuns.forEach(r => {{
           const isActive = r.run_id === currentRunId ? 'active' : '';
-          const modeLabel = r.run_id && r.run_id.startsWith('explore') ? '自主探索' : '全量冒烟';
+          const rawUrl = r.report_url || '';
+          const cleanUrl = rawUrl.startsWith('./') ? rawUrl.substring(2) : (rawUrl.startsWith('/') ? rawUrl.substring(1) : rawUrl);
+          const reportTarget = cleanUrl ? (hubRoot + cleanUrl) : (hubRoot + (r.rel_path || r.run_id) + '/report.html');
+          const appBadge = r.app === 'liwutong' ? '<span style="color:#34d399;font-weight:700;">[里伍铜]</span> ' : '<span style="color:#818cf8;font-weight:700;">[寨湾]</span> ';
           html += `
-            <a href="../${{r.run_id}}/report.html" class="sidebar-item ${{isActive}}">
-              <div class="sidebar-item-title">${{r.run_id}}</div>
+            <a href="${{reportTarget}}" class="sidebar-item ${{isActive}}">
+              <div class="sidebar-item-title">${{appBadge}}${{r.run_id}}</div>
               <div class="sidebar-item-meta">
                 <span>${{modeLabel}}</span>
                 <span>${{r.kpi ? r.kpi.total_steps : 0}}步 | ${{r.kpi ? r.kpi.bugs_count : 0}}Bug</span>
