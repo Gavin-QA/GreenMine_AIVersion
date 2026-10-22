@@ -41,7 +41,9 @@ Playwright 在本框架中仅作为“底座外设”：
 - `input`: 用于在输入框中输入文字。
 - `zoom`: 用于三维场景/地图的滚轮缩放（如 `direction: in/out`, `steps: 3`）。
 - `rotate_3d`: 用于三维孪生视界漫游旋转（如 `direction: left/right/up/down`, `distance: 250`）。
-- `drag`: 用于物理拖拽交互（如拖动视口、滑块拖拽）。
+- `scroll`: 用于长列表、告警列表、长表格容器的内部物理滚轮翻页（如 `direction: down/up`, `delta: 300`）。
+- `slide`: 用于时间轴（Timeline Slider）、阈值调节滑块等组件的连续平滑拖拽。
+- `drag`: 用于物理拖拽交互（如拖动视口、元素平移）。
 - `assert`: 纯视觉语义断言（例如“画面是否变成红色”，“弹窗是否显示”）。
 - `api_assert`: UI 渲染与底层 JSON 数据的双向交叉断言。
 - `wait_for`: 智能视觉轮询等待（例如“等待直到主标题出现”）。

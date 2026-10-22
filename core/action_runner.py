@@ -134,6 +134,18 @@ class ActionRunner:
                     delta_x = float(step.get("delta_x", 0))
                     delta_y = float(step.get("delta_y", -300))
                     self._do_wheel(prompt, delta_x=delta_x, delta_y=delta_y)
+                elif step_type in ("scroll", "scroll_element"):
+                    direction = step.get("direction", "down")
+                    delta = int(step.get("delta", 300))
+                    self._do_scroll(prompt, direction=direction, delta=delta)
+                elif step_type in ("slide", "slider"):
+                    start = step.get("start")
+                    end = step.get("end")
+                    start_x = step.get("start_x")
+                    start_y = step.get("start_y")
+                    end_x = step.get("end_x")
+                    end_y = step.get("end_y")
+                    self._do_slide(prompt=prompt, start=start, end=end, start_x=start_x, start_y=start_y, end_x=end_x, end_y=end_y)
                 elif step_type == "drag":
                     from_x = step.get("from_x")
                     from_y = step.get("from_y")
@@ -300,13 +312,34 @@ class ActionRunner:
             action_type = "rotate_3d"
             direction = "down"
             prompt = prompt.strip()[13:].strip()
+        elif prompt_upper.startswith("[SCROLL_DOWN]"):
+            action_type = "scroll"
+            direction = "down"
+            prompt = prompt.strip()[13:].strip()
+        elif prompt_upper.startswith("[SCROLL_UP]"):
+            action_type = "scroll"
+            direction = "up"
+            prompt = prompt.strip()[11:].strip()
+        elif prompt_upper.startswith("[SCROLL]"):
+            action_type = "scroll"
+            direction = "down"
+            prompt = prompt.strip()[8:].strip()
+        elif prompt_upper.startswith("[SLIDE]"):
+            action_type = "slide"
+            prompt = prompt.strip()[7:].strip()
 
-        # 针对 3D 动作分发
+        # 针对 3D 与连续手势动作分发
         if action_type == "zoom":
             self._do_zoom(prompt=prompt if prompt else None, direction=direction)
             return
         elif action_type == "rotate_3d":
             self._do_rotate_3d(prompt=prompt if prompt else None, direction=direction if direction != "in" else "left")
+            return
+        elif action_type == "scroll":
+            self._do_scroll(prompt=prompt if prompt else None, direction=direction)
+            return
+        elif action_type == "slide":
+            self._do_slide(prompt=prompt if prompt else None)
             return
 
         # 2. Cognition
@@ -388,6 +421,73 @@ class ActionRunner:
         if hasattr(self.driver, "mark_action_timestamp"):
             self.driver.mark_action_timestamp()
         self.driver.mouse_wheel(x=tx, y=ty, delta_x=delta_x, delta_y=delta_y)
+
+    def _do_scroll(self, prompt: str = None, direction: str = "down", delta: int = 300):
+        """执行指定容器或长表格内的滚轮翻页"""
+        tx, ty = None, None
+        if prompt and prompt.strip():
+            try:
+                b64_img = self.driver.capture_screenshot_base64()
+                viewport = self.driver.get_viewport_info()
+                dom_elements = self.driver.extract_interactive_elements()
+                tx, ty = self.vision.find_element(
+                    instruction=prompt,
+                    base64_image=b64_img,
+                    viewport_width=viewport["width"],
+                    viewport_height=viewport["height"],
+                    dom_elements=dom_elements
+                )
+            except Exception:
+                pass
+        if hasattr(self.driver, "mark_action_timestamp"):
+            self.driver.mark_action_timestamp()
+        self.driver.scroll_element(x=tx, y=ty, direction=direction, delta=delta)
+
+    def _do_slide(self, prompt: str = None, start: str = None, end: str = None,
+                  start_x: int = None, start_y: int = None, end_x: int = None, end_y: int = None):
+        """执行滑块或时间轴连续平滑拖拽"""
+        b64_img = self.driver.capture_screenshot_base64()
+        viewport = self.driver.get_viewport_info()
+        dom_elements = self.driver.extract_interactive_elements()
+
+        sx, sy = start_x, start_y
+        ex, ey = end_x, end_y
+
+        if (sx is None or sy is None) and start:
+            sx, sy = self.vision.find_element(
+                instruction=start,
+                base64_image=b64_img,
+                viewport_width=viewport["width"],
+                viewport_height=viewport["height"],
+                dom_elements=dom_elements
+            )
+        elif (sx is None or sy is None) and prompt:
+            sx, sy = self.vision.find_element(
+                instruction=prompt,
+                base64_image=b64_img,
+                viewport_width=viewport["width"],
+                viewport_height=viewport["height"],
+                dom_elements=dom_elements
+            )
+
+        if (ex is None or ey is None) and end:
+            ex, ey = self.vision.find_element(
+                instruction=end,
+                base64_image=b64_img,
+                viewport_width=viewport["width"],
+                viewport_height=viewport["height"],
+                dom_elements=dom_elements
+            )
+
+        if sx is None or sy is None:
+            raise VisionAgentException("未能定位滑块拖拽的起始坐标！")
+        if ex is None or ey is None:
+            ex = sx + 200
+            ey = sy
+
+        if hasattr(self.driver, "mark_action_timestamp"):
+            self.driver.mark_action_timestamp()
+        self.driver.slide(start_x=int(sx), start_y=int(sy), end_x=int(ex), end_y=int(ey))
 
     def _do_input(self, prompt: str, text: str):
         """执行视觉点击后输入文本"""

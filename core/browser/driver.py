@@ -414,6 +414,45 @@ class ElectronDriver(NetworkMonitorMixin, DomExtractorMixin, ScreenshotMixin, Ch
         logger.info(f"🔄 执行 3D 视点轨道旋转: {desc} | 核心原点 ({cx}, {cy})")
         self.drag(from_x, from_y, to_x, to_y, button=button, steps=20, delay_after=delay_after)
 
+    def scroll_element(self, x: int = None, y: int = None, direction: str = "down", delta: int = 300, delay_after: float = 1.0):
+        """
+        在指定组件容器（长表格、滚动卡片、历史报警列表等）内执行物理滚轮翻页
+        :param x: 目标区域中心水平像素坐标 (若为空则默认当前鼠标位置或屏幕中心)
+        :param y: 目标区域中心垂直像素坐标
+        :param direction: 滚动方向 ("down" | "up" | "right" | "left")
+        :param delta: 滚动的像素幅度
+        :param delay_after: 滚动后等待界面渲染时间
+        """
+        dir_clean = str(direction).lower().strip()
+        delta_x = 0
+        delta_y = 0
+        if dir_clean in ["down", "向下", "下"]:
+            delta_y = abs(delta)
+        elif dir_clean in ["up", "向上", "上"]:
+            delta_y = -abs(delta)
+        elif dir_clean in ["right", "向右", "右"]:
+            delta_x = abs(delta)
+        elif dir_clean in ["left", "向左", "左"]:
+            delta_x = -abs(delta)
+        else:
+            delta_y = abs(delta)
+
+        logger.info(f"📜 容器物理滚轮: 方向={dir_clean}, 偏移量=({delta_x}, {delta_y})")
+        self.mouse_wheel(x=x, y=y, delta_x=delta_x, delta_y=delta_y, delay_after=delay_after)
+
+    def slide(self, start_x: int, start_y: int, end_x: int, end_y: int, steps: int = 15, delay_after: float = 1.0):
+        """
+        针对时间轴(Timeline Slider)、区间拖动条等组件执行连续物理拖拽滑块
+        :param start_x: 滑块起始水平像素坐标
+        :param start_y: 滑块起始垂直像素坐标
+        :param end_x: 滑动目标水平像素坐标
+        :param end_y: 滑动目标垂直像素坐标
+        :param steps: 轨迹平滑插值步数
+        :param delay_after: 释放后界面响应等待时间
+        """
+        logger.info(f"🎚️ 执行滑块/时间轴连续平滑拖拽: ({start_x}, {start_y}) -> ({end_x}, {end_y})")
+        self.drag(from_x=start_x, from_y=start_y, to_x=end_x, to_y=end_y, button="left", steps=steps, delay_after=delay_after)
+
     def type_text(self, text: str, delay_ms: int = 50, delay_after: float = 0.5):
         """
         向当前聚焦元素输入文本

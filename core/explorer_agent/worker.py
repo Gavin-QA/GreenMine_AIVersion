@@ -161,7 +161,7 @@ class ExplorerWorker:
                 logger.info(f"⏳ [Worker] 执行智能等待 {wait_sec} 秒以待界面稳定或跳转完成...")
                 time.sleep(wait_sec)
                 action_success = True
-            elif action_type in ("click", "hover", "zoom", "rotate_3d"):
+            elif action_type in ("click", "hover", "zoom", "rotate_3d", "scroll", "slide"):
                 try:
                     logger.info(f"⚡ 开始对目标 '{element_desc}' 进行 DOM 与视觉二次精确定位...")
                     dom_elements = self.driver.extract_interactive_elements()
@@ -177,10 +177,10 @@ class ExplorerWorker:
                     x_pct = decision.get("x_percent")
                     y_pct = decision.get("y_percent")
                     if x_pct is None or y_pct is None:
-                        if action_type in ("zoom", "rotate_3d"):
+                        if action_type in ("zoom", "rotate_3d", "scroll"):
                             x = width // 2
                             y = height // 2
-                            logger.info(f"🌐 [3D Space] 未指定微观坐标，默认采用大屏 3D 主视口中央: ({x}, {y})")
+                            logger.info(f"🌐 [Center Fallback] 未指定具体微观坐标，默认采用主视口中央: ({x}, {y})")
                         else:
                             logger.error(f"❌ Worker 亦未返回可用坐标，跳过此步。")
                             continue
@@ -196,7 +196,7 @@ class ExplorerWorker:
                 except Exception as e:
                     logger.warning(f"⚠️ 无法在截图 {step_img_path.name} 上绘制准星: {e}")
 
-                is_chart_target = (action_type not in ("zoom", "rotate_3d")) and ((element_type == "chart") or any(k in element_desc for k in ["折线图", "柱状图", "面积图", "数据拐点", "趋势图", "七天风量", "风量数据"]))
+                is_chart_target = (action_type not in ("zoom", "rotate_3d", "scroll", "slide")) and ((element_type == "chart") or any(k in element_desc for k in ["折线图", "柱状图", "面积图", "数据拐点", "趋势图", "七天风量", "风量数据"]))
 
                 # --- 分支 A: 图表全量批量嗅探引擎 ---
                 if is_chart_target:
@@ -369,6 +369,30 @@ class ExplorerWorker:
                                     logger.info(f"🛡️ [3D Health] 三维视点旋转后画面健康度检测通过: {reason_3d}")
                             except Exception as e_3d:
                                 logger.warning(f"⚠️ 3D 健康度自检异常: {e_3d}")
+                        elif action_type == "scroll":
+                            direction = decision.get("direction", "down")
+                            delta = int(decision.get("delta", 300))
+                            logger.info(f"📜 [Scroll] 执行容器物理滚轮翻页: 目标='{element_desc}', 方向={direction}, 距离={delta}px, 坐标=({x}, {y})")
+                            self.driver.scroll_element(x=x, y=y, direction=direction, delta=delta, delay_after=1.5)
+                            time.sleep(1.0)
+                            after_img_path = self.explore_dir / f"explore_step_{current_step}_after.png"
+                            after_b64 = self.driver.capture_screenshot_base64(str(after_img_path))
+                            logger.info(f"📸 捕获滚动翻页后快照: {after_img_path.name}")
+                        elif action_type == "slide":
+                            end_x_pct = decision.get("end_x_percent")
+                            end_y_pct = decision.get("end_y_percent")
+                            if end_x_pct is not None and end_y_pct is not None:
+                                end_x = int(max(0, min(1, float(end_x_pct))) * width)
+                                end_y = int(max(0, min(1, float(end_y_pct))) * height)
+                            else:
+                                end_x = min(width - 50, x + 200)
+                                end_y = y
+                            logger.info(f"🎚️ [Slide] 执行滑块拖拽: 起点=({x}, {y}) -> 终点=({end_x}, {end_y})")
+                            self.driver.slide(start_x=x, start_y=y, end_x=end_x, end_y=end_y, steps=15, delay_after=1.5)
+                            time.sleep(1.0)
+                            after_img_path = self.explore_dir / f"explore_step_{current_step}_after.png"
+                            after_b64 = self.driver.capture_screenshot_base64(str(after_img_path))
+                            logger.info(f"📸 捕获滑块拖拽后快照: {after_img_path.name}")
                         else:
                             before_modals = PostClickDetector.get_current_modals(self.driver)
                             self.driver.click(x, y, button="left", delay_after=1.5)
@@ -588,6 +612,22 @@ class ExplorerWorker:
                             "prompt": f"[ROTATE_{dir_str}] {element_desc}",
                             "direction": decision.get("direction", "left"),
                             "distance": dist_val,
+                            "thought": thought
+                        })
+                    elif action_type == "scroll":
+                        dir_str = str(decision.get("direction", "down")).upper()
+                        delta_val = int(decision.get("delta", 300))
+                        task_trajectory.append({
+                            "type": "scroll",
+                            "prompt": f"[SCROLL_{dir_str}] {element_desc}",
+                            "direction": decision.get("direction", "down"),
+                            "delta": delta_val,
+                            "thought": thought
+                        })
+                    elif action_type == "slide":
+                        task_trajectory.append({
+                            "type": "slide",
+                            "prompt": f"[SLIDE] {element_desc}",
                             "thought": thought
                         })
                     else:
