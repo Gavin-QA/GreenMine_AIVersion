@@ -543,7 +543,7 @@ class NetworkMonitorMixin:
         return round(score, 2), matched
 
     @classmethod
-    def compress_record_data(cls, data: Any, matched_tokens: List[str], max_list_items: int = 4) -> Any:
+    def compress_record_data(cls, data: Any, matched_tokens: List[str], max_list_items: int = 6) -> Any:
         """结构自适应智能脱敏与压缩（保留命中记录、样本记录，折叠海量冗余项，剥离超长 base64/SVG）"""
         import json
         if isinstance(data, dict):
@@ -587,7 +587,7 @@ class NetworkMonitorMixin:
         else:
             return data
 
-    def get_focused_api_records_summary(self, query_text: str = "", max_records: int = 6, max_total_chars: int = 24000, page_scope: Optional[str] = None) -> str:
+    def get_focused_api_records_summary(self, query_text: str = "", max_records: int = 9, max_total_chars: int = 36000, page_scope: Optional[str] = None) -> str:
         """
         通用两级智能接口寻索机制 (Two-Tier Intelligent API Retrieval)：
         - 【第一级：页面作用域优先定向检索 (Tier 1)】

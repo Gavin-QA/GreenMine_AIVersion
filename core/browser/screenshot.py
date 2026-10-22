@@ -163,13 +163,13 @@ class ScreenshotMixin:
         center_x: int,
         center_y: int,
         dpr: float = 1.0,
-        roi_width: int = 700,
-        roi_height: int = 240,
+        roi_width: int = 920,
+        roi_height: int = 460,
         save_path: Optional[str] = None
     ) -> Optional[str]:
         """
         从已有全屏截图中截取目标元素局部 ROI (如 Tooltip、卡片浮层) 并返回 Base64 编码。
-        专为 API 双向核验设计，彻底防止大模型受同屏其他卡片文字的注意力串扰。
+        专为 API 双向核验设计，提供充分视野避免截偏，并防止大模型受远端异物干扰。
         """
         try:
             from PIL import Image
@@ -190,13 +190,13 @@ class ScreenshotMixin:
 
             # 智能偏置：若目标在右半屏，卡片文字通常向右延展；若在左半屏向右延展；居中则居中
             if px > w * 0.55:
-                x1 = max(0, min(w - crop_w, px - int(60 * dpr)))
+                x1 = max(0, min(w - crop_w, px - int(80 * dpr)))
             elif px < w * 0.45:
-                x1 = max(0, min(w - crop_w, px - int(50 * dpr)))
+                x1 = max(0, min(w - crop_w, px - int(60 * dpr)))
             else:
                 x1 = max(0, min(w - crop_w, px - crop_w // 2))
 
-            y1 = max(0, min(h - crop_h, py - int(30 * dpr)))
+            y1 = max(0, min(h - crop_h, py - crop_h // 3))
             x2 = min(w, x1 + crop_w)
             y2 = min(h, y1 + crop_h)
 

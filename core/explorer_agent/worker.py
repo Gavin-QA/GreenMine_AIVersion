@@ -578,7 +578,8 @@ class ExplorerWorker:
                     if api_summary and api_summary != "[]":
                         logger.info(f"🔬 [Auto-API] 触发接口数据双向核验: {check_instruction}")
                         try:
-                            check_b64 = hover_b64 if action_type == "hover" and 'hover_b64' in locals() else base64_img
+                            full_b64 = hover_b64 if action_type == "hover" and 'hover_b64' in locals() else base64_img
+                            check_b64 = full_b64
                             try:
                                 if 'x' in locals() and 'y' in locals() and x is not None and y is not None:
                                     target_img_path = str(hover_img_path) if action_type == "hover" and 'hover_img_path' in locals() else str(step_img_path)
@@ -603,6 +604,17 @@ class ExplorerWorker:
                                 api_data_json=api_summary
                             )
                             is_unrelated = ("非同源" in reason or "跳过" in reason or "UNRELATED" in reason)
+                            if is_unrelated and check_b64 != full_b64 and full_b64:
+                                logger.info("ℹ️ [Auto-API] 局部 ROI 视野受限判定为非同源，回退使用全景快照进行二次核验...")
+                                passed_retry, reason_retry = self.vision.check_api_assertion(
+                                    instruction=check_instruction,
+                                    base64_image=full_b64,
+                                    api_data_json=api_summary
+                                )
+                                is_unrelated_retry = ("非同源" in reason_retry or "跳过" in reason_retry or "UNRELATED" in reason_retry)
+                                if not is_unrelated_retry:
+                                    passed, reason, is_unrelated = passed_retry, reason_retry, False
+                                    logger.info(f"✨ [Auto-API] 全景快照成功命中同源业务数据！核验判定: passed={passed}")
                             if not passed:
                                 logger.error(f"🚨 [API MISMATCH] 接口数据核验未通过: {reason}")
                                 action_success = False
