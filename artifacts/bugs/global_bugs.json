@@ -2004,7 +2004,7 @@
     "last_seen": "2026-10-15",
     "step": "[CLICK] 交互目标: '底部溜井标签栏中的【810溜井】标签' (页面路径: 智控管理 -> 智能溜破)",
     "actual": "[page_error] Cannot read properties of undefined (reading 'map')",
-    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/explore_20261015_182652/bugs/BUG-20261011-003_201302.png",
+    "screenshot": "reports/runs/zhaiwan/explore_20261021_114451/bugs/BUG-20261011-003.png",
     "ui_path": "智控管理 -> 智能溜破"
   },
   {

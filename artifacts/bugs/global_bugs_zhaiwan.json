@@ -2002,7 +2002,7 @@
     "last_seen": "2026-10-21",
     "step": "[CLICK] 交互目标: '底部溜井标签栏中的【810溜井】标签' (页面路径: 智控管理 -> 智能溜破)",
     "actual": "[page_error] Cannot read properties of undefined (reading 'map')",
-    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/explore_20261015_182652/bugs/BUG-20261011-003_201302.png",
+    "screenshot": "reports/runs/zhaiwan/explore_20261021_114451/bugs/BUG-20261011-003.png",
     "ui_path": "智控管理 -> 智能溜破"
   },
   {
@@ -2203,6 +2203,7 @@
     "last_seen": "2026-10-21",
     "step": "[HOVER] 交互目标: '顶部一级菜单【证照管理】' (页面路径: 首页 -> 矿山简介)",
     "actual": "[network_error] \n[console_error (代码位置: getCurUserMessageList:0)] \n[console_error (代码位置: index-CakHSA1M.js:4416)] \n[page_error] \n[network_error] \n[console_error (代码位置: getLeaderDutyStatistic:0)] \n[console_error (代码位置: index-CakHSA1M.js:4416)] \n[network_error] \n[console_error (代码位置: getPositionAttendanceInfo:0)] \n[console_error (代码位置: index-CakHSA1M.js:4416)] \n[page_error] \n[page_error] ",
-    "app": "zhaiwan"
+    "app": "zhaiwan",
+    "screenshot": "reports/runs/zhaiwan/explore_20261021_114451/bugs/BUG-20261021-001.png"
   }
 ]

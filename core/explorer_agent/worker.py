@@ -458,12 +458,21 @@ class ExplorerWorker:
                         loc_str = f" (代码位置: {loc})" if loc else ""
                         actual_lines.append(f"[{t}{loc_str}] {text_val}")
 
+                    crash_img_cand = None
+                    if action_type == "hover" and 'hover_img_path' in locals() and hover_img_path and Path(hover_img_path).exists():
+                        crash_img_cand = str(hover_img_path)
+                    elif 'after_img_path' in locals() and after_img_path and Path(after_img_path).exists():
+                        crash_img_cand = str(after_img_path)
+                    elif 'step_img_path' in locals() and step_img_path and Path(step_img_path).exists():
+                        crash_img_cand = str(step_img_path)
+
                     path_str = " -> ".join(current_ui_path) if current_ui_path else "未知路径"
                     self.bug_reporter.report_bug(
                         run_id=self.run_id,
                         title=f"[{self.run_id}] 探索操作 '{element_desc}' 触发底层异常",
                         step_prompt=f"[{action_type.upper()}] 交互目标: '{element_desc}' (页面路径: {path_str})",
                         actual_result="\n".join(actual_lines),
+                        crash_image_path=crash_img_cand,
                         action_type=action_type.upper(),
                         target_element=element_desc,
                         global_step=current_step,
