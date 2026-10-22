@@ -83,6 +83,40 @@ def normalize_severity(val: Any) -> int:
     return 3
 
 
+def enrich_bug_metadata_dict(b_dict: dict) -> None:
+    """智能元数据增强：从 step 文本自动推导缺失的 action_type, target_element, ui_path, tags"""
+    step_str = str(b_dict.get("step") or (b_dict.get("details") or {}).get("step") or "")
+    if not b_dict.get("action_type") or b_dict.get("action_type") == "无":
+        m_act = re.search(r"\[([A-Z_]+)\]", step_str)
+        if m_act:
+            b_dict["action_type"] = m_act.group(1).strip()
+    if not b_dict.get("target_element") or b_dict.get("target_element") == "无":
+        m_tgt = re.search(r"交互目标[:：]\s*['\"]?(.*?)['\"]?\s*(?:\(|$)", step_str)
+        if m_tgt:
+            b_dict["target_element"] = m_tgt.group(1).strip()
+    if not b_dict.get("ui_path") or b_dict.get("ui_path") in ("无", "首页"):
+        m_path = re.search(r"(?:页面路径|路径)[:：]\s*(.*?)\)", step_str)
+        if m_path:
+            b_dict["ui_path"] = m_path.group(1).strip()
+    
+    # 智能推导业务标签
+    raw_tags = b_dict.get("tags")
+    if not raw_tags or raw_tags == "无" or raw_tags == [] or raw_tags == "":
+        auto_tags = []
+        if b_dict.get("action_type") and b_dict["action_type"] != "无":
+            auto_tags.append(b_dict["action_type"])
+        u_path = b_dict.get("ui_path", "")
+        if u_path and u_path != "无":
+            auto_tags.extend([p.strip() for p in u_path.split("->") if p.strip()])
+        t_elem = b_dict.get("target_element", "")
+        if t_elem and t_elem != "无":
+            for k in ["一级菜单", "二级菜单", "按钮", "图表", "弹窗", "折线图", "柱状图", "表格"]:
+                if k in t_elem and k not in auto_tags:
+                    auto_tags.append(k)
+        b_dict["tags"] = list(dict.fromkeys(auto_tags)) if auto_tags else ["常规交互"]
+
+
+
 class ReportHub:
     def __init__(self, runs_dir: Optional[Path | str] = None):
         self.runs_dir = Path(runs_dir).resolve() if runs_dir else RUNS_DIR.resolve()
@@ -221,6 +255,7 @@ class ReportHub:
                 "ui_path": raw_ui_path,
                 "analysis_notes": raw_analysis
             }
+            enrich_bug_metadata_dict(all_bugs_dict[b_id])
 
         # 2. 从当前存在的 runs 中补充截图等确切数据，或新增尚未并入 global 的 bug
         for r in runs:
@@ -252,6 +287,14 @@ class ReportHub:
                         all_bugs_dict[b_id]["ui_path"] = b.get("ui_path")
                     if not all_bugs_dict[b_id].get("analysis_notes") and b.get("analysis_notes"):
                         all_bugs_dict[b_id]["analysis_notes"] = b.get("analysis_notes")
+                    # 同步单次报告中更精准推导出的动作、目标与业务标签
+                    if b.get("action_type") and b["action_type"] != "无":
+                        all_bugs_dict[b_id]["action_type"] = b["action_type"]
+                    if b.get("target_element") and b["target_element"] != "无":
+                        all_bugs_dict[b_id]["target_element"] = b["target_element"]
+                    if b.get("tags") and b["tags"] != "无":
+                        all_bugs_dict[b_id]["tags"] = b["tags"]
+                    enrich_bug_metadata_dict(all_bugs_dict[b_id])
                 else:
                     if rel_shot and target_run_dir and not (target_run_dir / rel_shot).exists():
                         rel_shot = ""
@@ -288,14 +331,15 @@ class ReportHub:
                         "occurrences": 1,
                         "last_seen": b.get("creation_date", b.get("date", "")),
                         "global_step": "无",
-                        "action_type": "无",
-                        "target_element": "无",
+                        "action_type": b.get("action_type") or "无",
+                        "target_element": b.get("target_element") or "无",
                         "assignee": b.get("assignee", "Unassigned"),
-                        "tags": "无",
+                        "tags": b.get("tags") or "无",
                         "severity": normalize_severity(b.get("severity", 3)),
                         "ui_path": run_ui_path,
                         "analysis_notes": run_analysis
                     }
+                    enrich_bug_metadata_dict(all_bugs_dict[b_id])
                     
         # 3. 生成 all_bugs 并修正总数
         all_bugs = list(all_bugs_dict.values())
@@ -1070,15 +1114,15 @@ class ReportHub:
             <div id="modalDate" style="color:#f8fafc;font-family:var(--font-mono);font-size:13px;">-</div>
           </div>
           <div style="background:var(--bg-card);padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.05);">
-            <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:6px;">▮ 复现次数</div>
+            <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:6px;">▮ 历史累计复现</div>
             <div id="modalOccurrences" style="color:#f8fafc;font-family:var(--font-mono);font-size:13px;">-</div>
           </div>
           <div style="background:var(--bg-card);padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.05);">
-            <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:6px;">▮ 最后出现</div>
+            <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:6px;">▮ 最近一次出现</div>
             <div id="modalLastSeen" style="color:#f8fafc;font-family:var(--font-mono);font-size:13px;">-</div>
           </div>
           <div style="background:var(--bg-card);padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.05);">
-            <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:6px;">▮ 全局步骤 / 本次步骤</div>
+            <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:6px;">▮ 本次对应步骤</div>
             <div id="modalGlobalStep" style="color:#f8fafc;font-family:var(--font-mono);font-size:13px;">-</div>
           </div>
           <div style="background:var(--bg-card);padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.05);">
@@ -1090,30 +1134,30 @@ class ReportHub:
             <div id="modalTargetElement" style="color:#f8fafc;font-size:13px;">-</div>
           </div>
           <div style="background:var(--bg-card);padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.05);">
-            <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:6px;">▮ 处理人</div>
+            <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:6px;">▮ 缺陷处理人</div>
             <div id="modalAssignee" style="color:#f8fafc;font-size:13px;">-</div>
           </div>
           <div style="background:var(--bg-card);padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.05);">
-            <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:6px;">▮ 标签</div>
-            <div id="modalTags" style="color:#f8fafc;font-size:13px;">-</div>
+            <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:6px;">▮ 业务标签</div>
+            <div id="modalTags" style="color:#f8fafc;font-size:13px;display:flex;flex-wrap:wrap;gap:4px;align-items:center;">-</div>
           </div>
         </div>
 
         <!-- Full Width Fields -->
         <div style="background:var(--bg-card);padding:16px;border-radius:8px;border:1px solid rgba(255,255,255,0.05);">
-          <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:8px;">▮ 缺陷简要 (TITLE)</div>
+          <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:8px;">▮ 缺陷标题 (TITLE)</div>
           <div id="modalTitleText" style="color:#f8fafc;font-size:14px;line-height:1.5;">-</div>
         </div>
         <div style="background:var(--bg-card);padding:16px;border-radius:8px;border:1px solid rgba(255,255,255,0.05);">
-          <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:8px;">▮ 业务路径 (UI PATH)</div>
+          <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:8px;">▮ 业务路径 / 触发步骤</div>
           <div id="modalUiPath" style="color:#cbd5e1;font-size:13px;line-height:1.5;">-</div>
         </div>
         <div style="background:var(--bg-card);padding:16px;border-radius:8px;border:1px solid rgba(255,255,255,0.05);">
-          <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:8px;">▮ 异常诊断结果</div>
+          <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:8px;">▮ 异常诊断结果 / 堆栈</div>
           <div id="modalActual" style="color:#fca5a5;font-family:var(--font-mono);font-size:13px;line-height:1.6;white-space:pre-wrap;">-</div>
         </div>
         <div style="background:var(--bg-card);padding:16px;border-radius:8px;border:1px solid rgba(255,255,255,0.05);">
-          <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:8px;">▮ 分析备注</div>
+          <div style="color:var(--primary);font-size:11px;font-weight:700;margin-bottom:8px;">▮ 归因分析备注</div>
           <div id="modalAnalysis" style="color:#cbd5e1;font-size:13px;line-height:1.6;white-space:pre-wrap;">-</div>
         </div>
         <div style="background:var(--bg-card);padding:16px;border-radius:8px;border:1px solid rgba(255,255,255,0.05);">
@@ -1588,16 +1632,22 @@ class ReportHub:
       document.getElementById('modalDate').innerText = b.date || '无';
       document.getElementById('modalOccurrences').innerText = (b.occurrences !== undefined && b.occurrences !== null) ? `${{b.occurrences}} 次` : '1 次';
       document.getElementById('modalLastSeen').innerText = b.last_seen || '无';
-      document.getElementById('modalGlobalStep').innerText = b.step_num ? `Step ${{b.step_num}} (本次)` : (b.global_step || '无');
+      document.getElementById('modalGlobalStep').innerText = b.step_num ? `Step ${{b.step_num}}` : (b.global_step ? `全局 Step ${{b.global_step}}` : '无对应步骤');
       document.getElementById('modalActionType').innerText = b.action_type || '无';
       document.getElementById('modalTargetElement').innerText = b.target_element || '无';
       document.getElementById('modalAssignee').innerHTML = `<span style="color:#f8fafc;">${{escapeHtml(b.assignee || 'Unassigned')}}</span>`;
-      document.getElementById('modalTags').innerText = b.tags || '无';
+      
+      const tagsList = Array.isArray(b.tags) ? b.tags : (b.tags && b.tags !== '无' ? String(b.tags).split(',').map(s => s.trim()) : []);
+      if (tagsList.length > 0) {{
+        document.getElementById('modalTags').innerHTML = tagsList.map(t => `<span style="background:rgba(99,102,241,0.15);color:#a5b4fc;border:1px solid rgba(99,102,241,0.3);padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;margin-right:4px;">${{escapeHtml(t)}}</span>`).join('');
+      }} else {{
+        document.getElementById('modalTags').innerHTML = '<span style="color:#64748b;">无</span>';
+      }}
       
       document.getElementById('modalTitleText').innerText = b.title || '无标题';
       document.getElementById('modalUiPath').innerHTML = `<span style="color:#38bdf8;font-weight:600;">📍 ${{escapeHtml(b.ui_path || '首页')}}</span>`;
       document.getElementById('modalActual').innerText = b.actual || '无详情';
-      document.getElementById('modalAnalysis').innerHTML = `<div style="color:#cbd5e1;white-space:pre-wrap;line-height:1.6;">${{escapeHtml(b.analysis_notes || '(暂无分析备注，点击下方“编辑 Bug 详情”可添加关闭原因/复盘结论)')}}</div>`;
+      document.getElementById('modalAnalysis').innerHTML = `<div style="color:#cbd5e1;white-space:pre-wrap;line-height:1.6;">${{escapeHtml(b.analysis_notes || '暂无归因分析备注')}}</div>`;
       
       const runPath = b.rel_run_path || b.run_id || '';
       const beforeShotUrl = b.before_screenshot ? (b.before_screenshot.startsWith('../') ? b.before_screenshot.replace('../', './') : `./${{runPath}}/${{b.before_screenshot}}`) : '';
