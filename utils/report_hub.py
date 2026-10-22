@@ -145,7 +145,7 @@ class ReportHub:
             if r_id and not (self.runs_dir / r_id / rel_shot).exists():
                 rel_shot = ""
 
-            step_text = gb.get("global_step") or gb.get("ui_path") or gb.get("step", "")
+            step_text = gb.get("step") or gb.get("global_step") or ""
             raw_ui_path = gb.get("ui_path", "")
             if not raw_ui_path or raw_ui_path == "无":
                 raw_ui_path = extract_ui_path_from_step(step_text, default="首页")
@@ -1427,7 +1427,11 @@ class ReportHub:
             <td style="color:#cbd5e1;font-size:13px;line-height:1.4;">
                 <div style="color:#38bdf8;font-size:11px;font-weight:600;margin-bottom:4px;">📍 ${{escapeHtml(b.ui_path || '首页')}}</div>
                 <div style="font-weight:600;margin-bottom:4px;color:#f8fafc;">${{escapeHtml(b.title)}}</div>
-                <div style="color:#94a3b8;font-family:var(--font-mono);font-size:11px;">${{escapeHtml(b.step || '(无步骤)')}}</div>
+                ${{(() => {{
+                    if (!b.step || b.step.trim() === (b.ui_path || '').trim()) return '';
+                    const stepPrefix = b.step_num ? `<span style="color:#a5b4fc;font-weight:600;">[Step ${{b.step_num}}]</span> ` : '';
+                    return `<div style="color:#94a3b8;font-family:var(--font-mono);font-size:11px;margin-top:2px;line-height:1.4;">${{stepPrefix}}${{escapeHtml(b.step)}}</div>`;
+                }})()}}
             </td>
             <td><div style="font-family:var(--font-mono);font-size:11px;color:#fca5a5;max-height:80px;overflow-y:auto;line-height:1.4;word-break:break-all;padding-right:8px;">${{escapeHtml(b.actual || '')}}</div></td>
             <td style="text-align:center;vertical-align:middle;">${{imgHtml}}</td>
