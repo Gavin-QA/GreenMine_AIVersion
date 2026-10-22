@@ -392,8 +392,9 @@ class VisionAgent:
             mermaid_str = PageMapBuilder.dict_to_mermaid_string(current_page_tree)
             user_prompt += f"【当前已探索的应用架构图 (Mermaid)】:\n```mermaid\n{mermaid_str}\n```\n"
         if global_history:
-            defective_items = [h for h in global_history if "熔断跳过" in h or "已发现缺陷" in h]
-            normal_items = [h for h in global_history if h not in defective_items]
+            formatted_global = [str(h) if not isinstance(h, str) else h for h in global_history]
+            defective_items = [h for h in formatted_global if "熔断跳过" in h or "已发现缺陷" in h]
+            normal_items = [h for h in formatted_global if h not in defective_items]
             user_prompt += f"【全局已探索过的元素】: {', '.join(normal_items[-20:])}\n请尽量避开已探索过的区域。\n"
             if defective_items:
                 user_prompt += f"【已发现缺陷并熔断的目标 (绝对严禁再次规划重试)】: {', '.join(defective_items[-10:])}\n"
@@ -423,9 +424,20 @@ class VisionAgent:
             mermaid_str = PageMapBuilder.dict_to_mermaid_string(current_page_tree)
             user_prompt += f"【当前已探索的应用架构图 (Mermaid)】:\n```mermaid\n{mermaid_str}\n```\n"
         if global_history:
-            user_prompt += f"【全局已探索过的元素】: {', '.join(global_history[-10:])}\n"
+            formatted_global = [str(item) if not isinstance(item, str) else item for item in global_history]
+            user_prompt += f"【全局已探索过的元素】: {', '.join(formatted_global[-10:])}\n"
         if history:
-            user_prompt += "【最近的动作历史】:\n" + "\n".join(history) + "\n⚠️ 警告：请分析历史记录，不要死循环执行刚做过的动作！\n"
+            formatted_history = []
+            for h in history:
+                if isinstance(h, dict):
+                    act = str(h.get("action", "")).upper()
+                    target = h.get("target") or h.get("desc") or "未知元素"
+                    thought = h.get("thought", "")
+                    succ = "成功" if h.get("success", True) else "失败"
+                    formatted_history.append(f"- 动作: [{act}] 目标: '{target}' ({succ}) | 思考: {thought}")
+                else:
+                    formatted_history.append(f"- {h}")
+            user_prompt += "【最近的动作历史】:\n" + "\n".join(formatted_history[-8:]) + "\n⚠️ 警告：请分析历史记录，不要死循环执行刚做过的动作！\n"
 
         user_prompt += "请结合截图决定下一步的精准操作。"
 
