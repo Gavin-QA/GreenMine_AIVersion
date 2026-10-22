@@ -954,7 +954,7 @@
       display: none;
       align-items: center;
       justify-content: center;
-      z-index: 9999;
+      z-index: 10001;
       padding: 30px;
     }
 
@@ -1972,7 +1972,8 @@
       document.getElementById('modalDate').innerText = b.creation_date || b.date || '无';
       document.getElementById('modalOccurrences').innerText = (b.occurrences !== undefined && b.occurrences !== null) ? `${b.occurrences} 次` : '1 次';
       document.getElementById('modalLastSeen').innerText = b.last_seen || b.creation_date || b.date || '无';
-      document.getElementById('modalStepNum').innerText = b.step_num ? `Step ${b.step_num}` : (b.global_step ? `全局 Step ${b.global_step}` : '无对应步骤');
+      const stepEl = document.getElementById('modalGlobalStep') || document.getElementById('modalStepNum');
+      if (stepEl) stepEl.innerText = b.step_num ? `Step ${b.step_num}` : (b.global_step ? `全局 Step ${b.global_step}` : '无对应步骤');
       document.getElementById('modalActionType').innerText = b.action_type || '无';
       document.getElementById('modalTargetElement').innerText = b.target_element || '无';
       document.getElementById('modalAssignee').innerText = b.assignee || 'Unassigned';
@@ -2023,7 +2024,8 @@
       } else {
         shotsHtml = '<span style="color:var(--text-dim);font-size:12px;">无现场截图凭据</span>';
       }
-      document.getElementById('modalScreenshots').innerHTML = shotsHtml;
+      const shotsContainer = document.getElementById('modalScreenshot') || document.getElementById('modalScreenshots');
+      if (shotsContainer) shotsContainer.innerHTML = shotsHtml;
       
       // 底部操作栏: 跳转至执行树步骤
       let footerHtml = '';
