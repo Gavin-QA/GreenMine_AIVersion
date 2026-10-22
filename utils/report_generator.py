@@ -96,7 +96,11 @@ class ReportGenerator:
 
         # 读取全局缺陷库 global_bugs.json 用于补充复现次数、最后出现、归因分析等元数据
         global_bugs_map = {}
-        global_bugs_path = Path(__file__).resolve().parent.parent / "artifacts" / "bugs" / "global_bugs.json"
+        bugs_base = Path(__file__).resolve().parent.parent / "artifacts" / "bugs"
+        from config.settings import settings
+        active_app = getattr(settings, "active_app", "")
+        app_bugs_path = bugs_base / f"global_bugs_{active_app}.json" if active_app and active_app != "default" else None
+        global_bugs_path = app_bugs_path if (app_bugs_path and app_bugs_path.exists()) else (bugs_base / "global_bugs.json")
         if global_bugs_path.exists():
             try:
                 with open(global_bugs_path, "r", encoding="utf-8") as f:

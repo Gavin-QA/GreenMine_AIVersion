@@ -562,6 +562,8 @@ class PageMapBuilder:
             DOCS_DIR.mkdir(parents=True, exist_ok=True)
             
             artifacts_map_path = TOPOLOGY_DIR / "auto_page_map.md"
+            active_app = getattr(settings, "active_app", "default")
+            app_map_path = TOPOLOGY_DIR / f"auto_page_map_{active_app}.md" if active_app and active_app != "default" else None
             artifacts_global_file = PageMapBuilder.get_global_tree_file()
 
             # 1. 加载基准骨架并清洗导航噪音节点
@@ -625,9 +627,12 @@ class PageMapBuilder:
             ]
             content = "\n".join(lines)
 
-            # 仅写入 artifacts/topology/
+            # 写入当前生效的 auto_page_map.md 与应用专属文件
             with open(artifacts_map_path, "w", encoding="utf-8") as f:
                 f.write(content)
+            if app_map_path:
+                with open(app_map_path, "w", encoding="utf-8") as f:
+                    f.write(content)
 
             logger.info(f"🗺️ 已成功渲染动态 UI 架构树 (Markdown + Mermaid): {artifacts_map_path}")
         except Exception as e:

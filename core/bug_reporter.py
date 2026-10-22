@@ -17,7 +17,15 @@ class BugReporter:
         # 全局持久资产目录: artifacts/bugs/
         self.global_bugs_dir = GLOBAL_BUGS_DIR
         self.global_bugs_dir.mkdir(parents=True, exist_ok=True)
-        self.global_json = self.global_bugs_dir / "global_bugs.json"
+        
+        from config.settings import settings
+        self.active_app = getattr(settings, "active_app", "default")
+        if self.active_app and self.active_app != "default":
+            self.global_json = self.global_bugs_dir / f"global_bugs_{self.active_app}.json"
+            if not self.global_json.exists() and self.active_app == "zhaiwan" and (self.global_bugs_dir / "global_bugs.json").exists():
+                self.global_json = self.global_bugs_dir / "global_bugs.json"
+        else:
+            self.global_json = self.global_bugs_dir / "global_bugs.json"
         
         # 允许外部传入已有的 VisionAgent，若没有则自己实例化一个用于 LLM 推理
         self.vision = vision_agent if vision_agent else VisionAgent()
@@ -28,8 +36,11 @@ class BugReporter:
             try:
                 with open(self.global_json, "r", encoding="utf-8") as f:
                     self.global_bugs = json.load(f)
+                logger.info(f"🐞 成功加载应用【{self.active_app}】专属缺陷库: {self.global_json.name} (共 {len(self.global_bugs)} 条记录)")
             except Exception as e:
-                logger.error(f"无法读取全局 Bug 库: {e}")
+                logger.error(f"无法读取应用专属 Bug 库: {e}")
+        else:
+            logger.info(f"✨ 应用【{self.active_app}】尚无历史缺陷库，将初始化新库: {self.global_json.name}")
 
     def report_bug(self, run_id: str, title: str, step_prompt: str, actual_result: str, crash_image_path: str = None, **kwargs):
         """记录一个新的崩溃现场，自动查重并保存。支持扩展参数。"""
@@ -137,7 +148,8 @@ class BugReporter:
             "occurrences": 1,
             "last_seen": date,
             "step": step,
-            "actual": actual
+            "actual": actual,
+            "app": self.active_app
         }
         self.global_bugs.append(new_bug)
         return bug_id

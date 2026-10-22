@@ -122,19 +122,19 @@ class ReportHub:
         # 统计宏观总计数据
         total_runs = len(runs)
         total_steps = sum(r.get("kpi", {}).get("total_steps", 0) for r in runs)
-        # 加载全局缺陷库附加信息
-        global_bugs_file = GLOBAL_BUGS_DIR / "global_bugs.json"
+        # 加载全局缺陷库附加信息 (聚合所有应用专属及通用 global_bugs*.json)
         global_bugs_map = {}
-        if global_bugs_file.exists():
-            try:
-                import json
-                with open(global_bugs_file, "r", encoding="utf-8") as f:
-                    gb_list = json.load(f)
-                    for gb in gb_list:
-                        if isinstance(gb, dict) and gb.get("id"):
-                            global_bugs_map[gb.get("id")] = gb
-            except Exception as e:
-                logger.warning(f"加载 global_bugs.json 失败: {e}")
+        if GLOBAL_BUGS_DIR.exists():
+            for global_bugs_file in sorted(GLOBAL_BUGS_DIR.glob("global_bugs*.json")):
+                try:
+                    import json
+                    with open(global_bugs_file, "r", encoding="utf-8") as f:
+                        gb_list = json.load(f)
+                        for gb in gb_list:
+                            if isinstance(gb, dict) and gb.get("id"):
+                                global_bugs_map[gb.get("id")] = gb
+                except Exception as e:
+                    logger.warning(f"加载 {global_bugs_file.name} 失败: {e}")
 
         all_bugs_dict = {}
         # 1. 以全局库为主导
@@ -1797,23 +1797,25 @@ class ReportHub:
                             if new_analysis is not None:
                                 b_dict['analysis_notes'] = new_analysis
 
-                        # 1. 在全局缺陷知识库 (artifacts/bugs/global_bugs.json) 中查找并更新
-                        bug_file = (GLOBAL_BUGS_DIR / "global_bugs.json").resolve()
-                        if bug_file.exists():
-                            try:
-                                with open(bug_file, 'r', encoding='utf-8') as f:
-                                    bugs = json.load(f)
-                                for b in bugs:
-                                    if b.get('id') == bug_id:
-                                        update_bug_dict(b)
-                                        success = True
-                                        updated_targets.append("global_bugs.json")
-                                        break
-                                if success:
-                                    with open(bug_file, 'w', encoding='utf-8') as f:
-                                        json.dump(bugs, f, ensure_ascii=False, indent=2)
-                            except Exception as ge:
-                                logger.warning(f"更新 global_bugs.json 异常: {ge}")
+                        # 1. 在全局缺陷知识库 (artifacts/bugs/global_bugs*.json) 中查找并更新
+                        if GLOBAL_BUGS_DIR.exists():
+                            for bug_file in GLOBAL_BUGS_DIR.glob("global_bugs*.json"):
+                                try:
+                                    with open(bug_file, 'r', encoding='utf-8') as f:
+                                        bugs = json.load(f)
+                                    file_changed = False
+                                    for b in bugs:
+                                        if b.get('id') == bug_id:
+                                            update_bug_dict(b)
+                                            success = True
+                                            file_changed = True
+                                            updated_targets.append(bug_file.name)
+                                            break
+                                    if file_changed:
+                                        with open(bug_file, 'w', encoding='utf-8') as f:
+                                            json.dump(bugs, f, ensure_ascii=False, indent=2)
+                                except Exception as ge:
+                                    logger.warning(f"更新 {bug_file.name} 异常: {ge}")
 
                         # 2. 在各个单次运行目录 (reports/runs/<run_id>/bugs/<bug_id>.json) 中查找并更新
                         if hub_instance.runs_dir.exists():
