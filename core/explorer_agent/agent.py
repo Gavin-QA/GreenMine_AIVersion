@@ -26,6 +26,7 @@ from utils.paths import (
     get_run_bugs_dir,
     get_run_generated_cases_dir,
     RUNS_DIR,
+    find_run_dir,
 )
 from .page_map_builder import PageMapBuilder
 from .trajectory_exporter import TrajectoryExporter
@@ -187,7 +188,7 @@ class ExplorerAgent:
 
     def _load_resume_state(self, resume_from: str, global_history: List[str]):
         """恢复历史断点状态"""
-        resume_path = Path(resume_from)
+        resume_path = find_run_dir(resume_from) or Path(resume_from)
         if not resume_path.is_absolute():
             resume_path = RUNS_DIR / resume_from
         logger.info(f"🔄 正在从历史运行目录恢复状态: {resume_path}")

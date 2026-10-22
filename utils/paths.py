@@ -72,10 +72,80 @@ def report_run_id() -> str:
     return run_id
 
 
-def get_run_dir(run_id: Optional[str] = None) -> Path:
-    """获取单次运行的专属工作目录: reports/runs/<run_id>/"""
+def find_run_dir(run_identifier: str) -> Optional[Path]:
+    """智能定位单次运行目录，兼容历史单层结构与新版多项目分层结构 (reports/runs/<app>/<run_id>/)"""
+    if not run_identifier:
+        return None
+    
+    # 1. 直接传入了绝对路径或相对路径
+    p = Path(run_identifier)
+    if p.exists() and p.is_dir():
+        return p.resolve()
+    
+    clean_id = run_identifier.strip(" /\\")
+    
+    # 2. RUNS_DIR / clean_id (例如直接命中 reports/runs/explore_xxx 或 reports/runs/liwutong/explore_xxx)
+    direct_cand = RUNS_DIR / clean_id
+    if direct_cand.exists() and direct_cand.is_dir():
+        return direct_cand.resolve()
+    
+    # 3. 在 RUNS_DIR 的各子应用目录 (如 liwutong, zhaiwan) 下递归/遍历查找
+    if RUNS_DIR.exists():
+        for sub in RUNS_DIR.iterdir():
+            if sub.is_dir() and not sub.name.startswith((".", "__")):
+                cand = sub / clean_id
+                if cand.exists() and cand.is_dir():
+                    return cand.resolve()
+                # 兼容只传时间戳等模糊查找
+                for leaf in sub.iterdir():
+                    if leaf.is_dir() and leaf.name == clean_id:
+                        return leaf.resolve()
+    return None
+
+
+def get_all_run_folders() -> List[Path]:
+    """遍历获取所有有效的单次运行目录，自动向下探测并兼容单层与分层结构"""
+    folders = []
+    if not RUNS_DIR.exists():
+        return folders
+    
+    for p in RUNS_DIR.iterdir():
+        if not p.is_dir() or p.name.startswith((".", "__")):
+            continue
+        # 判断当前目录是否直接为单次运行目录（例如包含 report.html，或包含 log 文件，或前缀为常见模式）
+        is_single_run = (p / "report.html").exists() or any(p.name.startswith(pre) for pre in ["explore_", "smoke_", "yaml_", "202"])
+        if is_single_run:
+            folders.append(p.resolve())
+        else:
+            # 说明 p 是被测应用归类目录 (如 liwutong, zhaiwan)，下潜一层扫描具体的测试运行
+            for sub in p.iterdir():
+                if sub.is_dir() and not sub.name.startswith((".", "__")):
+                    folders.append(sub.resolve())
+    return sorted(folders, key=lambda d: d.stat().st_mtime, reverse=True)
+
+
+def get_run_dir(run_id: Optional[str] = None, app: Optional[str] = None) -> Path:
+    """获取单次运行的专属工作目录: 优先定位已有目录，若新建则按应用分层 reports/runs/<app>/<run_id>/"""
     rid = run_id or report_run_id()
-    p = RUNS_DIR / rid
+    
+    # 1. 若该 run_id 已在物理磁盘上存在，直接复用其目录（防止迁移后路径断裂）
+    existing = find_run_dir(rid)
+    if existing:
+        return existing
+    
+    # 2. 新建运行目录：检测目标应用
+    target_app = app
+    if not target_app:
+        try:
+            from config.settings import settings
+            target_app = getattr(settings, "active_app", None)
+        except Exception:
+            target_app = None
+    
+    if target_app and target_app != "default":
+        p = RUNS_DIR / target_app / rid
+    else:
+        p = RUNS_DIR / rid
     p.mkdir(parents=True, exist_ok=True)
     return p
 

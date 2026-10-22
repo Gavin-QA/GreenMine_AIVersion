@@ -39,30 +39,28 @@ try:
 except ImportError:
     Image = None
 
-from utils.paths import RUNS_DIR, REPORTS_DIR, GLOBAL_BUGS_DIR
+from utils.paths import RUNS_DIR, REPORTS_DIR, GLOBAL_BUGS_DIR, find_run_dir, get_all_run_folders
 from utils.logger import get_logger
 
 logger = get_logger("PackFeishu")
 
 
 def find_target_run(run_arg: str) -> Path:
-    """定位目标运行目录"""
+    """定位目标运行目录，兼容分层与历史单层结构"""
     if run_arg and run_arg != "latest":
-        target = RUNS_DIR / run_arg
-        if target.exists() and (target / "report.html").exists():
-            return target
-        raise FileNotFoundError(f"未找到指定的运行记录或其缺少 report.html: {target}")
+        found = find_run_dir(run_arg)
+        if found and (found / "report.html").exists():
+            return found
+        raise FileNotFoundError(f"未找到指定的运行记录或其缺少 report.html: {run_arg}")
 
     # 自动寻找最新且包含 report.html 的目录
     runs = [
-        d for d in RUNS_DIR.iterdir()
-        if d.is_dir() and (d / "report.html").exists()
+        d for d in get_all_run_folders()
+        if (d / "report.html").exists()
     ]
     if not runs:
         raise FileNotFoundError(f"在 {RUNS_DIR} 下未找到任何包含 report.html 的测试运行！")
     
-    # 按目录修改时间排序
-    runs.sort(key=lambda d: d.stat().st_mtime, reverse=True)
     return runs[0]
 
 

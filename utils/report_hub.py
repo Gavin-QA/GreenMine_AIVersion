@@ -37,10 +37,15 @@ PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from utils.paths import RUNS_DIR, GLOBAL_BUGS_DIR
+from utils.paths import RUNS_DIR, GLOBAL_BUGS_DIR, get_all_run_folders, find_run_dir
 
 logger = logging.getLogger("report_hub")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] [%(name)s] %(message)s")
+
+APP_NAME_MAP = {
+    "zhaiwan": "寨湾矿山",
+    "liwutong": "里伍铜矿山"
+}
 
 
 def extract_ui_path_from_step(step_str: Any, default: str = "首页") -> str:
@@ -83,18 +88,16 @@ class ReportHub:
         self.runs_dir = Path(runs_dir).resolve() if runs_dir else RUNS_DIR.resolve()
 
     def collect_all_runs(self) -> List[Dict[str, Any]]:
-        """扫描所有运行目录并聚合元数据"""
+        """扫描所有运行目录（支持按应用分层与旧单层），聚合元数据与项目归属"""
         from utils.report_generator import ReportGenerator
 
         runs_data = []
         if not self.runs_dir.exists():
             return runs_data
 
-        # 过滤掉非运行目录（比如自动生成的隐藏目录或特殊目录）
-        subdirs = sorted([d for d in self.runs_dir.iterdir() if d.is_dir() and not d.name.startswith((".", "__"))], key=lambda p: p.stat().st_mtime, reverse=True)
+        all_dirs = get_all_run_folders()
 
-        for d in subdirs:
-            # 确保每个运行目录内部都有 report.html
+        for d in all_dirs:
             report_file = d / "report.html"
             generator = ReportGenerator(d)
             if not report_file.exists():
@@ -105,8 +108,33 @@ class ReportHub:
 
             try:
                 data = generator.parse_run_data()
+                # 计算相对于 runs_dir 的相对路径
+                try:
+                    rel_p = d.relative_to(self.runs_dir).as_posix()
+                except Exception:
+                    rel_p = d.name
+
+                # 判定所属应用
+                if "/" in rel_p:
+                    app_key = rel_p.split("/")[0]
+                else:
+                    # 兼容历史根目录旧运行：通过日志判定或默认归属寨湾
+                    log_files = list(d.glob("*.log"))
+                    is_liwutong = False
+                    if log_files:
+                        try:
+                            sample = log_files[0].read_text(encoding="utf-8", errors="ignore")[:2000]
+                            if "liwutong" in sample:
+                                is_liwutong = True
+                        except Exception:
+                            pass
+                    app_key = "liwutong" if is_liwutong else "zhaiwan"
+
+                data["app"] = app_key
+                data["app_name"] = APP_NAME_MAP.get(app_key, app_key)
+                data["rel_path"] = rel_p
                 data["folder_name"] = d.name
-                data["report_url"] = f"./{d.name}/report.html"
+                data["report_url"] = f"./{rel_p}/report.html"
                 data["mtime"] = d.stat().st_mtime
                 runs_data.append(data)
             except Exception as e:
@@ -140,9 +168,17 @@ class ReportHub:
         # 1. 以全局库为主导
         for b_id, gb in global_bugs_map.items():
             r_id = gb.get("run_id", "")
-            # 验证截图是否在物理磁盘上存活（防用户删除了运行日志导致坏图）
+            target_run_dir = find_run_dir(r_id)
             rel_shot = f"bugs/{b_id}.png"
-            if r_id and not (self.runs_dir / r_id / rel_shot).exists():
+            if target_run_dir:
+                try:
+                    rel_run_path = target_run_dir.relative_to(self.runs_dir).as_posix()
+                except Exception:
+                    rel_run_path = r_id
+                if not (target_run_dir / rel_shot).exists():
+                    rel_shot = ""
+            else:
+                rel_run_path = r_id
                 rel_shot = ""
 
             step_text = gb.get("step") or gb.get("global_step") or ""
@@ -162,6 +198,7 @@ class ReportHub:
                 "id": b_id,
                 "title": gb.get("title", ""),
                 "run_id": r_id,
+                "rel_run_path": rel_run_path,
                 "date": gb.get("date", ""),
                 "status": status_val,
                 "step": step_text,
@@ -169,7 +206,7 @@ class ReportHub:
                 "rel_screenshot": rel_shot,
                 "before_screenshot": "",
                 "step_num": None,
-                "report_link": f"./{r_id}/report.html" if r_id else "#",
+                "report_link": f"./{rel_run_path}/report.html" if rel_run_path else "#",
                 "occurrences": gb.get("occurrences", 1),
                 "last_seen": gb.get("last_seen", gb.get("date") or ""),
                 "global_step": gb.get("global_step", "无"),
@@ -186,6 +223,8 @@ class ReportHub:
         for r in runs:
             r_id = r.get("run_id", "")
             r_link = r.get("report_url", "#")
+            r_rel = r.get("rel_path", r_id)
+            target_run_dir = find_run_dir(r_id)
             for b in r.get("bugs", []):
                 b_id = b.get("id", "BUG")
                 rel_shot = b.get("rel_screenshot", "")
@@ -193,15 +232,17 @@ class ReportHub:
                 step_num = b.get("step_num")
                 if b_id in all_bugs_dict:
                     if rel_shot:
-                        if (self.runs_dir / r_id / rel_shot).exists():
+                        if target_run_dir and (target_run_dir / rel_shot).exists():
                             all_bugs_dict[b_id]["rel_screenshot"] = rel_shot
+                            all_bugs_dict[b_id]["rel_run_path"] = r_rel
                         else:
                             all_bugs_dict[b_id].pop("rel_screenshot", None)
-                    if before_shot and (self.runs_dir / r_id / before_shot).exists():
+                    if before_shot and target_run_dir and (target_run_dir / before_shot).exists():
                         all_bugs_dict[b_id]["before_screenshot"] = before_shot
                     if step_num:
                         all_bugs_dict[b_id]["step_num"] = step_num
                     all_bugs_dict[b_id]["report_link"] = r_link
+                    all_bugs_dict[b_id]["rel_run_path"] = r_rel
                     
                     # 若已有的 ui_path 缺失或为首页，尝试用 run 中的数据补充
                     if (all_bugs_dict[b_id]["ui_path"] in ("", "无", "首页")) and b.get("ui_path"):
@@ -209,9 +250,9 @@ class ReportHub:
                     if not all_bugs_dict[b_id].get("analysis_notes") and b.get("analysis_notes"):
                         all_bugs_dict[b_id]["analysis_notes"] = b.get("analysis_notes")
                 else:
-                    if rel_shot and not (self.runs_dir / r_id / rel_shot).exists():
+                    if rel_shot and target_run_dir and not (target_run_dir / rel_shot).exists():
                         rel_shot = ""
-                    if before_shot and not (self.runs_dir / r_id / before_shot).exists():
+                    if before_shot and target_run_dir and not (target_run_dir / before_shot).exists():
                         before_shot = ""
 
                     step_val = (b.get("details") or {}).get("step", b.get("step", ""))
@@ -230,6 +271,7 @@ class ReportHub:
                     all_bugs_dict[b_id] = {
                         "id": b_id,
                         "title": b.get("title", ""),
+                        "rel_run_path": r_rel,
                         "run_id": r_id,
                         "date": b.get("creation_date", b.get("date", "")),
                         "status": run_status,
@@ -915,6 +957,7 @@ class ReportHub:
     </div>
 
     <!-- Tab 1: Runs List -->
+    <!-- Tab 1: Runs List -->
     <div id="tab-runs" class="tab-pane active">
       <div class="filter-bar">
         <div class="filter-pills">
@@ -922,6 +965,15 @@ class ReportHub:
           <button class="filter-pill" onclick="filterRuns('explore', event)">自主探索 ({count_runs_explore})</button>
           <button class="filter-pill" onclick="filterRuns('smoke', event)">冒烟测试 ({count_runs_smoke})</button>
           <button class="filter-pill" onclick="filterRuns('yaml', event)">回归测试 ({count_runs_yaml})</button>
+        </div>
+
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="color:var(--text-muted); font-size:13px; font-weight:600;">项目:</span>
+          <select id="runAppFilter" class="hub-select" onchange="handleAppFilterChange(this.value)">
+            <option value="all">全部被测项目</option>
+            <option value="liwutong">🏔️ 里伍铜矿山</option>
+            <option value="zhaiwan">⛰️ 寨湾矿山</option>
+          </select>
         </div>
 
         <input type="text" id="runSearch" class="search-box" placeholder="搜索 Run ID、宏观目标或日期..." oninput="handleSearch()">
@@ -1122,6 +1174,14 @@ class ReportHub:
       renderRuns();
     }}
 
+    let currentAppFilter = 'all';
+
+    function handleAppFilterChange(app) {{
+      currentAppFilter = app;
+      currentRunPage = 1;
+      renderRuns();
+    }}
+
     function handleSearch() {{
       searchQuery = document.getElementById('runSearch').value.toLowerCase().trim();
       currentRunPage = 1;
@@ -1148,11 +1208,14 @@ class ReportHub:
         if (currentFilter === 'smoke' && !runId.startsWith('smoke_')) return false;
         if (currentFilter === 'yaml' && !runId.startsWith('yaml_')) return false;
 
+        if (currentAppFilter !== 'all' && (r.app || 'zhaiwan') !== currentAppFilter) return false;
+
         if (searchQuery) {{
           const matchId = String(runId).includes(searchQuery);
           const matchObj = String(r.macro_objective || '').toLowerCase().includes(searchQuery);
           const matchStart = String(r.start_time || '').toLowerCase().includes(searchQuery);
-          if (!matchId && !matchObj && !matchStart) return false;
+          const matchApp = String(r.app_name || '').toLowerCase().includes(searchQuery);
+          if (!matchId && !matchObj && !matchStart && !matchApp) return false;
         }}
         return true;
       }});
@@ -1183,6 +1246,14 @@ class ReportHub:
           modeLabel = '回归测试';
         }}
 
+        const appKey = r.app || 'zhaiwan';
+        const isLiwutong = appKey === 'liwutong';
+        const appBadgeHtml = `
+          <span style="background:${{isLiwutong ? 'rgba(16,185,129,0.15)' : 'rgba(99,102,241,0.15)'}};color:${{isLiwutong ? '#34d399' : '#818cf8'}};border:1px solid ${{isLiwutong ? 'rgba(16,185,129,0.35)' : 'rgba(99,102,241,0.35)'}};font-size:11px;padding:2px 8px;border-radius:9999px;font-weight:700;display:inline-flex;align-items:center;gap:4px;">
+            ${{isLiwutong ? '🏔️ 里伍铜' : '⛰️ 寨湾'}}
+          </span>
+        `;
+
         const kpi = r.kpi || {{}};
         const totalSteps = kpi.total_steps || 0;
         const bugsCount = kpi.bugs_count || 0;
@@ -1194,8 +1265,9 @@ class ReportHub:
         html += `
           <div class="run-card">
             <div class="run-card-main">
-              <div class="run-header">
+              <div class="run-header" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
                 <span class="mode-tag ${{modeClass}}">${{modeLabel}}</span>
+                ${{appBadgeHtml}}
                 <span class="run-id-title">${{escapeHtml(runId)}}</span>
               </div>
 
@@ -1357,8 +1429,9 @@ class ReportHub:
 
       let html = '';
       paginatedBugs.forEach(b => {{
-        const beforeShotUrl = b.before_screenshot ? (b.before_screenshot.startsWith('../') ? b.before_screenshot.replace('../', './') : `./${{b.run_id}}/${{b.before_screenshot}}`) : '';
-        const relShotUrl = b.rel_screenshot ? (b.rel_screenshot.startsWith('../') ? b.rel_screenshot.replace('../', './') : `./${{b.run_id}}/${{b.rel_screenshot}}`) : '';
+        const runPath = b.rel_run_path || b.run_id || '';
+        const beforeShotUrl = b.before_screenshot ? (b.before_screenshot.startsWith('../') ? b.before_screenshot.replace('../', './') : `./${{runPath}}/${{b.before_screenshot}}`) : '';
+        const relShotUrl = b.rel_screenshot ? (b.rel_screenshot.startsWith('../') ? b.rel_screenshot.replace('../', './') : `./${{runPath}}/${{b.rel_screenshot}}`) : '';
 
         let imgHtml = '';
         if (beforeShotUrl && relShotUrl) {{
@@ -1517,8 +1590,9 @@ class ReportHub:
       document.getElementById('modalActual').innerText = b.actual || '无详情';
       document.getElementById('modalAnalysis').innerHTML = `<div style="color:#cbd5e1;white-space:pre-wrap;line-height:1.6;">${{escapeHtml(b.analysis_notes || '(暂无分析备注，点击下方“编辑 Bug 详情”可添加关闭原因/复盘结论)')}}</div>`;
       
-      const beforeShotUrl = b.before_screenshot ? (b.before_screenshot.startsWith('../') ? b.before_screenshot.replace('../', './') : `./${{b.run_id}}/${{b.before_screenshot}}`) : '';
-      const relShotUrl = b.rel_screenshot ? (b.rel_screenshot.startsWith('../') ? b.rel_screenshot.replace('../', './') : `./${{b.run_id}}/${{b.rel_screenshot}}`) : '';
+      const runPath = b.rel_run_path || b.run_id || '';
+      const beforeShotUrl = b.before_screenshot ? (b.before_screenshot.startsWith('../') ? b.before_screenshot.replace('../', './') : `./${{runPath}}/${{b.before_screenshot}}`) : '';
+      const relShotUrl = b.rel_screenshot ? (b.rel_screenshot.startsWith('../') ? b.rel_screenshot.replace('../', './') : `./${{runPath}}/${{b.rel_screenshot}}`) : '';
 
       if (beforeShotUrl && relShotUrl) {{
           document.getElementById('modalScreenshot').innerHTML = `
@@ -1817,22 +1891,20 @@ class ReportHub:
                                 except Exception as ge:
                                     logger.warning(f"更新 {bug_file.name} 异常: {ge}")
 
-                        # 2. 在各个单次运行目录 (reports/runs/<run_id>/bugs/<bug_id>.json) 中查找并更新
-                        if hub_instance.runs_dir.exists():
-                            for run_dir in hub_instance.runs_dir.iterdir():
-                                if run_dir.is_dir() and not run_dir.name.startswith((".", "__")):
-                                    run_bug_file = run_dir / "bugs" / f"{bug_id}.json"
-                                    if run_bug_file.exists():
-                                        try:
-                                            with open(run_bug_file, 'r', encoding='utf-8') as rf:
-                                                b_data = json.load(rf)
-                                            update_bug_dict(b_data)
-                                            with open(run_bug_file, 'w', encoding='utf-8') as rf:
-                                                json.dump(b_data, rf, ensure_ascii=False, indent=2)
-                                            success = True
-                                            updated_targets.append(f"{run_dir.name}/bugs/{bug_id}.json")
-                                        except Exception as re_err:
-                                            logger.warning(f"更新运行目录 Bug 文件异常 ({run_bug_file}): {re_err}")
+                        # 2. 在各个单次运行目录 (reports/runs/<app>/<run_id>/bugs/<bug_id>.json) 中查找并更新
+                        for run_dir in get_all_run_folders():
+                            run_bug_file = run_dir / "bugs" / f"{bug_id}.json"
+                            if run_bug_file.exists():
+                                try:
+                                    with open(run_bug_file, 'r', encoding='utf-8') as rf:
+                                        b_data = json.load(rf)
+                                    update_bug_dict(b_data)
+                                    with open(run_bug_file, 'w', encoding='utf-8') as rf:
+                                        json.dump(b_data, rf, ensure_ascii=False, indent=2)
+                                    success = True
+                                    updated_targets.append(f"{run_dir.name}/bugs/{bug_id}.json")
+                                except Exception as re_err:
+                                    logger.warning(f"更新运行目录 Bug 文件异常 ({run_bug_file}): {re_err}")
 
                         if success:
                             # 同步重构静态大盘与 runs_data.js，保持数据双向实时一致

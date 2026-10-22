@@ -41,6 +41,7 @@ from utils.paths import (
     RUNS_DIR,
     GLOBAL_BUGS_DIR,
     TOPOLOGY_DIR,
+    get_all_run_folders,
 )
 
 
@@ -83,7 +84,7 @@ def print_disk_usage_info():
 
     # 2. 运行产物
     runs_size, runs_count = get_dir_size_and_count(RUNS_DIR)
-    run_folders = [p for p in RUNS_DIR.iterdir() if p.is_dir()] if RUNS_DIR.exists() else []
+    run_folders = get_all_run_folders()
     print(f"\n📦 单次运行产物区 [reports/runs/]: {format_size(runs_size)} (共 {len(run_folders)} 次运行)")
 
     # 细分分析
@@ -116,7 +117,7 @@ def clean_temp_screenshots(retain_days: int = 7, dry_run: bool = False):
         return
 
     cutoff_date = datetime.now() - timedelta(days=retain_days)
-    run_folders = [p for p in RUNS_DIR.iterdir() if p.is_dir()]
+    run_folders = get_all_run_folders()
     
     cleaned_bytes = 0
     cleaned_files = 0

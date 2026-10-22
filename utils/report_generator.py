@@ -36,7 +36,7 @@ PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from utils.paths import RUNS_DIR
+from utils.paths import RUNS_DIR, find_run_dir, get_all_run_folders
 
 logger = logging.getLogger("report_generator")
 
@@ -2905,19 +2905,15 @@ def main():
 
     target_dir = None
     if args.run:
-        cand = RUNS_DIR / args.run
-        if cand.exists():
-            target_dir = cand
-        elif Path(args.run).exists():
-            target_dir = Path(args.run)
+        target_dir = find_run_dir(args.run)
     elif args.latest:
-        runs = sorted([p for p in RUNS_DIR.iterdir() if p.is_dir()], key=lambda p: p.stat().st_mtime, reverse=True)
+        runs = get_all_run_folders()
         if runs:
             target_dir = runs[0]
 
     if not target_dir:
         print("💡 未显式指定运行目录，自动寻找最近一次的测试产物目录...")
-        runs = sorted([p for p in RUNS_DIR.iterdir() if p.is_dir() and (p.name.startswith("explore_") or p.name.startswith("smoke_"))], key=lambda p: p.stat().st_mtime, reverse=True)
+        runs = [p for p in get_all_run_folders() if (p.name.startswith("explore_") or p.name.startswith("smoke_"))]
         if runs:
             target_dir = runs[0]
         else:
