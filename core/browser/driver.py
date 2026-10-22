@@ -469,6 +469,37 @@ class ElectronDriver(NetworkMonitorMixin, DomExtractorMixin, ScreenshotMixin, Ch
         if delay_after > 0:
             time.sleep(delay_after)
 
+    def clear_and_type(self, x: int, y: int, text: str, press_enter: bool = False, delay_after: float = 0.5):
+        """
+        点击目标输入框，全选清除已有内容，并键入新文本 (支持可选回车触发搜索/提交)
+        :param x: 输入框绝对水平坐标
+        :param y: 输入框绝对垂直坐标
+        :param text: 准备输入的文本或边界值
+        :param press_enter: 输入完成后是否敲击 Enter 键
+        :param delay_after: 完成后等待时间
+        """
+        if not self.page:
+            raise RuntimeError("页面未就绪！")
+
+        logger.info(f"✍️ 清空并键入输入框: 坐标 ({x}, {y}) | 内容: '{text}' | Enter={press_enter}")
+        self.click(x, y, delay_after=0.2)
+        try:
+            self.page.keyboard.press("Control+A")
+            time.sleep(0.1)
+            self.page.keyboard.press("Backspace")
+            time.sleep(0.1)
+        except Exception as e_clear:
+            logger.warning(f"全选清空按键异常: {e_clear}")
+
+        if text:
+            self.type_text(text, delay_ms=30, delay_after=0.2)
+
+        if press_enter:
+            self.press_key("Enter", delay_after=0.3)
+
+        if delay_after > 0:
+            time.sleep(delay_after)
+
     def press_key(self, key: str, delay_after: float = 0.5):
         """
         敲击特定功能按键 (如 'Enter', 'Escape', 'Tab', 'Backspace')

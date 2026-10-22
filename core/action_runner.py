@@ -106,9 +106,14 @@ class ActionRunner:
                     self._do_action(prompt)
                 elif step_type == "input":
                     text = step.get("text")
-                    if not text:
-                        raise ValueError("input 类型的步骤必须提供 'text' 字段。")
-                    self._do_input(prompt, str(text))
+                    fuzz = step.get("fuzz", False)
+                    fuzz_category = step.get("fuzz_category", "auto")
+                    if fuzz or not text:
+                        from utils.fuzz_payloads import get_fuzz_payload
+                        text = get_fuzz_payload(element_desc=prompt, category=fuzz_category)
+                    press_enter = bool(step.get("press_enter", False))
+                    clear_first = bool(step.get("clear_first", True))
+                    self._do_input(prompt, str(text), clear_first=clear_first, press_enter=press_enter)
                 elif step_type == "assert":
                     self._do_assert(prompt)
                 elif step_type == "api_assert":
@@ -489,8 +494,8 @@ class ActionRunner:
             self.driver.mark_action_timestamp()
         self.driver.slide(start_x=int(sx), start_y=int(sy), end_x=int(ex), end_y=int(ey))
 
-    def _do_input(self, prompt: str, text: str):
-        """执行视觉点击后输入文本"""
+    def _do_input(self, prompt: str, text: str, clear_first: bool = True, press_enter: bool = False):
+        """执行视觉定位后清空并键入文本"""
         # 1. Perception
         b64_img = self.driver.capture_screenshot_base64()
         viewport = self.driver.get_viewport_info()
@@ -506,8 +511,15 @@ class ActionRunner:
         )
         
         # 3. Action
-        self.driver.click(x, y)
-        self.driver.type_text(text)
+        if hasattr(self.driver, "mark_action_timestamp"):
+            self.driver.mark_action_timestamp()
+        if clear_first:
+            self.driver.clear_and_type(x, y, text, press_enter=press_enter)
+        else:
+            self.driver.click(x, y)
+            self.driver.type_text(text)
+            if press_enter:
+                self.driver.press_key("Enter")
 
     def _do_assert(self, prompt: str):
         """执行单次视觉断言"""

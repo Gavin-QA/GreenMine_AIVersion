@@ -161,7 +161,7 @@ class ExplorerWorker:
                 logger.info(f"⏳ [Worker] 执行智能等待 {wait_sec} 秒以待界面稳定或跳转完成...")
                 time.sleep(wait_sec)
                 action_success = True
-            elif action_type in ("click", "hover", "zoom", "rotate_3d", "scroll", "slide"):
+            elif action_type in ("click", "hover", "input", "zoom", "rotate_3d", "scroll", "slide"):
                 try:
                     logger.info(f"⚡ 开始对目标 '{element_desc}' 进行 DOM 与视觉二次精确定位...")
                     dom_elements = self.driver.extract_interactive_elements()
@@ -196,7 +196,7 @@ class ExplorerWorker:
                 except Exception as e:
                     logger.warning(f"⚠️ 无法在截图 {step_img_path.name} 上绘制准星: {e}")
 
-                is_chart_target = (action_type not in ("zoom", "rotate_3d", "scroll", "slide")) and ((element_type == "chart") or any(k in element_desc for k in ["折线图", "柱状图", "面积图", "数据拐点", "趋势图", "七天风量", "风量数据"]))
+                is_chart_target = (action_type not in ("zoom", "rotate_3d", "scroll", "slide", "input")) and ((element_type == "chart") or any(k in element_desc for k in ["折线图", "柱状图", "面积图", "数据拐点", "趋势图", "七天风量", "风量数据"]))
 
                 # --- 分支 A: 图表全量批量嗅探引擎 ---
                 if is_chart_target:
@@ -393,6 +393,18 @@ class ExplorerWorker:
                             after_img_path = self.explore_dir / f"explore_step_{current_step}_after.png"
                             after_b64 = self.driver.capture_screenshot_base64(str(after_img_path))
                             logger.info(f"📸 捕获滑块拖拽后快照: {after_img_path.name}")
+                        elif action_type == "input":
+                            input_text = decision.get("text")
+                            if not input_text:
+                                from utils.fuzz_payloads import get_fuzz_payload
+                                input_text = get_fuzz_payload(element_desc=element_desc)
+                            press_enter = bool(decision.get("press_enter", False))
+                            logger.info(f"⌨️ [Input] 准备清空并键入内容: '{input_text}' (Enter={press_enter}) 到目标 '{element_desc}'")
+                            self.driver.clear_and_type(x, y, text=str(input_text), press_enter=press_enter, delay_after=1.5)
+                            time.sleep(1.0)
+                            after_img_path = self.explore_dir / f"explore_step_{current_step}_after.png"
+                            after_b64 = self.driver.capture_screenshot_base64(str(after_img_path))
+                            logger.info(f"📸 捕获表单键入后快照: {after_img_path.name}")
                         else:
                             before_modals = PostClickDetector.get_current_modals(self.driver)
                             self.driver.click(x, y, button="left", delay_after=1.5)
@@ -628,6 +640,14 @@ class ExplorerWorker:
                         task_trajectory.append({
                             "type": "slide",
                             "prompt": f"[SLIDE] {element_desc}",
+                            "thought": thought
+                        })
+                    elif action_type == "input":
+                        task_trajectory.append({
+                            "type": "input",
+                            "prompt": element_desc,
+                            "text": input_text if 'input_text' in locals() else decision.get("text", ""),
+                            "press_enter": bool(decision.get("press_enter", False)),
                             "thought": thought
                         })
                     else:

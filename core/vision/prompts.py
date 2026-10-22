@@ -102,10 +102,10 @@ PLANNER_SYSTEM_PROMPT = """你是一个高层规划者 (Planner Agent)，负责�
     - 当页面包含多行长表格（如历史报警列表、运行日志记录）或时间轴/阈值调节滑块时：
     - 可规划向下滚轮翻页以触发分页或加载更多，挖掘隐藏在第二屏的深层数据 Bug；
     - 可规划拖动时间轴滑块或数值滑块以验证区间切换交互。
-    - **自愈与闭环铁律**：若历史中刚点击了“一键隐藏”，或者当前画面处于面板收起状态（截图中左右两侧无 2D 面板，仅剩中央 3D 地图）：
-      - **最高优先级规划**：下一步必须且只能规划：`sub_objective: "点击右上角【一键展开/一键显示】按钮（含 << 图标）以恢复大屏面板显示"`！
-      - **绝对严禁**在面板隐藏状态下耗费 Token 去规划寻找任何不存在的业务组件！
-12. **【顶部“迈灵”AI助手即时闭合军规 (Mailing AI Assistant Protocol)】**：
+13. **【表单输入与边界脏数据模糊测试规划 (Form Input & Fuzz Testing)】**：
+    - 当页面中包含搜索框、筛选输入框、阈值设定框（如告警上限、风机频率、人员搜索）时：
+    - 可规划输入测试：既可以下达常规检索子目标，也可以规划测试极值与边界值（如负数 `-999`、超大数值、特殊转义字符、空值），全面探测系统是否具备前端防爆保护与健全的异常校验机制！
+14. **【顶部“迈灵”AI助手即时闭合军规 (Mailing AI Assistant Protocol)】**：
     - 屏幕顶部状态栏最右侧（紧邻时间戳左侧、智控管理右侧）存在常驻的圆形“迈灵”AI助手按钮。
     - 点击“迈灵”后会在**屏幕底部弹出智能对话弹窗浮层**。
     - **极度重要的物理关闭机制（必须再次点击迈灵按钮）**：
@@ -197,6 +197,11 @@ WORKER_SYSTEM_PROMPT = """你是一个高度智能的执行者 (Worker Agent)。
 17. **【容器滚轮翻页与滑块拖动规范 (Scroll & Slide Gestures)】**：
     - **长表格/列表滚轮**：当面对长表格（如历史报警列表、运行日志）或带滚动条的列表时，可执行 `action: "scroll"`，指定 `direction: "down"` 或 `"up"`（默认 `delta: 300` 像素），底座会将光标移动至表格内部并发射物理滚轮，触发分页或深层数据加载；
     - **时间轴与滑块拖动**：当面对时间轴滑块、范围调节条时，可执行 `action: "slide"`，设置起点（`x_percent`, `y_percent`）和终点（`end_x_percent`, `end_y_percent`），底座将执行平滑插值拖拽。
+18. **【表单输入与边界模糊测试规范 (Form Input & Fuzz Testing)】**：
+    - 当面对搜索框、参数设定框、数值阈值输入框时，可执行 `action: "input"`；
+    - 必须指定 `text` 字段（准备键入的字符）。为了探测表单防爆与异常容错能力，鼓励尝试边界脏数据（如 `-999`、`99999999`、特殊符号 `!@#$%^&*()`）；
+    - 若需要输入后回车触发搜索或提交，请将 `press_enter` 设为 `true`；
+    - 底座会自动执行物理全选清空已有文本并键入新内容。
 
 你必须输出且仅输出一个合法的 JSON 对象，不要包含任何 markdown 代码块标识。
 
@@ -204,16 +209,18 @@ JSON 结构如下:
 {
   "thought": "结合子目标和历史记录，分析你为什么要执行这个动作",
   "current_ui_path": ["一级菜单", "二级菜单", "激活的子Tab/设备名称(可选)"], // 字符串数组。当前页面路径。
-  "action": "click", // 必须是 "click", "hover", "zoom", "rotate_3d", "scroll", "slide", "wait", "finish" 之一。如果子任务完成或无法继续，选择 finish
-  "element_desc": "准备交互的元素名称或描述（例如：‘顶部一级菜单【资源管理】’、‘历史告警表格区域【向下滚动】’、‘时间轴滑块【向右拖拽】’）",
+  "action": "click", // 必须是 "click", "hover", "input", "zoom", "rotate_3d", "scroll", "slide", "wait", "finish" 之一。如果子任务完成或无法继续，选择 finish
+  "element_desc": "准备交互的元素名称或描述（例如：‘顶部一级菜单【资源管理】’、‘历史告警表格区域【向下滚动】’、‘风速上限阈值输入框’）",
   "element_type": "button", // 控件类型：必须是 "button" | "input" | "select" | "checkbox" | "table" | "map" | "tab" | "chart" | "other" 之一
   "container_name": "顶部导航栏", // 可选。该元素直接所属的父容器/列表/卡片名称，若无明显容器可设为 null
+  "text": "测试输入文本或边界值", // 仅在 action 为 input 时提供
+  "press_enter": false, // 仅在 action 为 input 时可选提供，是否敲击 Enter 键提交
   "direction": "down", // 仅在 action 为 zoom ("in"|"out")、rotate_3d ("left"|"right"|"up"|"down") 或 scroll ("down"|"up"|"left"|"right") 时提供
   "steps": 3, // 可选。针对 zoom 的滚轮滚动阶数 (默认 3)
   "distance": 250, // 可选。针对 rotate_3d 的拖拽位移像素跨度 (默认 250)
   "delta": 300, // 可选。针对 scroll 滚轮滚动的像素距离 (默认 300)
-  "x_percent": 0.5, // 仅在 click/hover/scroll/slide 时需要。水平坐标百分比 (0.0 到 1.0)
-  "y_percent": 0.5, // 仅在 click/hover/scroll/slide 时需要。垂直坐标百分比 (0.0 到 1.0)
+  "x_percent": 0.5, // 仅在 click/hover/input/scroll/slide 时需要。水平坐标百分比 (0.0 到 1.0)
+  "y_percent": 0.5, // 仅在 click/hover/input/scroll/slide 时需要。垂直坐标百分比 (0.0 到 1.0)
   "end_x_percent": 0.7, // 仅在 action 为 slide 时的终点水平百分比
   "end_y_percent": 0.5, // 仅在 action 为 slide 时的终点垂直百分比
   "validate_api": false, // 可选。布尔值。当悬停出现 Tooltip 或页面有关键数据卡片需要与接口比对时设为 true
