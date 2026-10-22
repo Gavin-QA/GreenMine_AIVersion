@@ -552,7 +552,7 @@ class ReportGenerator:
 
         data["kpi"]["total_steps"] = len(data["steps"])
 
-    def generate_html(self, output_path: Optional[Path | str] = None, disable_push: bool = False) -> Path:
+    def generate_html(self, output_path: Optional[Path | str] = None, disable_push: bool = False, update_hub: bool = True) -> Path:
         """组装并导出美观的前端独立交互式报告"""
         data = self.parse_run_data()
         out = Path(output_path).resolve() if output_path else (self.run_dir / "report.html")
@@ -669,11 +669,12 @@ class ReportGenerator:
         logger.info(f"🎉 高颜值离线交互式报告已生成: {out}")
 
         # 自动同步刷新全局门户首页 reports/runs/index.html
-        try:
-            from utils.report_hub import ReportHub
-            ReportHub().build_index_html()
-        except Exception as e:
-            logger.debug(f"更新全局门户 index.html 失败: {e}")
+        if update_hub:
+            try:
+                from utils.report_hub import ReportHub
+                ReportHub().build_index_html()
+            except Exception as e:
+                logger.debug(f"更新全局门户 index.html 失败: {e}")
 
         # 发送飞书通知
         if not disable_push:

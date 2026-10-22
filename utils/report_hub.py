@@ -501,13 +501,13 @@ class ReportHub:
         """强制重新生成所有子运行目录中的 report.html，并更新统一大盘"""
         from utils.report_generator import ReportGenerator
 
-        subdirs = sorted([d for d in self.runs_dir.iterdir() if d.is_dir() and not d.name.startswith((".", "__"))], key=lambda p: p.stat().st_mtime, reverse=True)
+        subdirs = get_all_run_folders()
         count = 0
         logger.info(f"🔄 开始强制全量刷新 {len(subdirs)} 个运行目录的 report.html...")
         for idx, d in enumerate(subdirs, 1):
             try:
                 gen = ReportGenerator(d)
-                gen.generate_html()
+                gen.generate_html(disable_push=True, update_hub=False)
                 count += 1
                 logger.info(f"[{idx}/{len(subdirs)}] ✅ 成功刷新: {d.name}/report.html")
             except Exception as e:
