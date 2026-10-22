@@ -262,7 +262,7 @@ class ExplorerAgent:
         except Exception as rep_err:
             logger.warning(f"生成最终报告失败: {rep_err}")
 
-    def smoke_tour(self, total_menus_limit: Optional[int] = None):
+    def smoke_tour(self, total_menus_limit: Optional[int] = None, context: str = ""):
         """二级菜单全量冒烟巡检模式"""
         from core.explorer_agent.page_map_builder import PageMapBuilder
         logger.info("🚀 [Smoke Tour] 启动全量业务二级菜单冒烟巡检...")
@@ -346,7 +346,7 @@ class ExplorerAgent:
                         macro_objective=f"对当前【{l1} -> {l2}】页面进行冒烟体检，识别核心组件",
                         base64_image=b64_plan,
                         global_history=[f"【{l1} -> {l2}】"],
-                        context="",
+                        context=context,
                         current_page_tree={},
                         reexplore_module=l2
                     )
@@ -373,3 +373,7 @@ class ExplorerAgent:
             logger.info(f"📊 冒烟巡检大盘已生成: file:///{report_file.as_posix()}")
         except Exception:
             pass
+
+    # 兼容历史公开接口命名
+    start_exploration = explore
+    start_smoke_tour = smoke_tour
