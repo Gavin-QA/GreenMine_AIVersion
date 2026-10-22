@@ -560,6 +560,41 @@ class ReportHub:
       box-shadow: 0 0 10px var(--primary-glow);
     }}
 
+    .hub-select {{
+      background: rgba(15, 23, 42, 0.7);
+      border: 1px solid var(--border-subtle);
+      color: #e2e8f0;
+      padding: 8px 14px;
+      border-radius: 10px;
+      font-size: 13px;
+      outline: none;
+      cursor: pointer;
+      transition: all 0.2s;
+    }}
+
+    .hub-select:focus, .hub-select:hover {{
+      border-color: var(--primary);
+      box-shadow: 0 0 10px var(--primary-glow);
+    }}
+
+    .hub-btn-reset {{
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-muted);
+      padding: 8px 16px;
+      border-radius: 10px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }}
+
+    .hub-btn-reset:hover {{
+      background: rgba(255, 255, 255, 0.1);
+      color: #fff;
+      border-color: rgba(255, 255, 255, 0.2);
+    }}
+
     /* Runs Cards List */
     .runs-grid {{
       display: flex;
@@ -898,15 +933,39 @@ class ReportHub:
 
     <!-- Tab 2: Bugs Table -->
     <div id="tab-bugs" class="tab-pane">
-      <div class="filter-bar">
-        <div class="filter-pills">
-          <button class="filter-pill active" onclick="filterBugs('all', event)">全部模式 ({total_bugs})</button>
-          <button class="filter-pill" onclick="filterBugs('explore', event)">自主探索 ({count_bugs_explore})</button>
-          <button class="filter-pill" onclick="filterBugs('smoke', event)">冒烟测试 ({count_bugs_smoke})</button>
-          <button class="filter-pill" onclick="filterBugs('yaml', event)">回归测试 ({count_bugs_yaml})</button>
+      <div class="filter-bar" style="background: rgba(15, 23, 42, 0.5); padding: 14px 20px; border-radius: 14px; border: 1px solid var(--border-subtle); margin-bottom: 20px; display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
+        <!-- 模式筛选 -->
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="color:var(--text-muted); font-size:13px; font-weight:600;">模式:</span>
+          <select id="bugModeFilter" class="hub-select" onchange="handleBugFilterChange()">
+            <option value="all">全部模式 ({total_bugs})</option>
+            <option value="explore">自主探索 ({count_bugs_explore})</option>
+            <option value="smoke">冒烟测试 ({count_bugs_smoke})</option>
+            <option value="yaml">回归测试 ({count_bugs_yaml})</option>
+          </select>
         </div>
 
-        <input type="text" id="bugSearch" class="search-box" placeholder="搜索 缺陷编号、标题或路径..." oninput="handleBugSearch()">
+        <!-- 状态筛选 -->
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="color:var(--text-muted); font-size:13px; font-weight:600;">状态:</span>
+          <select id="bugStatusFilter" class="hub-select" onchange="handleBugFilterChange()">
+            <option value="all">全部状态</option>
+            <option value="激活">激活</option>
+            <option value="已解决">已解决</option>
+            <option value="已提单">已提单</option>
+            <option value="已关闭">已关闭</option>
+            <option value="误报">误报</option>
+          </select>
+        </div>
+
+        <!-- 搜索栏 -->
+        <div style="display:flex; align-items:center; gap:8px; flex:1; min-width:320px;">
+          <span style="color:var(--text-muted); font-size:13px; font-weight:600;">搜索:</span>
+          <input type="text" id="bugSearch" class="search-box" style="flex:1; width:100%;" placeholder="搜索 缺陷编号、RUN ID、业务路径与目标..." oninput="handleBugSearch()">
+        </div>
+
+        <!-- 重置按钮 -->
+        <button class="hub-btn-reset" onclick="resetBugFilters()">重置筛选</button>
       </div>
       
       <table class="bugs-table">
@@ -1042,14 +1101,15 @@ class ReportHub:
           renderRuns();
       }} else if (tabId === 'tab-bugs') {{
           currentBugFilter = 'all';
+          currentBugStatusFilter = 'all';
           currentBugPage = 1;
           bugSearchQuery = '';
+          const modeSel = document.getElementById('bugModeFilter');
+          const statusSel = document.getElementById('bugStatusFilter');
           const searchInput = document.getElementById('bugSearch');
-          if(searchInput) searchInput.value = '';
-          
-          document.querySelectorAll('#tab-bugs .filter-pill').forEach(b => b.classList.remove('active'));
-          const firstPill = document.querySelector('#tab-bugs .filter-pill');
-          if(firstPill) firstPill.classList.add('active');
+          if (modeSel) modeSel.value = 'all';
+          if (statusSel) statusSel.value = 'all';
+          if (searchInput) searchInput.value = '';
           renderBugs();
       }}
     }}
@@ -1197,13 +1257,37 @@ class ReportHub:
     let currentBugPage = 1;
     let bugsPerPage = 10;
     let currentBugFilter = 'all';
+    let currentBugStatusFilter = 'all';
     let bugSearchQuery = '';
+
+    function handleBugFilterChange() {{
+      const modeSel = document.getElementById('bugModeFilter');
+      const statusSel = document.getElementById('bugStatusFilter');
+      if (modeSel) currentBugFilter = modeSel.value;
+      if (statusSel) currentBugStatusFilter = statusSel.value;
+      currentBugPage = 1;
+      renderBugs();
+    }}
+
+    function resetBugFilters() {{
+      currentBugFilter = 'all';
+      currentBugStatusFilter = 'all';
+      bugSearchQuery = '';
+      currentBugPage = 1;
+      const modeSel = document.getElementById('bugModeFilter');
+      const statusSel = document.getElementById('bugStatusFilter');
+      const searchInput = document.getElementById('bugSearch');
+      if (modeSel) modeSel.value = 'all';
+      if (statusSel) statusSel.value = 'all';
+      if (searchInput) searchInput.value = '';
+      renderBugs();
+    }}
 
     function filterBugs(type, event) {{
       currentBugFilter = type;
       currentBugPage = 1;
-      document.querySelectorAll('#tab-bugs .filter-pill').forEach(b => b.classList.remove('active'));
-      event.currentTarget.classList.add('active');
+      const modeSel = document.getElementById('bugModeFilter');
+      if (modeSel) modeSel.value = type;
       renderBugs();
     }}
 
@@ -1230,21 +1314,33 @@ class ReportHub:
       
       const filtered = allBugs.filter(b => {{
         const runId = (b.run_id || '').toLowerCase();
+        // 1. 模式过滤
         if (currentBugFilter === 'explore' && !runId.startsWith('explore_')) return false;
         if (currentBugFilter === 'smoke' && !runId.startsWith('smoke_')) return false;
         if (currentBugFilter === 'yaml' && !runId.startsWith('yaml_')) return false;
 
+        // 2. 状态过滤 (对齐 'Open' 与 '激活')
+        if (currentBugStatusFilter !== 'all') {{
+          let bStatus = b.status || '激活';
+          if (bStatus === 'Open') bStatus = '激活';
+          if (bStatus !== currentBugStatusFilter) return false;
+        }}
+
+        // 3. 模糊搜索：缺陷编号、RUN ID、业务路径与目标、异常详情
         if (bugSearchQuery) {{
           const matchId = (b.id || '').toLowerCase().includes(bugSearchQuery);
+          const matchRunId = (b.run_id || '').toLowerCase().includes(bugSearchQuery);
+          const matchUiPath = (b.ui_path || '').toLowerCase().includes(bugSearchQuery);
           const matchTitle = (b.title || '').toLowerCase().includes(bugSearchQuery);
           const matchStep = (b.step || '').toLowerCase().includes(bugSearchQuery);
-          if (!matchId && !matchTitle && !matchStep) return false;
+          const matchActual = (b.actual || '').toLowerCase().includes(bugSearchQuery);
+          if (!matchId && !matchRunId && !matchUiPath && !matchTitle && !matchStep && !matchActual) return false;
         }}
         return true;
       }});
 
       if (filtered.length === 0) {{
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:50px;color:var(--text-dim);">🎉 当前筛选条件下无任何缺陷记录</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:50px;color:var(--text-dim);">🎉 当前筛选条件下无任何缺陷记录</td></tr>';
         if (pageControls) pageControls.innerHTML = '';
         return;
       }}
