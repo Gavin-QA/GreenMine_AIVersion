@@ -154,6 +154,8 @@ class ReportHub:
                 except Exception as e:
                     logger.warning(f"加载 {global_bugs_file.name} 失败: {e}")
 
+        run_app_map = {r.get("run_id"): r.get("app", "zhaiwan") for r in runs if r.get("run_id")}
+
         all_bugs_dict = {}
         # 1. 以全局库为主导
         for b_id, gb in global_bugs_map.items():
@@ -187,10 +189,19 @@ class ReportHub:
             if raw_analysis == "无":
                 raw_analysis = ""
 
+            b_app = run_app_map.get(r_id)
+            if not b_app:
+                if target_run_dir and "liwutong" in target_run_dir.parts:
+                    b_app = "liwutong"
+                else:
+                    b_app = "zhaiwan"
+
             all_bugs_dict[b_id] = {
                 "id": b_id,
                 "title": gb.get("title", ""),
                 "run_id": r_id,
+                "app": b_app,
+                "app_name": APP_NAME_MAP.get(b_app, "寨湾矿山"),
                 "rel_run_path": rel_run_path,
                 "date": gb.get("date", ""),
                 "status": status_val,
@@ -271,9 +282,12 @@ class ReportHub:
                     if run_analysis == "无":
                         run_analysis = ""
 
+                    b_app = r.get("app") or run_app_map.get(r_id, "zhaiwan")
                     all_bugs_dict[b_id] = {
                         "id": b_id,
                         "title": b.get("title", ""),
+                        "app": b_app,
+                        "app_name": APP_NAME_MAP.get(b_app, "寨湾矿山"),
                         "rel_run_path": r_rel,
                         "run_id": r_id,
                         "date": b.get("creation_date", b.get("date", "")),
@@ -327,6 +341,15 @@ class ReportHub:
                 "mtime": r.get("mtime", 0)
             })
 
+        # 计算项目维度全景指标
+        zhaiwan_runs = sum(1 for r in summary_runs if r.get("app") == "zhaiwan")
+        zhaiwan_steps = sum(r.get("kpi", {}).get("total_steps", 0) for r in summary_runs if r.get("app") == "zhaiwan")
+        zhaiwan_bugs = sum(1 for b in all_bugs if b.get("app") == "zhaiwan")
+
+        liwutong_runs = sum(1 for r in summary_runs if r.get("app") == "liwutong")
+        liwutong_steps = sum(r.get("kpi", {}).get("total_steps", 0) for r in summary_runs if r.get("app") == "liwutong")
+        liwutong_bugs = sum(1 for b in all_bugs if b.get("app") == "liwutong")
+
         runs_json = json.dumps(summary_runs, ensure_ascii=False)
         bugs_json = json.dumps(all_bugs, ensure_ascii=False)
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -339,6 +362,12 @@ class ReportHub:
             total_runs=total_runs,
             total_steps=total_steps,
             total_bugs=total_bugs,
+            zhaiwan_runs=zhaiwan_runs,
+            zhaiwan_steps=zhaiwan_steps,
+            zhaiwan_bugs=zhaiwan_bugs,
+            liwutong_runs=liwutong_runs,
+            liwutong_steps=liwutong_steps,
+            liwutong_bugs=liwutong_bugs,
             count_runs_explore=count_runs_explore,
             count_runs_smoke=count_runs_smoke,
             count_runs_yaml=count_runs_yaml,
