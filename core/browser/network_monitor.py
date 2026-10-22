@@ -105,23 +105,35 @@ class NetworkMonitorMixin:
         except Exception:
             pass
 
+    def mark_action_timestamp(self):
+        """记录当前交互动作（点击/悬停）的发生时间戳，供识别动作触发的新网络请求 (Delta-Capture)"""
+        self.last_action_timestamp = time.time()
+        logger.debug(f"⏱️ [Auto-API Delta] 记录动作触发时间戳: {self.last_action_timestamp:.3f}")
+
     def set_page_scope(self, scope_name: Optional[str] = None):
         """
         设置当前页面/路由的作用域（如 '首页 -> 证照管理'、'智控管理 -> 智能通风'）。
         后续拦截到的非全局接口将优先关联至该页面作用域，彻底杜绝跨页面历史旧接口串扰。
         """
+        old_scope = getattr(self, "current_page_scope", "_global_shared")
         if not scope_name:
             self.current_page_scope = "_global_shared"
         else:
             self.current_page_scope = str(scope_name).strip()
 
+        if self.current_page_scope != old_scope:
+            self.scope_entry_time = time.time()
+            logger.debug(f"🌐 [Auto-API Scope] 当前接口作用域已切换至: '{self.current_page_scope}' (重置页面进入时间戳)")
+
         if not hasattr(self, "page_scoped_registry") or self.page_scoped_registry is None:
             self.page_scoped_registry = {"_global_shared": {}}
+        if not hasattr(self, "page_init_registry") or self.page_init_registry is None:
+            self.page_init_registry = {"_global_shared": {}}
 
         if self.current_page_scope not in self.page_scoped_registry:
             self.page_scoped_registry[self.current_page_scope] = {}
-
-        logger.debug(f"🌐 [Auto-API Scope] 当前接口作用域已切换至: '{self.current_page_scope}'")
+        if self.current_page_scope not in self.page_init_registry:
+            self.page_init_registry[self.current_page_scope] = {}
 
     def get_page_scope(self) -> str:
         """获取当前激活的页面作用域"""
@@ -136,8 +148,14 @@ class NetworkMonitorMixin:
             self.api_registry = {}
         if not hasattr(self, "page_scoped_registry") or self.page_scoped_registry is None:
             self.page_scoped_registry = {"_global_shared": {}}
+        if not hasattr(self, "page_init_registry") or self.page_init_registry is None:
+            self.page_init_registry = {"_global_shared": {}}
         if not hasattr(self, "current_page_scope"):
             self.current_page_scope = "_global_shared"
+        if not hasattr(self, "scope_entry_time"):
+            self.scope_entry_time = time.time()
+        if not hasattr(self, "last_action_timestamp"):
+            self.last_action_timestamp = 0.0
             
         def handle_response(response):
             if response.request.method == "OPTIONS":
@@ -170,14 +188,26 @@ class NetworkMonitorMixin:
                             endpoint_name = url_clean
 
                         active_scope = getattr(self, "current_page_scope", "_global_shared")
+                        now_ts = time.time()
+                        prev_hit = self.api_registry.get(endpoint_name, {}).get("hit_count", 0)
+                        hit_count = prev_hit + 1
+
+                        # 场景 1 核心支持：进入页面的前 15 秒捕获的数据接口，认定为页面初始化底座接口 (Page-Init)
+                        elapsed_since_entry = now_ts - getattr(self, "scope_entry_time", now_ts)
+                        is_page_init = elapsed_since_entry <= 15.0
+
+                        # 高频轮询识别：若同一个接口在当前作用域被反复调用 3 次以上，标记为轮询 (is_polling)
+                        is_polling = (hit_count >= 3)
 
                         record = {
                             "url": endpoint_name,
                             "full_url": url_clean,
                             "data": data,
-                            "timestamp": time.time(),
+                            "timestamp": now_ts,
                             "scope": active_scope,
-                            "hit_count": self.api_registry.get(endpoint_name, {}).get("hit_count", 0) + 1
+                            "hit_count": hit_count,
+                            "is_page_init": is_page_init,
+                            "is_polling": is_polling
                         }
 
                         # 核心黑科技 1：检测 HTTP 200 里的业务异常 (code != 0/200, 比如权限不足、系统内部错误)
@@ -215,7 +245,15 @@ class NetworkMonitorMixin:
                             self.page_scoped_registry[active_scope] = {}
                         self.page_scoped_registry[active_scope][endpoint_name] = record
 
-                        # 3. 时序流水记录（带防高频轮询暴洪：若与上一条是相同接口，则就地更新）
+                        # 3. 页面底座持久化注册表（场景1保障：Canvas 初始数据永久在位，不被轮询冲刷）
+                        if is_page_init:
+                            if not hasattr(self, "page_init_registry") or self.page_init_registry is None:
+                                self.page_init_registry = {"_global_shared": {}}
+                            if active_scope not in self.page_init_registry:
+                                self.page_init_registry[active_scope] = {}
+                            self.page_init_registry[active_scope][endpoint_name] = record
+
+                        # 4. 时序流水记录（带防高频轮询暴洪：若与上一条是相同接口，则就地更新）
                         if self.api_records and self.api_records[-1].get("url") == endpoint_name:
                             self.api_records[-1] = record
                         else:
@@ -232,7 +270,10 @@ class NetworkMonitorMixin:
         self.api_records = []
         self.api_registry = {}
         self.page_scoped_registry = {"_global_shared": {}}
+        self.page_init_registry = {"_global_shared": {}}
         self.current_page_scope = "_global_shared"
+        self.scope_entry_time = time.time()
+        self.last_action_timestamp = 0.0
 
     def get_all_registered_endpoints(self) -> List[str]:
         """获取当前生命周期内捕获到的所有唯一业务接口名称列表"""
@@ -382,6 +423,10 @@ class NetworkMonitorMixin:
         date_years = {"2022", "2023", "2024", "2025", "2026", "2027", "2028", "2029", "2030"}
 
         DOMAIN_KEYWORD_MAP = {
+            "采掘": ["mining", "extract", "excavate"],
+            "产量": ["yield", "output", "production"],
+            "计划": ["plan", "target"],
+            "统计": ["statistics", "stats"],
             "电耗": ["power", "electric", "powerconsumption"],
             "水耗": ["water", "waterconsumption"],
             "油耗": ["fuel", "fuelconsumption"],
@@ -432,7 +477,7 @@ class NetworkMonitorMixin:
                 score += 30.0
                 token_matched = True
 
-            # 领域业务关键词智能映射与加权 (解决中文图表 vs 英文接口名脱节痛点)
+            # 领域业务关键词智能映射与加权 (解决中文图表 vs 英文接口名/字段名脱节痛点)
             for kw, en_terms in DOMAIN_KEYWORD_MAP.items():
                 if kw in token:
                     for term in en_terms:
@@ -444,9 +489,56 @@ class NetworkMonitorMixin:
                         elif term in data_str.lower():
                             score += 30.0
                             token_matched = True
+                            if f"{kw}->{term}" not in matched:
+                                matched.append(f"{kw}->{term}")
 
             if token_matched and token not in matched:
                 matched.append(token)
+
+        # =========================================================================
+        # 方案 2 核心：业务实体强约束与防侥幸撞车过滤 (Entity Guard)
+        # =========================================================================
+        # 若检索词包含业务实体词（中文业务词、设备编码、或领域映射词），但该接口仅仅命中了弱纯数字或通用字段，
+        # 则说明该接口纯属数值撞车，绝非专属数据源！直接将得分一票否决清零，杜绝误入候选池。
+        has_strong_entity_in_tokens = any(
+            re.search(r'[\u4e00-\u9fa5]', t) or
+            (re.search(r'[A-Za-z]', t) and re.search(r'\d', t)) or
+            any(kw in t for kw in DOMAIN_KEYWORD_MAP)
+            for t in tokens
+        )
+        if has_strong_entity_in_tokens:
+            has_strong_hit = False
+            for m in matched:
+                if "->" in m:
+                    has_strong_hit = True
+                    break
+                if re.search(r'[\u4e00-\u9fa5]', m) and len(m) >= 2:
+                    has_strong_hit = True
+                    break
+                if re.search(r'[A-Za-z]', m) and re.search(r'\d', m):
+                    has_strong_hit = True
+                    break
+                if len(m) >= 3 and m.lower() in url_str:
+                    has_strong_hit = True
+                    break
+            
+            if not has_strong_hit:
+                return 0.0, []
+
+        # 方案 1 场景支持：页面初始化底座接口加权 (Page-Init Bonus)
+        if record.get("is_page_init", False):
+            score += 20.0
+
+        # 高频轮询降权 (Poller Demotion)：若被标记为轮询，且未精确命中其专属 URL，得分打折
+        if record.get("is_polling", False):
+            if not any(m.lower() == url_str for m in matched):
+                score *= 0.35
+
+        # 方案 2 场景支持：交互动作差量加权 (Action Delta-Capture)
+        action_ts = record.get("_action_ts", 0.0)
+        rec_ts = record.get("timestamp", 0.0)
+        if action_ts > 0 and rec_ts >= (action_ts - 0.2) and (rec_ts - action_ts) <= 3.0:
+            score += 45.0
 
         return round(score, 2), matched
 
@@ -501,6 +593,7 @@ class NetworkMonitorMixin:
         - 【第一级：页面作用域优先定向检索 (Tier 1)】
           1. 优先在【当前页面作用域池】及【关联过渡态作用域】中定向匹配，彻底杜绝跨页面历史旧接口串扰；
           2. 智能聚合页面切换瞬时发出的过渡请求（如 '首页 -> 资源管理' 与 '资源管理 -> 资源储量'）；
+          3. 智能融合【页面初始化底座接口池 (Page-Init)】，确保 Canvas 初始图表接口无论经过多少次轮询永远在线！
         - 【第二级：全量注册表智能穿透与兜底 (Tier 2)】
           若作用域池未命中核心业务特征，自动穿透检索全量会话注册表 (api_registry)。一旦命中高置信度业务数据源，自动补齐至当前页面池并消除误报！
         - 严格按 URL 去重选取 Top 核心接口（杜绝同一个轮询接口占满全部候选席位）；
@@ -510,6 +603,8 @@ class NetworkMonitorMixin:
             self.api_registry = {}
         if not hasattr(self, "page_scoped_registry") or self.page_scoped_registry is None:
             self.page_scoped_registry = {"_global_shared": {}}
+        if not hasattr(self, "page_init_registry") or self.page_init_registry is None:
+            self.page_init_registry = {"_global_shared": {}}
 
         active_scope = page_scope or getattr(self, "current_page_scope", "_global_shared")
 
@@ -523,6 +618,12 @@ class NetworkMonitorMixin:
         if active_scope in self.page_scoped_registry:
             scoped_map.update(self.page_scoped_registry[active_scope])
 
+        # 场景 1 核心保障：将该页面的持久化底座接口也合并进来！确保 Canvas 刚进页面时的接口永远在线
+        if active_scope in self.page_init_registry:
+            for ep_name, record in self.page_init_registry[active_scope].items():
+                if ep_name not in scoped_map:
+                    scoped_map[ep_name] = record
+
         # 关联过渡态作用域：如果 active_scope 为 "A -> B"，智能汇聚包含 A 或 B 的过渡注册表（解决页面跳转瞬时接口归属时差）
         scope_parts = [p.strip() for p in active_scope.split("->") if p.strip()]
         if scope_parts:
@@ -535,9 +636,12 @@ class NetworkMonitorMixin:
                             scoped_map[ep_name] = record
 
         tokens = self.extract_search_tokens(query_text) if query_text else []
+        action_ts = getattr(self, "last_action_timestamp", 0.0)
 
         tier1_scored = []
         for r in scoped_map.values():
+            if action_ts > 0:
+                r["_action_ts"] = action_ts
             score, matched = self.score_record(r, tokens)
             tier1_scored.append((score, matched, r))
         tier1_scored.sort(key=lambda x: x[0], reverse=True)
@@ -563,6 +667,8 @@ class NetworkMonitorMixin:
         if not tier1_confident and self.api_registry:
             tier2_scored = []
             for r in self.api_registry.values():
+                if action_ts > 0:
+                    r["_action_ts"] = action_ts
                 score, matched = self.score_record(r, tokens)
                 if score > 0:
                     tier2_scored.append((score, matched, r))
@@ -586,26 +692,38 @@ class NetworkMonitorMixin:
                                 break
                     direct_hit = True
 
-        # 若二级穿透未触发，按常规 Tier 1 结果选取
+        # 若二级穿透未触发，按常规 Tier 1 结果选取（限制轮询接口最多占1个席位，杜绝轮询霸榜）
         if not selected_candidates:
             if tier1_scored and tier1_scored[0][0] > 0:
                 direct_hit = True
+                polling_count = 0
                 for score, matched, r in tier1_scored:
                     u = r.get("url")
+                    is_poll = r.get("is_polling", False)
+                    if is_poll and polling_count >= 1:
+                        continue
                     if score > 0 and u not in seen_urls and len(selected_candidates) < max_records:
                         selected_candidates.append((score, matched, r))
                         seen_urls.add(u)
+                        if is_poll:
+                            polling_count += 1
                 hit_info = ", ".join([f"'{r['url']}'(得分:{s}, 命中:{m})" for s, m, r in selected_candidates])
                 logger.info(f"🎯 [Auto-API Inverted Index][作用域: {active_scope}] 倒排索引命中核心候选接口: {hit_info}")
             else:
                 logger.info(f"ℹ️ [Auto-API Inverted Index][作用域: {active_scope}] 未直接命中特征Token，回退选取最近活跃的 {max_records} 个独立业务接口供全量核验。")
                 fallback_pool = list(scoped_map.values()) if scoped_map else list(self.api_registry.values())
                 sorted_by_time = sorted(fallback_pool, key=lambda x: x.get("timestamp", 0), reverse=True)
+                polling_count = 0
                 for r in sorted_by_time:
                     u = r.get("url")
+                    is_poll = r.get("is_polling", False)
+                    if is_poll and polling_count >= 1:
+                        continue
                     if u not in seen_urls and len(selected_candidates) < max_records:
                         selected_candidates.append((0.0, [], r))
                         seen_urls.add(u)
+                        if is_poll:
+                            polling_count += 1
 
         # 压缩报文
         compressed_apis = []

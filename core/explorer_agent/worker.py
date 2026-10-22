@@ -279,6 +279,9 @@ class ExplorerWorker:
                 # --- 分支 B: 物理交互执行 (Hover / Click) ---
                 if not batch_chart_handled:
                     try:
+                        if hasattr(self.driver, "mark_action_timestamp"):
+                            self.driver.mark_action_timestamp()
+
                         if action_type == "hover":
                             self.driver.hover(x, y, delay_after=1.0)
                             time.sleep(2.0)

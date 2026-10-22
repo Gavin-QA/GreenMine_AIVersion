@@ -260,6 +260,8 @@ class ActionRunner:
         )
         
         # 3. Action
+        if hasattr(self.driver, "mark_action_timestamp"):
+            self.driver.mark_action_timestamp()
         if action_type == "hover":
             self.driver.hover(x, y)
         else:
