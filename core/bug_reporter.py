@@ -2,6 +2,8 @@ import os
 import json
 import shutil
 import logging
+import base64
+import threading
 from datetime import datetime
 from pathlib import Path
 
@@ -13,6 +15,7 @@ logger = logging.getLogger("core.bug_reporter")
 
 class BugReporter:
     def __init__(self, vision_agent=None):
+        self._lock = threading.Lock()
         # 全局持久资产目录: artifacts/bugs/
         self.global_bugs_dir = GLOBAL_BUGS_DIR
         self.global_bugs_dir.mkdir(parents=True, exist_ok=True)
@@ -172,6 +175,19 @@ class BugReporter:
         
         logger.info(f"✅ 缺陷报告固化完毕: {detail_path}")
         logger.info("=" * 60)
+
+        # 5. 严格保证时序：必须在单次缺陷文件与全局库 100% 完全写入闭环落盘后，才启动后台异步分析，杜绝读写冲突
+        if not dup_id and not analysis_notes:
+            self._start_async_analysis(
+                bug_id=bug_id,
+                detail_path=detail_path,
+                title=title,
+                step_prompt=step_prompt,
+                actual_result=actual_result,
+                ui_path=ui_path,
+                crash_image_path=str(new_img_path) if new_img_path else None
+            )
+
         return bug_id
 
     def _create_new_bug(self, run_id, title, step, actual, date):
@@ -257,6 +273,99 @@ class BugReporter:
         return None
 
     def _save_globals(self):
-        # 1. JSON
-        with open(self.global_json, "w", encoding="utf-8") as f:
-            json.dump(self.global_bugs, f, ensure_ascii=False, indent=2)
+        with self._lock:
+            with open(self.global_json, "w", encoding="utf-8") as f:
+                json.dump(self.global_bugs, f, ensure_ascii=False, indent=2)
+
+    def _start_async_analysis(self, bug_id: str, detail_path: Path, title: str, step_prompt: str, actual_result: str, ui_path: str, crash_image_path: str = None):
+        """
+        启动后台守护线程进行 AI 智能初诊，绝不阻塞主测试探索流程。
+        前提保障：调用此方法时，单次 Bug JSON 与全局 Bug 库均已完全完成磁盘写入与落盘。
+        """
+        thread = threading.Thread(
+            target=self._async_analyze_worker,
+            args=(bug_id, Path(detail_path), title, step_prompt, actual_result, ui_path, crash_image_path),
+            daemon=True,
+            name=f"BugAnalysis-{bug_id}"
+        )
+        thread.start()
+
+    def _async_analyze_worker(self, bug_id: str, detail_path: Path, title: str, step_prompt: str, actual_result: str, ui_path: str, crash_image_path: str = None):
+        """后台异步执行大模型根因诊断并静默回填缺陷归因备注（线程安全）"""
+        try:
+            logger.info(f"🧠 [AI 智能初诊] 开始异步分析新缺陷 [{bug_id}] 的可能根因与排查指引...")
+
+            system_prompt = (
+                "你是一个资深的端到端 UI 自动化测试专家与全栈排查架构师。\n"
+                "当测试框架捕获到一个新的缺陷（包括网络异常、控制台报错或断言冲突）时，请结合步骤、路径、报错日志以及案发现场截图，进行客观、严谨、精炼的【AI 智能初诊与排查指引】。\n"
+                "你必须且只能返回合法的 JSON 对象，格式要求：\n"
+                "{\n"
+                '  "category": "缺陷定位与表现（如：页面白屏 / 前端组件报错 / 网络接口 404/500 / UI与数据报文不符）",\n'
+                '  "root_cause": "核心疑点与推断根因（提取最关键的报错线索如 URL、状态码、字段名，推断可能的技术原因）",\n'
+                '  "troubleshooting": "建议排查方向（建议找哪端开发，如前端大屏/后端微服务/流媒体，以及人工复核时的关注点）"\n'
+                "}\n"
+                "不要输出任何 Markdown 标识符。"
+            )
+
+            user_prompt = (
+                f"【缺陷基本信息】\n"
+                f"- 缺陷编号: {bug_id}\n"
+                f"- 缺陷标题: {title}\n"
+                f"- 交互步骤: {step_prompt}\n"
+                f"- 业务路径: {ui_path}\n"
+                f"- 实际报错详情:\n{actual_result}\n\n"
+                "请输出针对该缺陷的结构化初诊分析 JSON。"
+            )
+
+            base64_img = None
+            if crash_image_path and Path(crash_image_path).exists():
+                try:
+                    with open(crash_image_path, "rb") as f:
+                        base64_img = base64.b64encode(f.read()).decode("utf-8")
+                except Exception as ie:
+                    logger.debug(f"读取缺陷截图 base64 失败 (将降级为纯文本分析): {ie}")
+
+            result = self.vision._call_llm(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                base64_image=base64_img
+            )
+
+            category = result.get("category", "待定")
+            root_cause = result.get("root_cause", "暂无推断根因")
+            troubleshooting = result.get("troubleshooting", "暂无排查建议")
+
+            formatted_notes = (
+                f"🤖【AI 智能初诊与排查指引】\n"
+                f"1. 缺陷定位与表现：{category}\n"
+                f"2. 核心疑点与推断根因：{root_cause}\n"
+                f"3. 建议排查方向：{troubleshooting}"
+            )
+
+            # 回填更新本地单次运行 json 与全局缺陷库（线程互斥保护，防止写入冲突）
+            with self._lock:
+                if detail_path.exists():
+                    try:
+                        with open(detail_path, "r", encoding="utf-8") as f:
+                            d_json = json.load(f)
+                        # 仅在尚未有人工写入备注时才回填
+                        if not d_json.get("analysis_notes"):
+                            d_json["analysis_notes"] = formatted_notes
+                            with open(detail_path, "w", encoding="utf-8") as f:
+                                json.dump(d_json, f, ensure_ascii=False, indent=2)
+                    except Exception as fe:
+                        logger.warning(f"回填运行目录 Bug 文件失败 ({detail_path.name}): {fe}")
+
+                for b in self.global_bugs:
+                    if b.get("id") == bug_id:
+                        if not b.get("analysis_notes"):
+                            b["analysis_notes"] = formatted_notes
+                        break
+                with open(self.global_json, "w", encoding="utf-8") as f:
+                    json.dump(self.global_bugs, f, ensure_ascii=False, indent=2)
+
+            logger.info(f"✨ [AI 智能初诊完成] 已成功为新缺陷 [{bug_id}] 回填排查思路！")
+
+        except Exception as e:
+            logger.warning(f"⚠️ [AI 智能初诊跳过] 后台异步分析缺陷 [{bug_id}] 发生异常 (不影响测试运行): {e}")
+
