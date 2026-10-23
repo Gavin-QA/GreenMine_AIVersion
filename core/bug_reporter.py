@@ -118,11 +118,24 @@ class BugReporter:
         # Ensure run_id and metadata in bug_record is always up to date
         if bug_record:
             bug_record["run_id"] = run_id
-            if action_type: bug_record["action_type"] = action_type
-            if target_element: bug_record["target_element"] = target_element
-            if ui_path: bug_record["ui_path"] = ui_path
-            if global_step: bug_record["global_step"] = global_step
-            if tags: bug_record["tags"] = tags
+            if dup_id:
+                # 查重合并时：保持首次触发该 Bug 的核心元数据（首发动作与首发步数）不变，仅记录最新复现步数
+                if global_step:
+                    bug_record["last_recurrence_step"] = global_step
+                if "global_step" not in bug_record or not bug_record["global_step"]:
+                    bug_record["global_step"] = global_step
+                if "target_element" not in bug_record or not bug_record["target_element"]:
+                    bug_record["target_element"] = target_element
+                if "action_type" not in bug_record or not bug_record["action_type"]:
+                    bug_record["action_type"] = action_type
+                if "ui_path" not in bug_record or not bug_record["ui_path"]:
+                    bug_record["ui_path"] = ui_path
+            else:
+                if action_type: bug_record["action_type"] = action_type
+                if target_element: bug_record["target_element"] = target_element
+                if ui_path: bug_record["ui_path"] = ui_path
+                if global_step: bug_record["global_step"] = global_step
+            if tags and not bug_record.get("tags"): bug_record["tags"] = tags
             if severity: bug_record["severity"] = severity
             if analysis_notes: bug_record["analysis_notes"] = analysis_notes
 

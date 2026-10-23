@@ -2216,20 +2216,21 @@
     "occurrences": 4,
     "last_seen": "2026-10-22",
     "step": "[CLICK] 交互目标: '左侧业务面板中【810分段1#采场】卡片的标题栏（可点击区域）' (页面路径: 安全管理 -> 采场可视化)",
-    "actual": "[network_error] \n[console_error (代码位置: e+04,:0)] \n[network_error] \n[console_error (代码位置: e+04,:0)] \n[network_error] \n[console_error (代码位置: e+04,:0)] \n[network_error] \n[console_error (代码位置: e+04,:0)] \n[network_error] \n[console_error (代码位置: e+04,:0)] \n[network_error] \n[console_error (代码位置: e+04,:0)] \n[network_error] \n[console_error (代码位置: e+04,:0)] \n[network_error] \n[console_error (代码位置: e+04,:0)] \n[network_error] \n[console_error (代码位置: e+04,:0)] \n[network_error] \n[console_error (代码位置: e+04,:0)] \n[network_error] \n[console_error (代码位置: e+04,:0)] \n[network_error] \n[console_error (代码位置: e+04,:0)] \n[network_error] \n[console_error (代码位置: e+04,:0)] \n[network_error] \n[console_error (代码位置: e+04,:0)] \n[network_error] \n[console_error (代码位置: e+04,:0)] \n[network_error] \n[console_error (代码位置: e+04,:0)] \n[network_error] \n[console_error (代码位置: e+04,:0)] \n[network_error] \n[console_error (代码位置: e+04,:0)] \n[network_error] \n[console_error (代码位置: e+04,:0)] \n[network_error] \n[console_error (代码位置: e+04,:0)] \n[network_error] \n[console_error (代码位置: e+04,:0)] \n[network_error] \n[console_error (代码位置: e+04,:0)] ",
+    "actual": "[network_error] HTTP 404: http://221.234.48.197:8808/vzlm/live/542/e+04,\n[console_error (代码位置: e+04,:0)] Failed to load resource: the server responded with a status of 404 (Not Found)\n（说明：采场详情弹窗打开后，视频流组件请求非法推流地址 /vzlm/live/542/e+04, 触发高频死循环 404 请求，累计捕获 770+ 次异常）",
     "app": "zhaiwan",
     "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/explore_20261022_183127/bugs/BUG-20261022-002_230426.png",
     "action_type": "CLICK",
-    "target_element": "‘810分段1#采场’信息弹窗右上角关闭按钮❌",
+    "target_element": "左侧业务面板中【810分段1#采场】卡片的标题栏（可点击区域）",
     "ui_path": "安全管理 -> 采场可视化",
-    "global_step": 598,
+    "global_step": 595,
     "tags": [
       "CLICK",
       "安全管理",
       "采场可视化",
       "按钮",
       "弹窗"
-    ]
+    ],
+    "last_recurrence_step": 598
   },
   {
     "id": "BUG-20261023-001",

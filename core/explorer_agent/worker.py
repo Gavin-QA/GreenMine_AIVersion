@@ -664,10 +664,14 @@ class ExplorerWorker:
                     actual_lines = []
                     for b in bugs:
                         t = b.get("type", "error")
-                        text_val = b.get("text", "")
+                        text_val = b.get("msg") or b.get("text") or ""
+                        if t == "network_error" and b.get("url"):
+                            status_val = b.get("status", "Error")
+                            text_val = f"HTTP {status_val}: {b.get('url')}"
                         loc = b.get("location", "")
                         loc_str = f" (代码位置: {loc})" if loc else ""
-                        actual_lines.append(f"[{t}{loc_str}] {text_val}")
+                        line_str = f"[{t}{loc_str}] {text_val}".strip()
+                        actual_lines.append(line_str)
 
                     crash_img_cand = None
                     if action_type == "hover" and 'hover_img_path' in locals() and hover_img_path and Path(hover_img_path).exists():
