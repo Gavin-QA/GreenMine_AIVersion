@@ -1811,8 +1811,8 @@
     "severity": 3,
     "status": "已关闭",
     "date": "2026-10-10",
-    "occurrences": 5,
-    "last_seen": "2026-10-21",
+    "occurrences": 10,
+    "last_seen": "2026-10-23",
     "step": "[CHART-PROBE] 批量核验图表: '右侧‘设备巡检记录’折线图（显示本月/历史/累计巡检次数趋势）' (9个数据点) (路径: 设备管理 -> 设备管理一张图)",
     "actual": "图表批量断言未通过: 图表共9个数据点，经与接口 getEquipmentInspectRecordPeriodStatistic 的 date/count 字段严格比对，发现3处严重不一致：① 2026-03 图表显示0，接口标记有3条省略记录；② 2026-05 图表显示0，接口值为23；③ 2026-09与2026-10 图表显示1，但接口 count 数组未提供对应值（仅到2026-08），属前端填充虚假数据。不符合‘全量数据点与后台一致’的核心校验铁律，判定为失败。",
     "screenshot": "D:/Auto/electron_ai_vision/reports/runs/explore_20261012_182720/bugs/BUG-20261010-002.png",
@@ -2077,16 +2077,16 @@
   },
   {
     "id": "BUG-20261012-001",
-    "run_id": "explore_20261015_182652",
+    "run_id": "explore_20261012_182720",
     "title": "[explore_20261012_182720] 图表全量数据核验异常: '右侧数据分析面板中的‘最新核实资源量’锥形图（五边形雷达图）'",
-    "severity": 3,
+    "severity": "Medium",
     "status": "误报",
     "date": "2026-10-12",
     "occurrences": 2,
-    "last_seen": "2026-10-15",
+    "last_seen": "2026-10-12",
     "step": "[CHART-PROBE] 批量核验图表: '右侧数据分析面板中的‘最新核实资源量’锥形图（五边形雷达图）' (3个数据点) (路径: 资源管理 -> 资源储量)",
     "actual": "图表批量断言未通过: 图表中2025年5项资源量数据（证实储量28,758；可信储量20,238；探明资源量39,687；控制资源量29,318；推断资源量36,157）在接口 getFdaConfigByKey 的 data.data.resourceReserves.resourceSituation 中全部存在且数值精确一致（字段名存在业务映射错位但数值一一对应）；但2024年5项数据（证实储量15,465等）在所有候选接口响应中均未找到对应数组，属于数据断流。由于图表明确展示了2024年完整数据点，而后端接口未返回该年份数据,构成严重数据不一致，判定为失败。",
-    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/explore_20261015_182652/bugs/BUG-20261012-001.png",
+    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/explore_20261012_182720/bugs/BUG-20261012-001.png",
     "ui_path": "资源管理 -> 资源储量"
   },
   {
@@ -2205,5 +2205,75 @@
     "actual": "[network_error] \n[console_error (代码位置: getCurUserMessageList:0)] \n[console_error (代码位置: index-CakHSA1M.js:4416)] \n[page_error] \n[network_error] \n[console_error (代码位置: getLeaderDutyStatistic:0)] \n[console_error (代码位置: index-CakHSA1M.js:4416)] \n[network_error] \n[console_error (代码位置: getPositionAttendanceInfo:0)] \n[console_error (代码位置: index-CakHSA1M.js:4416)] \n[page_error] \n[page_error] ",
     "app": "zhaiwan",
     "screenshot": "reports/runs/zhaiwan/explore_20261021_114451/bugs/BUG-20261021-001.png"
+  },
+  {
+    "id": "BUG-20261022-002",
+    "run_id": "explore_20261022_183127",
+    "title": "[explore_20261022_183127] 探索操作 '左侧业务面板中【810分段1#采场】卡片的标题栏（可点击区域）' 触发底层异常",
+    "severity": "Medium",
+    "status": "激活",
+    "date": "2026-10-22",
+    "occurrences": 4,
+    "last_seen": "2026-10-22",
+    "step": "[CLICK] 交互目标: '左侧业务面板中【810分段1#采场】卡片的标题栏（可点击区域）' (页面路径: 安全管理 -> 采场可视化)",
+    "actual": "[network_error] \n[console_error (代码位置: e+04,:0)] \n[network_error] \n[console_error (代码位置: e+04,:0)] \n[network_error] \n[console_error (代码位置: e+04,:0)] \n[network_error] \n[console_error (代码位置: e+04,:0)] \n[network_error] \n[console_error (代码位置: e+04,:0)] \n[network_error] \n[console_error (代码位置: e+04,:0)] \n[network_error] \n[console_error (代码位置: e+04,:0)] \n[network_error] \n[console_error (代码位置: e+04,:0)] \n[network_error] \n[console_error (代码位置: e+04,:0)] \n[network_error] \n[console_error (代码位置: e+04,:0)] \n[network_error] \n[console_error (代码位置: e+04,:0)] \n[network_error] \n[console_error (代码位置: e+04,:0)] \n[network_error] \n[console_error (代码位置: e+04,:0)] \n[network_error] \n[console_error (代码位置: e+04,:0)] \n[network_error] \n[console_error (代码位置: e+04,:0)] \n[network_error] \n[console_error (代码位置: e+04,:0)] \n[network_error] \n[console_error (代码位置: e+04,:0)] \n[network_error] \n[console_error (代码位置: e+04,:0)] \n[network_error] \n[console_error (代码位置: e+04,:0)] \n[network_error] \n[console_error (代码位置: e+04,:0)] \n[network_error] \n[console_error (代码位置: e+04,:0)] \n[network_error] \n[console_error (代码位置: e+04,:0)] ",
+    "app": "zhaiwan",
+    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/explore_20261022_183127/bugs/BUG-20261022-002_230426.png",
+    "action_type": "CLICK",
+    "target_element": "‘810分段1#采场’信息弹窗右上角关闭按钮❌",
+    "ui_path": "安全管理 -> 采场可视化",
+    "global_step": 598,
+    "tags": [
+      "CLICK",
+      "安全管理",
+      "采场可视化",
+      "按钮",
+      "弹窗"
+    ]
+  },
+  {
+    "id": "BUG-20261023-001",
+    "run_id": "explore_20261022_183127",
+    "title": "[explore_20261022_183127] 探索操作 '左侧车辆统计圆形仪表盘（显示115辆）' 触发底层异常",
+    "severity": "Medium",
+    "status": "激活",
+    "date": "2026-10-23",
+    "occurrences": 1,
+    "last_seen": "2026-10-23",
+    "step": "[HOVER] 交互目标: '左侧车辆统计圆形仪表盘（显示115辆）' (页面路径: 生产管理 -> 卡车调度)",
+    "actual": "[console_error (代码位置: wmts:0)] ",
+    "app": "zhaiwan",
+    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/explore_20261022_183127/bugs/BUG-20261023-001.png",
+    "action_type": "HOVER",
+    "target_element": "左侧车辆统计圆形仪表盘（显示115辆）",
+    "ui_path": "生产管理 -> 卡车调度",
+    "global_step": 1050,
+    "tags": [
+      "HOVER",
+      "生产管理",
+      "卡车调度"
+    ]
+  },
+  {
+    "id": "BUG-20261023-002",
+    "run_id": "explore_20261022_183127",
+    "title": "[explore_20261022_183127] UI数据与接口原始报文不匹配: '特种设备分类数据列表区域（含通风设备、破碎设备、起重机械三项）'",
+    "severity": "Medium",
+    "status": "激活",
+    "date": "2026-10-23",
+    "occurrences": 1,
+    "last_seen": "2026-10-23",
+    "step": "[HOVER] 核验: 验证当前‘特种设备分类’中三类设备的数量与占比数值是否与后台接口返回一致 (路径: 设备管理 -> 特种作业设备)",
+    "actual": "数据断言失败: 截图显示特种设备分类中：通风设备4台(50%)、破碎设备2台(25%)、起重机械2台(25%)；候选接口 getKsEquipmentInfoManagementList 返回 total=1，仅1条起重机械记录（categoryLabel='起重机械'），缺少通风设备与破碎设备条目，且起重机械数量（1 vs 2）不一致；getFdaConfigByKey 无相关字段。因接口语义匹配（设备管理列表），属同源但核心数量严重不符，判定为 MISMATCH。",
+    "app": "zhaiwan",
+    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/explore_20261022_183127/bugs/BUG-20261023-002.png",
+    "action_type": "HOVER",
+    "target_element": "核验: 验证当前‘特种设备分类’中三类设备的数量与占比数值是否与后台接口返回一致",
+    "ui_path": "路径: 设备管理 -> 特种作业设备",
+    "tags": [
+      "HOVER",
+      "路径: 设备管理",
+      "特种作业设备"
+    ]
   }
 ]
