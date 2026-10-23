@@ -317,13 +317,13 @@ class ReportGenerator:
                 data["macro_objective"] = "全量二级业务菜单冒烟巡检"
 
         # 统计 Planner 次数
-        data["kpi"]["planner_phases"] = len(re.findall(r"🧠 \[Planner Phase\]", text))
+        data["kpi"]["planner_phases"] = len(re.findall(r"🧠 \[Planner Phase(?:\s+\d+)?\]", text))
 
         # 提取 Planner 和 Worker 单步
         shots_dir = self.run_dir / "screenshots"
         
         # 按 Planner Phase 切分
-        planner_blocks = re.split(r"🧠 \[Planner Phase\] 开始(?:宏观)?规划", text)
+        planner_blocks = re.split(r"🧠 \[Planner Phase(?:\s+\d+)?\] 开始(?:宏观)?规划", text)
         if len(planner_blocks) > 1:
             for p_idx, p_block in enumerate(planner_blocks[1:]):
                 planner_phase_num = p_idx + 1
@@ -721,7 +721,7 @@ class ReportGenerator:
                         "tag": "div",
                         "text": {
                             "tag": "lark_md",
-                            "content": f"**🏷️ Run ID:** {data.get('run_id')}\n**🎯 宏观目标:** {data.get('macro_objective')}\n\n**📉 预期步数:** {data['kpi'].get('max_steps', '-')} | **预期耗时:** {data['kpi'].get('max_time', '-')}\n**📈 实际执行:** {data['kpi'].get('total_steps')} 步 | **实际耗时:** {data.get('duration')}\n\n**🐞 捕获严重缺陷:** {bugs_count} 个\n**🗺️ 触达二级页面:** {data['kpi'].get('page_scopes_count', 0)}/{data['kpi'].get('total_menus_count', 33)} 个 (覆盖率 {data['kpi'].get('page_coverage_rate', 0):.1f}%)"
+                            "content": f"**🏷️ Run ID:** {data.get('run_id')}\n**🎯 宏观目标:** {data.get('macro_objective')}\n\n**📉 预期步数:** {data['kpi'].get('max_steps', '-')} | **预期耗时:** {data['kpi'].get('max_time', '-')}\n**🧠 规划决策:** {data['kpi'].get('planner_phases', 0)} 轮 | **📈 实际执行:** {data['kpi'].get('total_steps')} 步 | **实际耗时:** {data.get('duration')}\n\n**🐞 捕获严重缺陷:** {bugs_count} 个\n**🗺️ 触达二级页面:** {data['kpi'].get('page_scopes_count', 0)}/{data['kpi'].get('total_menus_count', 33)} 个 (覆盖率 {data['kpi'].get('page_coverage_rate', 0):.1f}%)"
                         }
                     },
                     {

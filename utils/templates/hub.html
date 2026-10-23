@@ -1183,7 +1183,7 @@
               </div>
 
               <div class="run-badges-row">
-                <div class="metric-badge">🎯 ${totalSteps} 步轨迹</div>
+                <div class="metric-badge">${kpi.planner_phases ? `🧠 ${kpi.planner_phases} 轮规划 / ` : ''}🎯 ${totalSteps} 步执行</div>
                 <div class="metric-badge ${bugsCount > 0 ? 'bugs' : ''}">🐞 ${bugsCount} 个缺陷</div>
                 <div class="metric-badge">🌐 ${apisCount} 个业务接口</div>
                 <div class="metric-badge">🗺️ ${pagesCount}/${totalMenus} 二级页面 (${coverageRate}%)</div>

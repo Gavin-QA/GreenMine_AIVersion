@@ -99,6 +99,7 @@ class ExplorerAgent:
 
         global_history: List[str] = []
         steps_taken = 0
+        planner_steps = 0
         trajectory: List[Dict[str, Any]] = []
         start_time = time.time()
 
@@ -120,6 +121,7 @@ class ExplorerAgent:
                 break
 
             # 1. 统帅规划阶段 (Planner Phase)
+            planner_steps += 1
             plan_res = self.planner.plan_next_task(
                 macro_objective=objective,
                 global_history=global_history,
@@ -131,7 +133,8 @@ class ExplorerAgent:
                 mailing_dialog_open=self.mailing_dialog_open,
                 steps_taken=steps_taken,
                 max_steps=max_steps,
-                current_path=self.current_path
+                current_path=self.current_path,
+                planner_step=planner_steps
             )
 
             # 熔断或致命异常退出
@@ -184,7 +187,14 @@ class ExplorerAgent:
         # =====================================================================
         # 收尾：用例固化、产物归档与可视化报告生成
         # =====================================================================
-        self._finish_exploration(trajectory, start_time, steps_taken)
+        self._finish_exploration(trajectory, start_time, steps_taken, planner_steps, max_steps)
+        return {
+            "planner_steps": planner_steps,
+            "worker_steps": steps_taken,
+            "max_steps": max_steps,
+            "elapsed_seconds": time.time() - start_time,
+            "trajectory": trajectory
+        }
 
     def _load_resume_state(self, resume_from: str, global_history: List[str]):
         """恢复历史断点状态"""
@@ -237,11 +247,12 @@ class ExplorerAgent:
         except Exception as e:
             logger.warning(f"保存检查点失败: {e}")
 
-    def _finish_exploration(self, trajectory: List[Dict[str, Any]], start_time: float, steps_taken: int):
+    def _finish_exploration(self, trajectory: List[Dict[str, Any]], start_time: float, steps_taken: int, planner_steps: int = 0, max_steps: int = 0):
         """收尾归档、生成用例与可视化大盘"""
         elapsed = time.time() - start_time
+        max_steps_str = f"/{max_steps}" if max_steps else ""
         logger.info("\n" + "=" * 60)
-        logger.info(f"🏁 自主探索结束！耗时: {elapsed:.1f} 秒, 实际完成步数: {steps_taken}")
+        logger.info(f"🏁 自主探索结束！耗时: {elapsed:.1f} 秒 | 🧠 Planner 规划: {planner_steps} 轮 | 🎯 Worker 执行: {steps_taken}{max_steps_str} 步")
         logger.info("=" * 60)
 
         # 1. 导出自动化回归用例

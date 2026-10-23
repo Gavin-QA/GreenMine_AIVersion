@@ -46,7 +46,8 @@ class ExplorerPlanner:
         mailing_dialog_open: bool = False,
         steps_taken: int = 0,
         max_steps: int = 2000,
-        current_path: Optional[List[str]] = None
+        current_path: Optional[List[str]] = None,
+        planner_step: int = 1
     ) -> Optional[Dict[str, Any]]:
         """
         根据当前全屏环境快照规划下一步的子目标与步数预算。
@@ -54,7 +55,7 @@ class ExplorerPlanner:
         """
         container_stack = container_stack or []
         logger.info(f"\n" + "=" * 40)
-        logger.info(f"🧠 [Planner Phase] 开始规划，当前进度: {steps_taken}/{max_steps}")
+        logger.info(f"🧠 [Planner Phase {planner_step}] 开始规划，当前进度: {steps_taken}/{max_steps}")
 
         try:
             # 1. 捕获规划快照 (启用背景熄灯聚焦)

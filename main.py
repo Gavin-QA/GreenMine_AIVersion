@@ -173,18 +173,26 @@ def run_explore_mode(driver: ElectronDriver, vision_agent: VisionAgent, args):
 
     start_time = datetime.now()
     
-    explorer.start_exploration(
+    stats = explorer.start_exploration(
         objective=args.explore,
         max_steps=args.max_steps,
         max_time_mins=args.max_times,
         context=context_str,
         resume_from=args.resume_from,
         reexplore_module=reexplore_module
-    )
+    ) or {}
     
     end_time = datetime.now()
     duration = (end_time - start_time).total_seconds()
-    logging.getLogger("main").info(f"⏳ 任务执行统计 | 起始时间: {start_time.strftime('%Y-%m-%d %H:%M:%S')} | 结束时间: {end_time.strftime('%Y-%m-%d %H:%M:%S')} | 实际耗时: {format_duration(duration)}")
+    p_steps = stats.get("planner_steps", 0)
+    w_steps = stats.get("worker_steps", 0)
+    logging.getLogger("main").info(
+        f"⏳ 任务执行统计 | 起始时间: {start_time.strftime('%Y-%m-%d %H:%M:%S')} | "
+        f"结束时间: {end_time.strftime('%Y-%m-%d %H:%M:%S')} | "
+        f"实际耗时: {format_duration(duration)} | "
+        f"🧠 Planner 规划: {p_steps} 轮 | "
+        f"🎯 Worker 执行: {w_steps}/{args.max_steps} 步"
+    )
 
 
 def run_smoke_tour_mode(driver: ElectronDriver, vision_agent: VisionAgent, args):
