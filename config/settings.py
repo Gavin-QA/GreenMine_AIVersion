@@ -68,6 +68,7 @@ class Settings:
         self.llm_api_key: str = os.getenv("LLM_API_KEY") or llm_cfg.get("api_key", "")
         self.llm_base_url: str = os.getenv("LLM_BASE_URL") or llm_cfg.get("base_url", "https://api.deepseek.com/v1")
         self.llm_model: str = os.getenv("LLM_MODEL") or llm_cfg.get("model", "deepseek-v4-flash-vision-exp")
+        self.llm_bug_analysis_model: str = os.getenv("LLM_BUG_ANALYSIS_MODEL") or llm_cfg.get("bug_analysis_model") or self.llm_model
         self.llm_timeout: float = float(os.getenv("LLM_TIMEOUT") or llm_cfg.get("timeout", 60.0))
         self.llm_temperature: float = float(os.getenv("LLM_TEMPERATURE") or llm_cfg.get("temperature", 0.1))
 

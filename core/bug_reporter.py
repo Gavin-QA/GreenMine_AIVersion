@@ -293,7 +293,9 @@ class BugReporter:
     def _async_analyze_worker(self, bug_id: str, detail_path: Path, title: str, step_prompt: str, actual_result: str, ui_path: str, crash_image_path: str = None):
         """后台异步执行大模型根因诊断并静默回填缺陷归因备注（线程安全）"""
         try:
-            logger.info(f"🧠 [AI 智能初诊] 开始异步分析新缺陷 [{bug_id}] 的可能根因与排查指引...")
+            from config.settings import settings
+            analysis_model = getattr(settings, "llm_bug_analysis_model", None) or self.vision.model
+            logger.info(f"🧠 [AI 智能初诊] 开始异步分析新缺陷 [{bug_id}] (分析模型: {analysis_model})...")
 
             system_prompt = (
                 "你是一个资深的端到端 UI 自动化测试专家与全栈排查架构师。\n"
@@ -328,7 +330,8 @@ class BugReporter:
             result = self.vision._call_llm(
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
-                base64_image=base64_img
+                base64_image=base64_img,
+                model=analysis_model
             )
 
             category = result.get("category", "待定")

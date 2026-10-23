@@ -58,10 +58,12 @@ class VisionAgent:
             text = re.sub(r"^```(?:json)?\n?(.*?)\n?```$", r"\1", text, flags=re.DOTALL)
         return text.strip()
 
-    def _call_llm(self, system_prompt: str, user_prompt: str, base64_image: Optional[str] = None, base64_images: Optional[List[str]] = None) -> Dict[str, Any]:
-        """发起对大模型的 HTTP 请求"""
+    def _call_llm(self, system_prompt: str, user_prompt: str, base64_image: Optional[str] = None, base64_images: Optional[List[str]] = None, model: Optional[str] = None) -> Dict[str, Any]:
+        """发起对大模型的 HTTP 请求 (支持单次调用指定特定模型覆盖默认 model)"""
         if not self.api_key:
             raise VisionAgentException("LLM_API_KEY is not configured.")
+
+        target_model = model or self.model
 
         # 组装 OpenAI 兼容的消息格式
         messages = [
@@ -106,7 +108,7 @@ class VisionAgent:
             endpoint = f"{endpoint}/v1/chat/completions" if not endpoint.endswith("/v1") else f"{endpoint}/chat/completions"
 
         payload = {
-            "model": self.model,
+            "model": target_model,
             "messages": messages,
             "temperature": self.temperature,
             "max_tokens": self.max_tokens,
@@ -119,9 +121,9 @@ class VisionAgent:
         for attempt in range(1, max_retries + 1):
             try:
                 if attempt == 1:
-                    logger.info(f"🧠 [VisionAgent] 请求大模型: {self.model} ...")
+                    logger.info(f"🧠 [VisionAgent] 请求大模型: {target_model} ...")
                 else:
-                    logger.info(f"🧠 [VisionAgent] 请求大模型重试 ({attempt}/{max_retries}): {self.model} ...")
+                    logger.info(f"🧠 [VisionAgent] 请求大模型重试 ({attempt}/{max_retries}): {target_model} ...")
 
                 resp = self.session.post(endpoint, json=payload, headers=headers, timeout=self.timeout)
                 resp.raise_for_status()
