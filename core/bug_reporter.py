@@ -148,6 +148,7 @@ class BugReporter:
             "title": title,
             "severity": severity,
             "status": "激活",     # 默认状态
+            "assignee": bug_record.get("assignee", "Unassigned") if bug_record else "Unassigned",
             "creation_date": now_date,
             "details": {
                 "step": step_prompt,
@@ -208,7 +209,8 @@ class BugReporter:
             "last_seen": date,
             "step": step,
             "actual": actual,
-            "app": self.active_app
+            "app": self.active_app,
+            "assignee": "Unassigned"
         }
         self.global_bugs.append(new_bug)
         return bug_id
@@ -345,6 +347,20 @@ class BugReporter:
                 f"3. 建议排查方向：{troubleshooting}"
             )
 
+            # 智能推断责任人 (前端: 陈贻雄 / 后端: 梅本霞)
+            resolved_assignee = None
+            try:
+                from utils.zentao_sync import resolve_bug_assignee
+                temp_bug = {
+                    "title": title,
+                    "step": step_prompt,
+                    "actual": actual_result,
+                    "analysis_notes": formatted_notes,
+                }
+                resolved_assignee, _, _ = resolve_bug_assignee(temp_bug)
+            except Exception:
+                pass
+
             # 回填更新本地单次运行 json 与全局缺陷库（线程互斥保护，防止写入冲突）
             with self._lock:
                 if detail_path.exists():
@@ -354,8 +370,10 @@ class BugReporter:
                         # 仅在尚未有人工写入备注时才回填
                         if not d_json.get("analysis_notes"):
                             d_json["analysis_notes"] = formatted_notes
-                            with open(detail_path, "w", encoding="utf-8") as f:
-                                json.dump(d_json, f, ensure_ascii=False, indent=2)
+                        if resolved_assignee and d_json.get("assignee") in ("Unassigned", "", None):
+                            d_json["assignee"] = resolved_assignee
+                        with open(detail_path, "w", encoding="utf-8") as f:
+                            json.dump(d_json, f, ensure_ascii=False, indent=2)
                     except Exception as fe:
                         logger.warning(f"回填运行目录 Bug 文件失败 ({detail_path.name}): {fe}")
 
@@ -363,11 +381,14 @@ class BugReporter:
                     if b.get("id") == bug_id:
                         if not b.get("analysis_notes"):
                             b["analysis_notes"] = formatted_notes
+                        if resolved_assignee and b.get("assignee") in ("Unassigned", "", None):
+                            b["assignee"] = resolved_assignee
                         break
                 with open(self.global_json, "w", encoding="utf-8") as f:
                     json.dump(self.global_bugs, f, ensure_ascii=False, indent=2)
 
-            logger.info(f"✨ [AI 智能初诊完成] 已成功为新缺陷 [{bug_id}] 回填排查思路！")
+            assignee_str = f"，责任人已指派至: 【{resolved_assignee}】" if resolved_assignee else ""
+            logger.info(f"✨ [AI 智能初诊完成] 已成功为新缺陷 [{bug_id}] 回填排查思路{assignee_str}！")
 
         except Exception as e:
             logger.warning(f"⚠️ [AI 智能初诊跳过] 后台异步分析缺陷 [{bug_id}] 发生异常 (不影响测试运行): {e}")

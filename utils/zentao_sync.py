@@ -100,6 +100,7 @@ class ZenTaoClient:
         severity: int = 3,
         pri: int = 3,
         bug_type: str = "codeerror",
+        assigned_to: Optional[str] = None,
     ) -> Dict[str, Any]:
         """向禅道提交缺陷"""
         import requests
@@ -116,6 +117,9 @@ class ZenTaoClient:
             "os": "windows",
             "browser": "electron",
         }
+        if assigned_to:
+            payload["assignedTo"] = assigned_to
+
         resp = requests.post(url, json=payload, headers={"Token": token}, timeout=15)
         if resp.status_code not in (200, 201):
             raise RuntimeError(f"提交禅道缺陷失败 (HTTP {resp.status_code}): {resp.text}")
@@ -175,7 +179,99 @@ def find_bug_in_databases(bug_id: str, app_name: Optional[str] = None) -> tuple[
     return matched_bug, matched_global_file, matched_run_files
 
 
-def format_bug_details_html(bug: Dict[str, Any], app_key: str) -> str:
+def resolve_bug_assignee(bug: Dict[str, Any], override: Optional[str] = None) -> tuple[str, str, str]:
+    """
+    智能解析缺陷指派人：
+    - 前端问题 -> 陈贻雄 (account: chenyixiong)
+    - 后端问题 -> 梅本霞 (account: meibenxia)
+    返回元组: (真实姓名, 禅道账号, 判定原因)
+    """
+    import re
+
+    ASSIGNEE_MAP = {
+        "chenyixiong": ("陈贻雄", "chenyixiong", "前端"),
+        "陈贻雄": ("陈贻雄", "chenyixiong", "前端"),
+        "前端": ("陈贻雄", "chenyixiong", "前端"),
+        "meibenxia": ("梅本霞", "meibenxia", "后端"),
+        "梅本霞": ("梅本霞", "meibenxia", "后端"),
+        "后端": ("梅本霞", "meibenxia", "后端"),
+    }
+
+    # 1. 人工显式传参指定
+    if override:
+        key = override.strip().lower()
+        for k, v in ASSIGNEE_MAP.items():
+            if k.lower() == key:
+                return v[0], v[1], f"人工指定 ({v[2]})"
+        return override.strip(), override.strip(), "人工指定"
+
+    # 2. 缺陷单据中已存在有效指派人 (且不是默认的 Unassigned)
+    existing = bug.get("assignee")
+    if existing and existing not in ("Unassigned", "", "待定", "未知", None):
+        for k, v in ASSIGNEE_MAP.items():
+            if k.lower() == str(existing).strip().lower():
+                return v[0], v[1], f"历史归属 ({v[2]})"
+
+    notes = str(bug.get("analysis_notes") or "")
+    actual = str(bug.get("actual") or bug.get("error_log") or "")
+    title = str(bug.get("title") or "")
+    full_text = f"{title}\n{notes}\n{actual}"
+
+    # 3. 优先根据 AI 智能初诊备注 (analysis_notes) 的研判建议
+    if "建议优先联系后端" in notes or "由后端" in notes or "联系后端" in notes or "后端团队" in notes:
+        return "梅本霞", "meibenxia", "AI智能初诊研判为后端问题"
+    if "建议优先由前端" in notes or "建议优先联系前端" in notes or "由前端" in notes or "联系前端" in notes or "前端大屏开发" in notes:
+        return "陈贻雄", "chenyixiong", "AI智能初诊研判为前端问题"
+
+    # 4. 后端核心特征打分
+    backend_score = 0
+    backend_reasons = []
+
+    # 5xx 状态码或网络底层通信错误
+    if re.search(r'\b(500|502|503|504)\b|api_biz_error|httpUtils_error|ERR_CONNECTION_|ERR_EMPTY_RESPONSE|Internal Server Error', full_text, re.I):
+        backend_score += 4
+        backend_reasons.append("接口5xx/网络通讯异常")
+
+    # 数据库/SQL/接口业务错误码
+    if re.search(r'Unknown column|SQLException|SQL|Error 1054|code:\s*(?:7|500)\b', full_text, re.I):
+        backend_score += 5
+        backend_reasons.append("SQL/数据库或服务端错误码")
+
+    # 接口缺失字段 / 缺乏后端数据支撑
+    if re.search(r'缺乏后端数据支撑|缺少与.*?相关的字段|API响应数据中缺少|所有候选接口中均无对应字段|缺失关键数据源|接口未提供|未提供.*?字段', full_text):
+        backend_score += 3
+        backend_reasons.append("接口未提供必要业务字段")
+
+    # 5. 前端核心特征打分
+    frontend_score = 0
+    frontend_reasons = []
+
+    # JS 语法报错或页面崩溃
+    if re.search(r'page_error|ResizeObserver|Cannot read propert|is not a function|ERR_CONTENT_LENGTH_MISMATCH', full_text, re.I):
+        frontend_score += 4
+        frontend_reasons.append("页面级 JS 崩溃或资源异常")
+
+    # 前端图表、组件、绑定错误
+    if re.search(r'前端图表渲染错误|前端渲染层错误|前端组件在动态绑定时|前端数据映射错误|样式错乱|白屏|未渲染', full_text):
+        frontend_score += 4
+        frontend_reasons.append("前端图表/组件渲染绑定错误")
+
+    # 数值显示或单位换算偏差
+    if re.search(r'物理不可行|单位换算|前端展示.*?与接口.*?不一致', full_text):
+        frontend_score += 2
+        frontend_reasons.append("UI与接口报文展示偏差")
+
+    # 综合判定
+    if backend_score > frontend_score:
+        return "梅本霞", "meibenxia", f"后端特征 ({', '.join(backend_reasons)})"
+    elif frontend_score > backend_score:
+        return "陈贻雄", "chenyixiong", f"前端特征 ({', '.join(frontend_reasons)})"
+
+    # 默认兜底：UI自动化测试默认指派前端大屏开发
+    return "陈贻雄", "chenyixiong", "默认指派前端大屏开发"
+
+
+def format_bug_details_html(bug: Dict[str, Any], app_key: str, assignee_name: str = "", assignee_account: str = "") -> str:
     """组织提交给禅道的结构化富文本内容"""
     app_chinese = APP_NAME_MAP.get(app_key, "寨湾矿山")
     ui_path = html.escape(str(bug.get("ui_path") or "首页/未知"))
@@ -185,11 +281,14 @@ def format_bug_details_html(bug: Dict[str, Any], app_key: str) -> str:
     date_str = html.escape(str(bug.get("date") or bug.get("last_seen") or "未知"))
     analysis = html.escape(str(bug.get("analysis_notes") or "AI 暂未录入复盘备注"))
 
+    assignee_role = "前端开发" if "chenyixiong" in assignee_account or "陈贻雄" in assignee_name else "后端开发"
+
     html_parts = [
         f"<p><strong>【测试来源】</strong>Electron Vision AI 自动化多模态探索巡检系统</p>",
         f"<p><strong>【所属矿山】</strong>{app_chinese} (App: {app_key})</p>",
         f"<p><strong>【巡检批次】</strong><code>{run_id}</code> (首次发现: {date_str}，历史累计复现: {occurrences} 次)</p>",
         f"<p><strong>【业务路径】</strong>📍 <code>{ui_path}</code></p>",
+        f"<p><strong>【责任指派】</strong>👤 <strong>{assignee_name}</strong> ({assignee_role})</p>",
         f"<hr/>",
         f"<p><strong>【案发现场异常 / 接口堆栈】</strong></p>",
         f"<pre style='background:#f1f5f9;color:#0f172a;padding:10px;border-radius:4px;border:1px solid #cbd5e1;font-family:monospace;white-space:pre-wrap;'>{actual_error}</pre>",
@@ -200,8 +299,8 @@ def format_bug_details_html(bug: Dict[str, Any], app_key: str) -> str:
     return "".join(html_parts)
 
 
-def update_bug_records(bug_id: str, zentao_id: str, global_file: Optional[Path], run_files: List[Path]) -> bool:
-    """将禅道 ID 和已提单状态同步持久化写入所有目标文件"""
+def update_bug_records(bug_id: str, zentao_id: str, global_file: Optional[Path], run_files: List[Path], assignee: Optional[str] = None) -> bool:
+    """将禅道 ID、指派人 和已提单状态同步持久化写入所有目标文件"""
     zentao_id_str = str(zentao_id).strip()
     updated = False
 
@@ -215,12 +314,15 @@ def update_bug_records(bug_id: str, zentao_id: str, global_file: Optional[Path],
                 if b.get("id") == bug_id:
                     b["zentao_id"] = zentao_id_str
                     b["status"] = "已提单"
+                    if assignee:
+                        b["assignee"] = assignee
                     changed = True
                     break
             if changed:
                 with open(global_file, "w", encoding="utf-8") as f:
                     json.dump(bugs, f, ensure_ascii=False, indent=2)
-                logger.info(f"💾 已更新全局缺陷库: {global_file.name} (zentao_id: {zentao_id_str})")
+                extra = f", assignee: {assignee}" if assignee else ""
+                logger.info(f"💾 已更新全局缺陷库: {global_file.name} (zentao_id: {zentao_id_str}{extra})")
                 updated = True
         except Exception as e:
             logger.error(f"更新全局缺陷库 {global_file} 失败: {e}")
@@ -232,6 +334,8 @@ def update_bug_records(bug_id: str, zentao_id: str, global_file: Optional[Path],
                 b_data = json.load(f)
             b_data["zentao_id"] = zentao_id_str
             b_data["status"] = "已提单"
+            if assignee:
+                b_data["assignee"] = assignee
             with open(rf, "w", encoding="utf-8") as f:
                 json.dump(b_data, f, ensure_ascii=False, indent=2)
             logger.info(f"💾 已更新运行单据: {rf.as_posix()} (zentao_id: {zentao_id_str})")
@@ -248,6 +352,7 @@ def main():
     parser.add_argument("--submit-bug", type=str, help="指定本地 Bug ID 并自动提交到禅道 (如 BUG-20261023-003)")
     parser.add_argument("--bind", type=str, help="指定本地 Bug ID 进行手动绑定")
     parser.add_argument("--zentao-id", type=str, help="与 --bind 搭配使用的禅道 Bug 编号 (如 852)")
+    parser.add_argument("--assignee", type=str, help="指定指派人 (如 '陈贻雄' / '梅本霞'，不填则根据AI及报错智能研判)")
     parser.add_argument("--product-id", type=int, help="禅道产品 ID (默认读取配置)")
     parser.add_argument("--app", type=str, help="所属矿山应用 (zhaiwan / liwutong，默认自适应)")
 
@@ -280,9 +385,15 @@ def main():
             print(f"❌ 在本地缺陷知识库及运行目录中未找到 Bug: {bug_id}")
             sys.exit(1)
 
-        ok = update_bug_records(bug_id, zentao_id, g_file, r_files)
+        assignee_name = None
+        if args.assignee:
+            assignee_name, _, _ = resolve_bug_assignee(bug, args.assignee)
+
+        ok = update_bug_records(bug_id, zentao_id, g_file, r_files, assignee=assignee_name)
         if ok:
             print(f"🎉 成功完成双向绑定！Bug {bug_id} ↔ 禅道 #{zentao_id} (状态联动: 已提单)")
+            if assignee_name:
+                print(f"👤 已更新指派人: {assignee_name}")
             print(f"🔗 禅道查看直达链接: {client.url}/index.php?m=bug&f=view&bugID={zentao_id}")
         else:
             print(f"❌ 绑定写入失败，请检查文件权限")
@@ -316,13 +427,17 @@ def main():
         if sev_int not in (1, 2, 3, 4):
             sev_int = 3
 
-        steps_html = format_bug_details_html(bug, app_key)
+        # 智能研判责任人
+        assignee_name, assignee_account, reason = resolve_bug_assignee(bug, args.assignee)
+        steps_html = format_bug_details_html(bug, app_key, assignee_name, assignee_account)
 
         print(f"\n🚀 正在向禅道提交缺陷...")
         print(f"  • 禅道地址: {client.url}")
         print(f"  • 产品 ID:  {target_product_id}")
         print(f"  • 缺陷标题: {final_title}")
         print(f"  • 严重等级: {sev_int}")
+        print(f"  • 指派人员: {assignee_name} ({assignee_account})")
+        print(f"  • 归因判定: {reason}")
 
         try:
             res = client.submit_bug(
@@ -331,14 +446,15 @@ def main():
                 steps_html=steps_html,
                 severity=sev_int,
                 pri=sev_int,
+                assigned_to=assignee_account,
             )
             zen_id = res.get("id")
             if not zen_id:
                 raise RuntimeError(f"提单成功但未能解析出禅道 Bug ID: {res}")
 
             print(f"✅ 禅道提单成功！分配单号: #{zen_id}")
-            update_bug_records(bug_id, str(zen_id), g_file, r_files)
-            print(f"🎉 本地缺陷库已自动回填关联，状态流转为【已提单】！")
+            update_bug_records(bug_id, str(zen_id), g_file, r_files, assignee=assignee_name)
+            print(f"🎉 本地缺陷库已自动回填关联，指派人已锁定为【{assignee_name}】，状态流转为【已提单】！")
             print(f"🔗 禅道查看直达链接: {client.url}/index.php?m=bug&f=view&bugID={zen_id}\n")
         except Exception as e:
             print(f"❌ 提单失败: {e}")

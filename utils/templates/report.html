@@ -1976,8 +1976,17 @@
       const stepEl = document.getElementById('modalGlobalStep') || document.getElementById('modalStepNum');
       if (stepEl) stepEl.innerText = b.step_num ? `Step ${b.step_num}` : (b.global_step ? `全局 Step ${b.global_step}` : '无对应步骤');
       document.getElementById('modalActionType').innerText = b.action_type || '无';
-      document.getElementById('modalTargetElement').innerText = b.target_element || '无';
-      document.getElementById('modalAssignee').innerText = b.assignee || 'Unassigned';
+      let assigneeHtml = `<span style="color:var(--text-dim);">(未指派)</span>`;
+      if (b.assignee && b.assignee !== 'Unassigned') {
+        const isFe = b.assignee.includes('陈贻雄') || b.assignee.toLowerCase().includes('chenyixiong');
+        const isBe = b.assignee.includes('梅本霞') || b.assignee.toLowerCase().includes('meibenxia');
+        const roleBadge = isFe ? '👨‍💻 陈贻雄 (前端)' : (isBe ? '👩‍💻 梅本霞 (后端)' : escapeHtml(b.assignee));
+        const color = isFe ? '#38bdf8' : (isBe ? '#fbbf24' : '#f8fafc');
+        const bg = isFe ? 'rgba(56,189,248,0.15)' : (isBe ? 'rgba(245,158,11,0.15)' : 'rgba(255,255,255,0.1)');
+        const border = isFe ? 'rgba(56,189,248,0.3)' : (isBe ? 'rgba(245,158,11,0.3)' : 'rgba(255,255,255,0.2)');
+        assigneeHtml = `<span style="background:${bg};color:${color};border:1px solid ${border};padding:2px 8px;border-radius:4px;font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:4px;">${roleBadge}</span>`;
+      }
+      document.getElementById('modalAssignee').innerHTML = assigneeHtml;
       
       const elZentao = document.getElementById('modalZentaoId');
       if (elZentao) {
@@ -2075,9 +2084,15 @@
         </select>
       `;
 
-      // 3. 处理人变为输入框
+      // 3. 处理人变为输入框 + 快捷选择标签
       document.getElementById('modalAssignee').innerHTML = `
-        <input type="text" id="editBugAssignee" value="${escapeHtml(b.assignee || 'Unassigned')}" style="width:100%;background:#0f172a;border:1px solid rgba(255,255,255,0.2);color:#fff;padding:6px 8px;border-radius:4px;font-size:12px;outline:none;">
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <input type="text" id="editBugAssignee" value="${escapeHtml(b.assignee || 'Unassigned')}" style="width:100%;background:#0f172a;border:1px solid rgba(255,255,255,0.2);color:#fff;padding:6px 8px;border-radius:4px;font-size:12px;outline:none;">
+          <div style="display:flex;gap:6px;align-items:center;">
+            <button type="button" onclick="document.getElementById('editBugAssignee').value='陈贻雄'" style="background:rgba(56,189,248,0.15);color:#38bdf8;border:1px solid rgba(56,189,248,0.35);padding:3px 8px;border-radius:4px;font-size:11px;cursor:pointer;font-weight:600;">👨‍💻 前端: 陈贻雄</button>
+            <button type="button" onclick="document.getElementById('editBugAssignee').value='梅本霞'" style="background:rgba(245,158,11,0.15);color:#fbbf24;border:1px solid rgba(245,158,11,0.35);padding:3px 8px;border-radius:4px;font-size:11px;cursor:pointer;font-weight:600;">👩‍💻 后端: 梅本霞</button>
+          </div>
+        </div>
       `;
 
       // 4. 关联禅道单号变为输入框
