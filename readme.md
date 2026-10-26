@@ -10,11 +10,10 @@
 - [1. 首次使用环境准备 (Getting Started)](#1-首次使用环境准备-getting-started)
 - [2. 配置文件全项详解与默认配置 (Configuration)](#2-配置文件全项详解与默认配置-configuration)
 - [3. 核心功能全景 (Core Capabilities)](#3-核心功能全景-core-capabilities)
-- [4. 大屏双翼与 3D/UE 伴生防御防线 (Protection & Robustness)](#4-大屏双翼与-3due-伴生防御防线-protection--robustness)
-- [5. 常用运行命令速查 (CLI Cheat Sheet)](#5-常用运行命令速查-cli-cheat-sheet)
-- [6. 禅道缺陷双向同步与自动提单 (ZenTao Integration)](#6-禅道缺陷双向同步与自动提单-zentao-integration)
-- [7. YAML 自然语言用例编写指南 (YAML Specification)](#7-yaml-自然语言用例编写指南-yaml-specification)
-- [8. 测试资产与大盘门户查阅 (Reports & Dashboard)](#8-测试资产与大盘门户查阅-reports--dashboard)
+- [4. 常用运行命令速查 (CLI Cheat Sheet)](#4-常用运行命令速查-cli-cheat-sheet)
+- [5. 禅道缺陷双向同步与自动提单 (ZenTao Integration)](#5-禅道缺陷双向同步与自动提单-zentao-integration)
+- [6. YAML 自然语言用例编写指南 (YAML Specification)](#6-yaml-自然语言用例编写指南-yaml-specification)
+- [7. 测试资产与大盘门户查阅 (Reports & Dashboard)](#7-测试资产与大盘门户查阅-reports--dashboard)
 
 ---
 
@@ -176,38 +175,11 @@ reports:
 
 ---
 
-## 4. 大屏双翼与 3D/UE 伴生防御防线 (Protection & Robustness)
-
-面对数字孪生矿山大屏“3D 引擎 WebRTC 像素流 + 2D 高频业务交互看板”的极端特殊架构，框架构建了三道物理级防线与一套高精证据溯源链：
-
-### 4.1 物理级防线：严禁网页刷新，誓死捍卫 UE 像素流
-- **背景痛点**：传统自动化工具在遇到未知卡顿时习惯执行 `page.reload()`。但在 WebRTC 像素流推流架构下，网页刷新会强行切断与 UE 伴生引擎的 WebRTC 信令握手通道，导致后台 UE 渲染服务直接断流甚至崩溃。
-- **底层防御**：框架在 CDP 底层驱动层（`driver.py`）**物理抹除/拦截所有刷新调用**，即使测试指令误触 reload，也会自动安全降级为安全的页面回退或组件跳转，杜绝因刷新导致的伴生进程瓦解。
-
-### 4.2 侧边栏常开防线：物理拦截“一键隐藏”
-- **背景痛点**：大屏左右两侧常驻的 2D 业务数据面板是核心巡检载体。若 AI 误点击“一键隐藏/收起”按钮，界面将失去两翼看板，陷入纯 3D 画布的空转死循环。
-- **底层防御**：在 `ExplorerAgent` 决策与执行单兵（`worker.py`）中注入硬编码物理拦截墙，一旦模型规划中出现“一键隐藏”、“收起面板”、“foldbar”等意图，底层机械臂直接拒绝执行，确保业务数据看板永久展开。
-
-### 4.3 极端死锁自愈机制：启动器安全冷重启 (`restart_app`)
-- **自愈逻辑**：若三维大屏因底层渲染异常或弹窗不可达造成 AI 连续 3 轮以上卡死停滞，框架自动触发**优雅冷重启**自愈：
-  1. 通过 Windows 核心 API 向 Electron 进程发送 `WM_CLOSE` 信号，让主进程与伴生 UE5 进程有序安全退出（杜绝 `taskkill /F` 导致的 GPU 显卡驱动蓝屏）；
-  2. 智能轮询等待 CDP 9223 端口安全释放；
-  3. 重新拉起应用启动器并重新挂载 CDP 调试管道，恢复探索现场，实现真正意义上的无人值守。
-
-### 4.4 4 级案发现场高精证据定位链
-框架在记录 Bug 与上报缺陷时，遵循严谨的 4 级证据回溯链，杜绝因定时轮询造成的“延迟截图不对应”问题：
-1. **Level 1 (首选)**：`_roi.png` —— 案发瞬间的高精局部裁剪切片（毫秒级锁定告警图表或异常数据）；
-2. **Level 2**：`bugs/<id>.png` —— 案发现场全局大图；
-3. **Level 3**：`bugs/<id>_HHMMSS.png` —— 缺陷复现时序抓拍图；
-4. **Level 4**：`screenshots/hover_step_*.png` —— 鼠标悬浮气泡/Tooltip 触发瞬态图。
-
----
-
-## 5. 常用运行命令速查 (CLI Cheat Sheet)
+## 4. 常用运行命令速查 (CLI Cheat Sheet)
 
 所有模式均通过项目主入口 `main.py` 及 `utils/` 工具集驱动：
 
-### 5.1 全量二级菜单极速冒烟巡检 (Smoke Tour)
+### 4.1 全量二级菜单极速冒烟巡检 (Smoke Tour)
 ```powershell
 # 单进程快速巡检当前项目定义的全部二级业务菜单（推荐日常版本发布前快速排查）
 python main.py --tour
@@ -215,7 +187,7 @@ python main.py --tour
 python main.py --smoke
 ```
 
-### 5.2 运行确定性 YAML 业务回归用例
+### 4.2 运行确定性 YAML 业务回归用例
 ```powershell
 # 1. 运行单一自然语言用例
 python main.py --case test_cases/test_home_mine_intro.yaml
@@ -230,7 +202,7 @@ python main.py --case test_cases/test_home_mine_intro.yaml --ignore-errors
 python main.py --case test_cases/test_home_mine_intro.yaml --wait-ready "主界面左侧菜单树和右侧面板完全渲染完成" --wait-timeout 60.0
 ```
 
-### 5.3 开启自主黑客式探索 (ExplorerAgent)
+### 4.3 开启自主黑客式探索 (ExplorerAgent)
 ```powershell
 # 1. 发起地毯式探索（限定 20 步，默认快速试跑）
 python main.py --explore "地毯式探索全系统，遍历所有一级与二级菜单，重点寻找白屏与崩溃" --max-steps 20
@@ -245,7 +217,7 @@ python main.py --explore "继续深度探索设备管理模块" --resume-from re
 python main.py --explore "重新探索智能通风模块" --reexplore "智能通风"
 ```
 
-### 5.4 禅道缺陷双向同步与管理 (ZenTao Sync)
+### 4.4 禅道缺陷双向同步与管理 (ZenTao Sync)
 ```powershell
 # 1. 查看本地 Bug 知识库待提单与已绑定状态
 python utils/zentao_sync.py --status
@@ -263,7 +235,7 @@ python utils/zentao_sync.py --update-bug BUG-20261025-005
 python utils/zentao_sync.py --bind BUG-20261024-001 1157
 ```
 
-### 5.5 启动统一测试大盘与缺陷知识库门户
+### 4.5 启动统一测试大盘与缺陷知识库门户
 ```powershell
 # 1. 仅重新构建静态大盘数据 (编译生成 index.html 与 runs_data.js)
 python utils/report_hub.py --build
@@ -272,7 +244,7 @@ python utils/report_hub.py --build
 python utils/report_hub.py --serve --port 8080
 ```
 
-### 5.6 磁盘空间诊断与安全清理瘦身 (Cleaner)
+### 4.6 磁盘空间诊断与安全清理瘦身 (Cleaner)
 长期进行高频截图测试会占用较多磁盘，工具提供**100% 保护 Bug 现场证据**的安全瘦身：
 ```powershell
 # 1. 诊断查看当前工程磁盘分布（核心资产、运行产物、临时大图占用）
@@ -284,11 +256,11 @@ python utils/cleaner.py --retain-days 7
 
 ---
 
-## 6. 禅道缺陷双向同步与自动提单 (ZenTao Integration)
+## 5. 禅道缺陷双向同步与自动提单 (ZenTao Integration)
 
 框架内置了完全解耦的企业级禅道敏捷协同工具 (`utils/zentao_sync.py`)，打通本地 AI 缺陷库与团队研发管理看板之间的最后一公里：
 
-### 6.1 核心黑科技特性
+### 5.1 核心黑科技特性
 1. **📸 富文本案发现场高精快照内嵌 (Base64 Inline)**：
    - 提取案发瞬间的局部高精切片 (`_roi.png`) 或现场截图，自动完成保真压缩并转为 Base64 编码，直接以 `<img src="data:image/jpeg;base64,..."/>` 形式嵌入禅道复现步骤的富文本正文中；
    - 禅道服务端自动将其无缝解析为正文图片，研发人员打开禅道缺陷单即可直观看到红框告警或数据切片，**无须手动下载外部附件**，大幅提升协作排查效率。
@@ -304,11 +276,11 @@ python utils/cleaner.py --retain-days 7
 
 ---
 
-## 7. YAML 自然语言用例编写指南 (YAML Specification)
+## 6. YAML 自然语言用例编写指南 (YAML Specification)
 
 用例统一存放在 `test_cases/` 目录下，文件格式为 `.yaml`。框架支持以下 13 种核心交互与校验指令：
 
-### 7.1 标准动作词汇表
+### 6.1 标准动作词汇表
 | 动作指令 (`type`) | 适用场景 | 常用参数示例 | 行为说明 |
 | :--- | :--- | :--- | :--- |
 | `action` | 点击与定位 | `prompt: "点击左侧企业简介"` | AI 视觉定位元素物理中心并触发真实鼠标点击 |
@@ -326,7 +298,7 @@ python utils/cleaner.py --retain-days 7
 | `back` | 路由历史回退 | - | 执行浏览器后退或返回上一级看板 |
 | `reload` | **【已废弃/严禁使用】** | - | 严禁调用！会导致 WebRTC 断流及 UE5 崩溃 |
 
-### 7.2 完整范例用例 (`test_sample.yaml`)
+### 6.2 完整范例用例 (`test_sample.yaml`)
 ```yaml
 name: "矿山简介与核心指标巡检"
 description: "验证矿山简介基础面板切换、3D 漫游启动以及最新核实资源量接口数据一致性"
@@ -355,7 +327,7 @@ steps:
 
 ---
 
-## 8. 测试资产与大盘门户查阅 (Reports & Dashboard)
+## 7. 测试资产与大盘门户查阅 (Reports & Dashboard)
 
 框架实行严格的**“长期核心资产”与“单次运行产物”分层治理**架构：
 
@@ -384,7 +356,7 @@ electron_ai_vision/
     └── zentao_sync.py         # 禅道缺陷双向同步、现场截图内嵌与自动提单工具
 ```
 
-### 8.1 查看可视化全景大盘
+### 7.1 查看可视化全景大盘
 启动服务后访问 `http://localhost:8080`：
 1. **历史巡检记录模块**：查看历次探索与回归的耗时、实际执行步数、缺陷发现数及各页面覆盖率；
 2. **全局缺陷知识库模块**：
@@ -393,5 +365,5 @@ electron_ai_vision/
    - **全字段模糊检索**：毫秒级支持按缺陷单号 (`BUG-xxx`)、RUN ID、业务路径 (`安全管理 -> xxx`)、目标描述、异常详情模糊搜索；
    - **弹窗详情与原地编辑**：点击查看现场对比大图，支持直接原地保存复盘分析结论与关闭原因。
 
-### 8.2 用例晋升机制 (Case Promotion)
+### 7.2 用例晋升机制 (Case Promotion)
 当在 `reports/runs/<run_id>/generated_cases/` 中发现某次探索自动生成的 YAML 用例业务价值极高且稳定走通时，只需将该文件复制至 `test_cases/` 目录下，即可直接纳为日常 CI/CD 的正式回归用例！
