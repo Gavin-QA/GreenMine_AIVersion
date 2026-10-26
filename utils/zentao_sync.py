@@ -283,7 +283,7 @@ def main():
         ok = update_bug_records(bug_id, zentao_id, g_file, r_files)
         if ok:
             print(f"🎉 成功完成双向绑定！Bug {bug_id} ↔ 禅道 #{zentao_id} (状态联动: 已提单)")
-            print(f"🔗 禅道查看直达链接: {client.url}/bug-view-{zentao_id}.html")
+            print(f"🔗 禅道查看直达链接: {client.url}/index.php?m=bug&f=view&bugID={zentao_id}")
         else:
             print(f"❌ 绑定写入失败，请检查文件权限")
             sys.exit(1)
@@ -339,7 +339,7 @@ def main():
             print(f"✅ 禅道提单成功！分配单号: #{zen_id}")
             update_bug_records(bug_id, str(zen_id), g_file, r_files)
             print(f"🎉 本地缺陷库已自动回填关联，状态流转为【已提单】！")
-            print(f"🔗 禅道查看直达链接: {client.url}/bug-view-{zen_id}.html\n")
+            print(f"🔗 禅道查看直达链接: {client.url}/index.php?m=bug&f=view&bugID={zen_id}\n")
         except Exception as e:
             print(f"❌ 提单失败: {e}")
             sys.exit(1)

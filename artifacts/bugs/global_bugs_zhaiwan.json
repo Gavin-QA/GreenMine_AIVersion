@@ -2129,8 +2129,9 @@
     "actual": "[page_error] Failed to execute 'observe' on 'MutationObserver': parameter 1 is not of type 'Node'.",
     "screenshot": "D:/Auto/electron_ai_vision/reports/runs/explore_20261015_182652/bugs/BUG-20261015-002_193146.png",
     "ui_path": "资源管理 -> 勘探报告",
-    "assignee": "Unassigned",
-    "analysis_notes": "页面未关闭，DOM指针触发元素，空指针"
+    "assignee": "陈贻雄",
+    "analysis_notes": "页面未关闭，DOM指针触发元素，空指针",
+    "zentao_id": "1124"
   },
   {
     "id": "BUG-20261015-003",
@@ -2321,7 +2322,7 @@
       "智控管理"
     ],
     "last_recurrence_step": 1770,
-    "zentao_id": "852"
+    "zentao_id": "1157"
   },
   {
     "id": "BUG-20261023-004",

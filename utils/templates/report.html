@@ -1775,7 +1775,7 @@
               <div class="bug-id-group">
                 <span class="bug-badge">${b_id}</span>
                 ${statusBadgeHtml}
-                ${b.zentao_id ? `<a href="http://192.140.163.129:8080/bug-view-${escapeHtml(b.zentao_id)}.html" target="_blank" style="background:rgba(59,130,246,0.18);color:#60a5fa;border:1px solid rgba(59,130,246,0.35);padding:2px 8px;border-radius:9999px;font-size:11px;text-decoration:none;display:inline-flex;align-items:center;gap:4px;font-family:var(--font-mono);font-weight:600;" title="点击直达禅道缺陷"><span style="font-size:10px;">🏷️</span> #${escapeHtml(b.zentao_id)} ↗</a>` : ''}
+                ${b.zentao_id ? `<a href="http://192.140.163.129:8080/index.php?m=bug&f=view&bugID=${escapeHtml(b.zentao_id)}" target="_blank" style="background:rgba(59,130,246,0.18);color:#60a5fa;border:1px solid rgba(59,130,246,0.35);padding:2px 8px;border-radius:9999px;font-size:11px;text-decoration:none;display:inline-flex;align-items:center;gap:4px;font-family:var(--font-mono);font-weight:600;" title="点击直达禅道缺陷"><span style="font-size:10px;">🏷️</span> #${escapeHtml(b.zentao_id)} ↗</a>` : ''}
                 <span class="bug-title">${b_title}</span>
               </div>
               <div style="display:flex;align-items:center;gap:12px;">
@@ -1982,7 +1982,7 @@
       const elZentao = document.getElementById('modalZentaoId');
       if (elZentao) {
         elZentao.innerHTML = b.zentao_id ? 
-          `<a href="http://192.140.163.129:8080/bug-view-${escapeHtml(b.zentao_id)}.html" target="_blank" style="background:rgba(59,130,246,0.18);color:#60a5fa;border:1px solid rgba(59,130,246,0.4);padding:2px 8px;border-radius:4px;font-size:12px;text-decoration:none;display:inline-flex;align-items:center;gap:4px;" title="在新标签页中打开禅道缺陷">🏷️ 禅道 #${escapeHtml(b.zentao_id)} ↗</a>` : 
+          `<a href="http://192.140.163.129:8080/index.php?m=bug&f=view&bugID=${escapeHtml(b.zentao_id)}" target="_blank" style="background:rgba(59,130,246,0.18);color:#60a5fa;border:1px solid rgba(59,130,246,0.4);padding:2px 8px;border-radius:4px;font-size:12px;text-decoration:none;display:inline-flex;align-items:center;gap:4px;" title="在新标签页中打开禅道缺陷">🏷️ 禅道 #${escapeHtml(b.zentao_id)} ↗</a>` : 
           '<span style="color:var(--text-dim);font-weight:normal;">(未关联)</span>';
       }
 
