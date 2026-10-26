@@ -262,8 +262,150 @@ class NetworkMonitorMixin:
                                 self.api_records = self.api_records[-200:]
                 except Exception:
                     pass
-        
-        self.page.on("response", handle_response)
+
+        def handle_websocket(ws):
+            """静默监听并抓取 WebSocket 实时推流/遥测报文 (如机器人巡检、气体温度传感器实时推送)"""
+            try:
+                ws_url = ws.url
+            except Exception:
+                ws_url = "ws://localhost"
+
+            def on_frame_received(payload):
+                try:
+                    if isinstance(payload, bytes):
+                        try:
+                            payload = payload.decode("utf-8")
+                        except Exception:
+                            return
+                    if not isinstance(payload, str) or len(payload) < 5:
+                        return
+
+                    # 基础心跳与协议探针过滤
+                    p_strip = payload.strip()
+                    if p_strip.lower() in ("ping", "pong", "heartbeat") or p_strip.startswith("2probe") or p_strip == "3":
+                        return
+
+                    try:
+                        ws_data = json.loads(payload)
+                    except Exception:
+                        return
+
+                    if not isinstance(ws_data, dict):
+                        return
+
+                    # 过滤心跳包
+                    if ws_data.get("type") in ("ping", "pong", "heartbeat") or ws_data.get("action") == "ping":
+                        return
+
+                    # 提取主题/标识 (Subject/Topic/Cmd/Event)
+                    subject = (
+                        ws_data.get("subject") or
+                        ws_data.get("topic") or
+                        ws_data.get("cmd") or
+                        ws_data.get("action") or
+                        ws_data.get("event")
+                    )
+                    inner_data = ws_data.get("data")
+                    if not subject and isinstance(inner_data, dict):
+                        subject = (
+                            inner_data.get("subject") or
+                            inner_data.get("topic") or
+                            inner_data.get("cmd") or
+                            inner_data.get("action") or
+                            inner_data.get("event")
+                        )
+
+                    if not subject:
+                        t = ws_data.get("type")
+                        if t and t not in ("received", "send", "message", "response"):
+                            subject = f"ws:{t}"
+                        else:
+                            clean_ws = ws_url.split("?")[0].rstrip("/").split("/")[-1]
+                            subject = f"ws:{clean_ws}" if clean_ws else "ws:message"
+
+                    endpoint_name = str(subject).strip()
+
+                    active_scope = getattr(self, "current_page_scope", "_global_shared")
+                    now_ts = time.time()
+                    prev_hit = self.api_registry.get(endpoint_name, {}).get("hit_count", 0)
+                    hit_count = prev_hit + 1
+
+                    elapsed_since_entry = now_ts - getattr(self, "scope_entry_time", now_ts)
+                    is_page_init = elapsed_since_entry <= 15.0
+                    is_polling = (hit_count >= 3)
+
+                    record = {
+                        "url": endpoint_name,
+                        "full_url": f"{ws_url}#{endpoint_name}",
+                        "data": ws_data,
+                        "timestamp": now_ts,
+                        "scope": active_scope,
+                        "hit_count": hit_count,
+                        "is_page_init": is_page_init,
+                        "is_polling": is_polling,
+                        "protocol": "websocket"
+                    }
+
+                    # 检测 WebSocket 业务级报错 (status=error / code=500 / 业务失败提示)
+                    ws_status = ws_data.get("status")
+                    ws_code = ws_data.get("code")
+                    ws_msg = str(ws_data.get("msg") or ws_data.get("message") or "")
+                    if ws_status in ("error", "failed") or ws_code in (500, -1, "500", "-1"):
+                        logger.warning(f"🚨 [Auto-API WS] 捕获到 WebSocket 业务异常: {endpoint_name} -> code: {ws_code}, status: {ws_status}, msg: '{ws_msg}'")
+                        self.caught_bugs.append({
+                            "type": "api_biz_error",
+                            "url": ws_url,
+                            "endpoint": endpoint_name,
+                            "status": 200,
+                            "biz_code": ws_code or ws_status,
+                            "msg": f"WebSocket业务报错: {ws_msg or f'status={ws_status}'}",
+                            "response": ws_data
+                        })
+
+                    # 1. 全局扁平注册表
+                    self.api_registry[endpoint_name] = record
+
+                    # 简短别名注册 (如 inspectionRobot:robot:104:tempStatus -> tempStatus)
+                    if ":" in endpoint_name:
+                        short_name = endpoint_name.split(":")[-1]
+                        if len(short_name) >= 3 and short_name not in self.api_registry:
+                            self.api_registry[short_name] = record
+
+                    # 2. 页面作用域隔离注册表
+                    if not hasattr(self, "page_scoped_registry") or self.page_scoped_registry is None:
+                        self.page_scoped_registry = {"_global_shared": {}}
+                    if active_scope not in self.page_scoped_registry:
+                        self.page_scoped_registry[active_scope] = {}
+                    self.page_scoped_registry[active_scope][endpoint_name] = record
+
+                    # 3. 页面底座持久化注册表
+                    if is_page_init:
+                        if not hasattr(self, "page_init_registry") or self.page_init_registry is None:
+                            self.page_init_registry = {"_global_shared": {}}
+                        if active_scope not in self.page_init_registry:
+                            self.page_init_registry[active_scope] = {}
+                        self.page_init_registry[active_scope][endpoint_name] = record
+
+                    # 4. 时序流水记录（带高频折叠）
+                    if self.api_records and self.api_records[-1].get("url") == endpoint_name:
+                        self.api_records[-1] = record
+                    else:
+                        self.api_records.append(record)
+                        if len(self.api_records) > 200:
+                            self.api_records = self.api_records[-200:]
+                except Exception:
+                    pass
+
+            try:
+                ws.on("framereceived", on_frame_received)
+            except Exception:
+                pass
+
+        try:
+            self.page.on("response", handle_response)
+            self.page.on("websocket", handle_websocket)
+        except Exception:
+            pass
         
     def clear_api_records(self):
         """清空缓存的网络接口记录与全局/页面作用域注册表，开始新的生命周期抓取"""
@@ -446,6 +588,15 @@ class NetworkMonitorMixin:
             "采场": ["stope", "stopebasic"],
             "钻孔": ["borehole", "hole"],
             "回采": ["mining", "stoping"],
+            "机器人": ["robot", "inspectionrobot", "patrol"],
+            "巡检": ["inspect", "inspection", "inspectrecord", "inspectionrobot"],
+            "温度": ["temp", "temperature", "temphum"],
+            "湿度": ["humidity", "hum", "temphum"],
+            "气体": ["gas", "o2", "co", "co2", "ch4"],
+            "氧气": ["o2", "gas"],
+            "一氧化碳": ["co", "gas"],
+            "二氧化碳": ["co2", "gas"],
+            "甲烷": ["ch4", "gas"],
         }
 
         for token in tokens:

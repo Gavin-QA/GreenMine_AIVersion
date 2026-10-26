@@ -124,14 +124,16 @@ class ElectronDriver(NetworkMonitorMixin, DomExtractorMixin, ScreenshotMixin, Ch
         self._setup_network_listeners()
 
         # 强制防御性刷新 (Ctrl+R)：
-        # 1. 规避新启动时的竞态条件 (防止在挂载监听器前首屏 API 已发完而漏抓)
-        # 2. 针对 Attach 模式，无伤重载前端而不掉线 UE
-        logger.info("⚡ 正在执行防御性刷新 (Ctrl+R) 以确保完美捕获首屏 API 数据...")
-        try:
-            self.page.keyboard.press("Control+r")
-            time.sleep(1)
-        except Exception as e:
-            logger.warning(f"模拟 Ctrl+R 失败: {e}")
+        # 【UE 像素流安全红线】若伴生 UE 或 Attach 挂载模式，坚决禁止刷新 (包括 Ctrl+R)，避免打断 WebRTC 导致 UE 崩溃断流
+        if settings.ue_process_name or settings.attach_existing:
+            logger.info("🛡️ [UE Protection] 检测到伴生 UE 引擎或 Attach 挂载模式，跳过 Ctrl+R 防御性刷新以守护 WebRTC 像素流稳定。")
+        else:
+            logger.info("⚡ 正在执行防御性刷新 (Ctrl+R) 以确保完美捕获首屏 API 数据...")
+            try:
+                self.page.keyboard.press("Control+r")
+                time.sleep(1)
+            except Exception as e:
+                logger.warning(f"模拟 Ctrl+R 失败: {e}")
 
         # 在启动器底层进行编程式判断，确保前端核心 DOM 已经加载完成
         try:
