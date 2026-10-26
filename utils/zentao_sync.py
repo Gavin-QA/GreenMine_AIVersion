@@ -53,22 +53,24 @@ APP_NAME_MAP = {
 
 class ZenTaoClient:
     def __init__(self, url: Optional[str] = None, account: Optional[str] = None, password: Optional[str] = None):
+        import requests
         self.url = (url or settings.zentao_url or "http://192.140.163.129:8080").rstrip("/")
         self.account = account or settings.zentao_account or "guoxiaoqi"
         self.password = password or settings.zentao_password or ""
         self.default_product_id = settings.zentao_default_product_id or 10
         self._token: Optional[str] = None
+        self.session = requests.Session()
+        self.session.trust_env = False  # 禁用本地系统 HTTP 代理，直连内网禅道服务器
 
     def get_token(self) -> str:
         """获取或复用禅道 REST API 访问令牌"""
         if self._token:
             return self._token
-        import requests
 
         token_url = f"{self.url}/api.php/v1/tokens"
         payload = {"account": self.account, "password": self.password}
         try:
-            resp = requests.post(token_url, json=payload, timeout=10)
+            resp = self.session.post(token_url, json=payload, timeout=15)
             if resp.status_code not in (200, 201):
                 raise RuntimeError(f"禅道鉴权失败 (HTTP {resp.status_code}): {resp.text}")
             res_json = resp.json()
@@ -83,11 +85,9 @@ class ZenTaoClient:
 
     def get_products(self) -> List[Dict[str, Any]]:
         """列出当前用户有权访问的禅道产品列表"""
-        import requests
-
         token = self.get_token()
         url = f"{self.url}/api.php/v1/products"
-        resp = requests.get(url, headers={"Token": token}, timeout=10)
+        resp = self.session.get(url, headers={"Token": token}, timeout=15)
         resp.raise_for_status()
         data = resp.json()
         return data.get("products", [])
@@ -103,8 +103,6 @@ class ZenTaoClient:
         assigned_to: Optional[str] = None,
     ) -> Dict[str, Any]:
         """向禅道提交缺陷"""
-        import requests
-
         token = self.get_token()
         url = f"{self.url}/api.php/v1/bugs"
         payload = {
@@ -120,7 +118,7 @@ class ZenTaoClient:
         if assigned_to:
             payload["assignedTo"] = assigned_to
 
-        resp = requests.post(url, json=payload, headers={"Token": token}, timeout=15)
+        resp = self.session.post(url, json=payload, headers={"Token": token}, timeout=30)
         if resp.status_code not in (200, 201):
             raise RuntimeError(f"提交禅道缺陷失败 (HTTP {resp.status_code}): {resp.text}")
         return resp.json()
@@ -134,8 +132,6 @@ class ZenTaoClient:
         assigned_to: Optional[str] = None,
     ) -> Dict[str, Any]:
         """更新禅道已有的缺陷单据"""
-        import requests
-
         token = self.get_token()
         url = f"{self.url}/api.php/v1/bugs/{int(bug_id)}"
         payload = {}
@@ -149,7 +145,7 @@ class ZenTaoClient:
         if assigned_to:
             payload["assignedTo"] = assigned_to
 
-        resp = requests.put(url, json=payload, headers={"Token": token}, timeout=15)
+        resp = self.session.put(url, json=payload, headers={"Token": token}, timeout=30)
         if resp.status_code not in (200, 201):
             raise RuntimeError(f"更新禅道缺陷失败 (HTTP {resp.status_code}): {resp.text}")
         return resp.json()
@@ -352,8 +348,138 @@ def ensure_bug_ai_analysis(bug: Dict[str, Any], global_file: Optional[Path] = No
         return bug.get("analysis_notes") or "AI 暂未录入复盘备注"
 
 
-def format_bug_details_html(bug: Dict[str, Any], app_key: str, assignee_name: str = "", assignee_account: str = "") -> str:
-    """组织提交给禅道的结构化富文本内容"""
+def find_bug_screenshot(bug: Dict[str, Any], run_files: Optional[List[Path]] = None) -> Optional[Path]:
+    """
+    智能检索缺陷的最佳案发现场证据图片：
+    1. 优先检查是否存在局部高精 ROI 切片图 (如 BUG-XXXX_roi.png 或 explore_step_<step>_roi.png)
+    2. 检查单据中显式声明的 screenshot / crash_screenshot 字段
+    3. 检查单次运行目录中的 bugs/ 归档快照 (BUG-XXXX.png 或 BUG-XXXX_*.png)
+    4. 检查单次运行目录中的 screenshots/ 巡检动作原图
+    """
+    bug_id = bug.get("id")
+    from utils.paths import find_run_dir
+
+    # 1. 检查 bug 本身记录的 screenshot / crash_screenshot 属性
+    raw_shot = bug.get("screenshot") or bug.get("crash_screenshot")
+    if raw_shot:
+        raw_p = Path(raw_shot)
+        if raw_p.is_absolute() and raw_p.exists():
+            roi_cand = raw_p.parent / f"{raw_p.stem}_roi{raw_p.suffix}"
+            if roi_cand.exists():
+                return roi_cand
+            return raw_p
+        rel_p = PROJECT_ROOT / raw_shot
+        if rel_p.exists():
+            roi_cand = rel_p.parent / f"{rel_p.stem}_roi{rel_p.suffix}"
+            if roi_cand.exists():
+                return roi_cand
+            return rel_p
+
+    # 2. 从 run_files 检索
+    target_run_dirs: List[Path] = []
+    if run_files:
+        for rf in run_files:
+            r_dir = rf.parent.parent
+            if r_dir.exists() and r_dir not in target_run_dirs:
+                target_run_dirs.append(r_dir)
+
+    # 3. 补充从 run_id 检索
+    run_id = bug.get("run_id")
+    if run_id:
+        r_cand = find_run_dir(run_id)
+        if r_cand and r_cand not in target_run_dirs:
+            target_run_dirs.append(r_cand)
+
+    for r_dir in target_run_dirs:
+        bugs_dir = r_dir / "bugs"
+        shots_dir = r_dir / "screenshots"
+
+        # 优先 1: bugs/<id>_roi.png
+        if bug_id:
+            roi_file = bugs_dir / f"{bug_id}_roi.png"
+            if roi_file.exists():
+                return roi_file
+
+        # 优先 2: screenshots/explore_step_<global_step>_roi.png
+        g_step = bug.get("global_step")
+        if g_step and shots_dir.exists():
+            step_roi = shots_dir / f"explore_step_{g_step}_roi.png"
+            if step_roi.exists():
+                return step_roi
+
+        # 优先 3: bugs/<id>.png
+        if bug_id:
+            std_file = bugs_dir / f"{bug_id}.png"
+            if std_file.exists():
+                return std_file
+            # 增量快照 bugs/<id>_*.png
+            matching = sorted(bugs_dir.glob(f"{bug_id}*.png"))
+            if matching:
+                return matching[0]
+
+        # 优先 4: screenshots/hover_step_<global_step>_*.png
+        if g_step and shots_dir.exists():
+            hover_shots = sorted(shots_dir.glob(f"hover_step_{g_step}_*.png"))
+            if hover_shots:
+                return hover_shots[0]
+            step_shot = shots_dir / f"explore_step_{g_step}.jpg"
+            if step_shot.exists():
+                return step_shot
+            step_shot_png = shots_dir / f"explore_step_{g_step}.png"
+            if step_shot_png.exists():
+                return step_shot_png
+
+    return None
+
+
+def image_to_base64_data_uri(img_path: Optional[Path], max_width: int = 900, quality: int = 75) -> Optional[str]:
+    """
+    将本地图片文件压缩转换为高质量且轻量化的 Base64 Data URI，供禅道富文本内嵌渲染
+    """
+    if not img_path:
+        return None
+    p = Path(img_path).resolve()
+    if not p.exists() or not p.is_file():
+        return None
+
+    try:
+        from PIL import Image
+        import io
+        import base64
+
+        img = Image.open(p)
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+        if img.width > max_width:
+            scale = max_width / float(img.width)
+            new_height = int(img.height * scale)
+            img = img.resize((max_width, new_height), Image.Resampling.LANCZOS)
+
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=quality)
+        b64_str = base64.b64encode(buf.getvalue()).decode("ascii")
+        return f"data:image/jpeg;base64,{b64_str}"
+    except Exception as e:
+        logger.debug(f"Pillow 压缩处理图片 {p.name} 异常 ({e})，回退原始二进制读取")
+        try:
+            import base64
+            mime = "image/png" if p.suffix.lower() == ".png" else "image/jpeg"
+            raw_b64 = base64.b64encode(p.read_bytes()).decode("ascii")
+            return f"data:{mime};base64,{raw_b64}"
+        except Exception as e2:
+            logger.warning(f"读取图片二进制失败: {e2}")
+            return None
+
+
+def format_bug_details_html(
+    bug: Dict[str, Any],
+    app_key: str,
+    assignee_name: str = "",
+    assignee_account: str = "",
+    run_files: Optional[List[Path]] = None,
+    screenshot_path: Optional[Path] = None,
+) -> tuple[str, Optional[Path]]:
+    """组织提交给禅道的结构化富文本内容（内嵌案发现场高精截图）"""
     app_chinese = APP_NAME_MAP.get(app_key, "寨湾矿山")
     ui_path = html.escape(str(bug.get("ui_path") or "首页/未知"))
     actual_error = html.escape(str(bug.get("actual") or bug.get("error_log") or "无报错日志"))
@@ -364,6 +490,20 @@ def format_bug_details_html(bug: Dict[str, Any], app_key: str, assignee_name: st
 
     assignee_role = "前端开发" if "chenyixiong" in assignee_account or "陈贻雄" in assignee_name else "后端开发"
 
+    # 智能查找并压缩案发现场截图
+    shot_file = screenshot_path or find_bug_screenshot(bug, run_files)
+    shot_img_html = ""
+    if shot_file:
+        data_uri = image_to_base64_data_uri(shot_file)
+        if data_uri:
+            shot_img_html = (
+                f"<hr/>"
+                f"<p><strong>【案发现场快照】</strong> (凭证文件: <code>{shot_file.name}</code>)</p>"
+                f"<div style='margin-top:8px;'>"
+                f"<img src='{data_uri}' style='max-width:100%;border-radius:6px;border:1px solid #cbd5e1;box-shadow:0 2px 8px rgba(0,0,0,0.1);' alt='Bug现场快照'/>"
+                f"</div>"
+            )
+
     html_parts = [
         f"<p><strong>【测试来源】</strong>Electron Vision AI 自动化多模态探索巡检系统</p>",
         f"<p><strong>【所属矿山】</strong>{app_chinese} (App: {app_key})</p>",
@@ -373,11 +513,12 @@ def format_bug_details_html(bug: Dict[str, Any], app_key: str, assignee_name: st
         f"<hr/>",
         f"<p><strong>【案发现场异常 / 接口堆栈】</strong></p>",
         f"<pre style='background:#f1f5f9;color:#0f172a;padding:10px;border-radius:4px;border:1px solid #cbd5e1;font-family:monospace;white-space:pre-wrap;'>{actual_error}</pre>",
+        shot_img_html,
         f"<hr/>",
         f"<p><strong>【AI 智能归因与复盘研判】</strong></p>",
         f"<div style='background:#eff6ff;color:#1e3a8a;padding:10px;border-radius:4px;border-left:4px solid #3b82f6;'>{analysis}</div>",
     ]
-    return "".join(html_parts)
+    return "".join(html_parts), shot_file
 
 
 def update_bug_records(bug_id: str, zentao_id: str, global_file: Optional[Path], run_files: List[Path], assignee: Optional[str] = None) -> bool:
@@ -508,11 +649,13 @@ def main():
 
         # 智能研判责任人
         assignee_name, assignee_account, reason = resolve_bug_assignee(bug, args.assignee)
-        steps_html = format_bug_details_html(bug, app_key, assignee_name, assignee_account)
+        steps_html, shot_file = format_bug_details_html(bug, app_key, assignee_name, assignee_account, run_files=r_files)
+        shot_str = f"{shot_file.name} (已内嵌案发现场快照)" if shot_file else "无可用案发现场快照"
 
         print(f"\n🔄 正在同步更新禅道缺陷 #{zen_id}...")
         print(f"  • 缺陷单号: #{zen_id} ({bug_id})")
         print(f"  • 标题名称: {final_title}")
+        print(f"  • 案发凭证: {shot_str}")
         print(f"  • 指派人员: {assignee_name} ({assignee_account})")
         print(f"  • 归因判定: {reason}")
 
@@ -563,12 +706,14 @@ def main():
 
         # 智能研判责任人
         assignee_name, assignee_account, reason = resolve_bug_assignee(bug, args.assignee)
-        steps_html = format_bug_details_html(bug, app_key, assignee_name, assignee_account)
+        steps_html, shot_file = format_bug_details_html(bug, app_key, assignee_name, assignee_account, run_files=r_files)
+        shot_str = f"{shot_file.name} (已内嵌案发现场快照)" if shot_file else "无可用案发现场快照"
 
         print(f"\n🚀 正在向禅道提交缺陷...")
         print(f"  • 禅道地址: {client.url}")
         print(f"  • 产品 ID:  {target_product_id}")
         print(f"  • 缺陷标题: {final_title}")
+        print(f"  • 案发凭证: {shot_str}")
         print(f"  • 严重等级: {sev_int}")
         print(f"  • 指派人员: {assignee_name} ({assignee_account})")
         print(f"  • 归因判定: {reason}")

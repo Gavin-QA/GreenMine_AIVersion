@@ -329,11 +329,15 @@ class ExplorerWorker:
                                         if not passed:
                                             logger.error(f"🚨 [BATCH CHART MISMATCH] 图表 '{chart_title}' 全量核验失败: {reason}")
                                             action_success = False
-                                            chart_bug_img = str(self.explore_dir / f"chart_bug_{current_step}_{worker_step}.png")
-                                            try:
-                                                self.driver.capture_screenshot(chart_bug_img)
-                                            except Exception:
-                                                chart_bug_img = None
+                                            chart_bug_img = None
+                                            if 'step_img_path' in locals() and step_img_path and Path(step_img_path).exists():
+                                                chart_bug_img = str(step_img_path)
+                                            else:
+                                                chart_bug_img = str(self.explore_dir / f"chart_bug_{current_step}_{worker_step}.png")
+                                                try:
+                                                    self.driver.capture_screenshot(chart_bug_img)
+                                                except Exception:
+                                                    chart_bug_img = None
                                             path_str = " -> ".join(current_ui_path) if current_ui_path else "未知路径"
                                             self.bug_reporter.report_bug(
                                                 run_id=self.run_id,
@@ -618,18 +622,29 @@ class ExplorerWorker:
                             if not passed:
                                 logger.error(f"🚨 [API MISMATCH] 接口数据核验未通过: {reason}")
                                 action_success = False
-                                data_bug_img = str(self.explore_dir / f"data_bug_{current_step}_{worker_step}.png")
-                                try:
-                                    self.driver.capture_screenshot(data_bug_img)
-                                except Exception:
-                                    data_bug_img = None
+                                
+                                # 优先锁定大模型用于断言判定的现场瞬态图像（局部高精 ROI 切片或当时的 hover 快照）
+                                evidence_img = None
+                                if 'roi_save' in locals() and roi_save and Path(roi_save).exists() and check_b64 == roi_b64:
+                                    evidence_img = str(roi_save)
+                                elif 'target_img_path' in locals() and target_img_path and Path(target_img_path).exists():
+                                    evidence_img = str(target_img_path)
+                                
+                                if not evidence_img:
+                                    data_bug_img = str(self.explore_dir / f"data_bug_{current_step}_{worker_step}.png")
+                                    try:
+                                        self.driver.capture_screenshot(data_bug_img)
+                                        evidence_img = data_bug_img
+                                    except Exception:
+                                        evidence_img = None
+
                                 path_str = " -> ".join(current_ui_path) if current_ui_path else "未知路径"
                                 self.bug_reporter.report_bug(
                                     run_id=self.run_id,
                                     title=f"[{self.run_id}] UI数据与接口原始报文不匹配: '{element_desc}'",
                                     step_prompt=f"[{action_type.upper()}] 核验: {check_instruction} (路径: {path_str})",
                                     actual_result=f"数据断言失败: {reason}",
-                                    crash_image_path=data_bug_img
+                                    crash_image_path=evidence_img
                                 )
                             elif is_unrelated:
                                 logger.info(f"ℹ️ [Auto-API] 候选接口非当前被测组件数据源，跳过数据断言（不纳入用例，不上报Bug）。")
