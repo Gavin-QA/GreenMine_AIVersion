@@ -102,6 +102,8 @@ class ExplorerAgent:
         planner_steps = 0
         trajectory: List[Dict[str, Any]] = []
         start_time = time.time()
+        stuck_task_count = 0
+        last_sub_objective = None
 
         # 恢复断点历史
         if resume_from:
@@ -177,6 +179,27 @@ class ExplorerAgent:
             self.is_panel_hidden = worker_res["is_panel_hidden"]
             self.mailing_dialog_open = worker_res["mailing_dialog_open"]
             self.last_l2_route = worker_res["last_l2_route"]
+
+            # 4. 极端卡死与死锁逃逸：若连续派发同一子任务且 Worker 进展极小(<=1步)，说明界面已卡死无解
+            if last_sub_objective == sub_objective and worker_res.get("steps_used", 0) <= 1:
+                stuck_task_count += 1
+            else:
+                stuck_task_count = 0
+            last_sub_objective = sub_objective
+
+            if stuck_task_count >= 3:
+                logger.warning(f"🚨 [Deadlock Escape] 检测到连续 {stuck_task_count} 次陷入死循环卡住不动 ('{sub_objective}')！")
+                logger.warning("🔄 [Launcher Restart] 触发保护机制：安全关闭当前启动器，冷重启应用底座以彻底恢复干净现场...")
+                try:
+                    self.driver.restart_app()
+                    self.container_stack.clear()
+                    self.is_panel_hidden = False
+                    self.mailing_dialog_open = False
+                    stuck_task_count = 0
+                    time.sleep(3)
+                    continue
+                except Exception as e_restart:
+                    logger.error(f"❌ 重启启动器失败: {e_restart}")
 
             # 记录历史记忆
             global_history.append(f"执行子目标: '{sub_objective}' (完成)")

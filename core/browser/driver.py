@@ -607,19 +607,38 @@ class ElectronDriver(NetworkMonitorMixin, DomExtractorMixin, ScreenshotMixin, Ch
 
     def reload_page(self, delay_after: float = 2.0):
         """
-        执行当前视口刷新与状态重置 (用于清洗污染的表单过滤死锁或卡死界面)
+        【UE 像素流安全红线】坚决禁止使用 page.reload() 刷新网页！
+        刷新网页会导致 WebRTC PeerConnection 句柄销毁、推流信令断开引起 UE5 崩溃。
+        如需在极端死锁时彻底重置，请调用 restart_app() 安全重启启动器。
         """
-        if not self.page:
-            raise RuntimeError("页面未就绪！")
-
-        logger.info("🔄 刷新视口与重置页面状态 (Reload)...")
+        logger.warning("🚫 [UE Protection] 检测到页面刷新请求已拦截！在 WebRTC 像素流架构下，严禁刷新网页以防 UE 崩溃断流！")
         try:
-            self.page.reload(timeout=10000)
-        except Exception as e_reload:
-            logger.warning(f"页面重载异常: {e_reload}")
+            self.navigate_back(delay_after=1.0)
+        except Exception:
+            pass
 
         if delay_after > 0:
             time.sleep(delay_after)
+
+    def restart_app(self, delay_after: float = 3.0) -> Page:
+        """
+        【安全冷重启】当大屏或界面彻底卡死时，优雅关闭当前 Electron/UE 启动器并冷重启重新挂载 CDP
+        (坚决杜绝在浏览器内单方面 reload 导致 UE 像素流残损僵死)
+        """
+        logger.warning("🚨 [Launcher Restart] 检测到严重死锁/卡死无响应，正在安全关闭当前启动器并执行冷重启...")
+        try:
+            self.close()
+        except Exception as e_close:
+            logger.warning(f"关闭已有实例异常: {e_close}")
+
+        time.sleep(3.0)  # 物理等待 3s 确保 Windows 回收 9222 端口与 GPU 显存，防止端口互斥
+
+        logger.info("🚀 [Launcher Restart] 正在重新启动 Electron 客户端与推流底座...")
+        page = self.start()
+        if delay_after > 0:
+            time.sleep(delay_after)
+        logger.info("🎉 [Launcher Restart] 客户端重启完成，CDP 与推流已恢复健康就绪！")
+        return page
 
     def close(self):
         """清理连接与释放进程资源"""

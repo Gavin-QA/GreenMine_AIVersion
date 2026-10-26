@@ -181,19 +181,19 @@ class ExplorerWorker:
                     logger.info(f"📤 [Container Stack] 回退动作使栈顶容器出栈: {popped}")
                 action_success = True
             elif action_type == "reload":
-                logger.info("🔄 [Worker] 执行页面刷新重置 (Reload)...")
-                self.driver.reload_page()
-                time.sleep(2.0)
-                after_img_path = self.explore_dir / f"explore_step_{current_step}_after.png"
-                self.driver.capture_screenshot_base64(str(after_img_path))
-                logger.info(f"📸 捕获重载后快照: {after_img_path.name}")
+                logger.warning("🚫 [UE Protection] 检测到 reload 动作！在 WebRTC 像素流架构下坚决禁止网页刷新以防 UE 崩溃断流！已安全转换为路由回退。")
+                self.driver.navigate_back()
+                time.sleep(1.0)
                 if container_stack:
                     container_stack.clear()
-                    logger.info("🔄 [Container Stack] 页面重载，已重置清空弹窗栈")
-                is_panel_hidden = False
-                mailing_dialog_open = False
                 action_success = True
             elif action_type in ("click", "hover", "input", "zoom", "rotate_3d", "scroll", "slide"):
+                desc_lower = (element_desc or "").lower()
+                # 🛡️ 核心物理防线：绝对严禁点击【一键隐藏/收起面板】，大屏两翼 2D 看板必须永久保持展开！
+                if action_type == "click" and any(k in desc_lower for k in ["一键隐藏", "收起面板", "class_foldbarright"]) and not any(k in desc_lower for k in ["unfold", "展开", "显示"]):
+                    logger.warning(f"🚫 [Sidebar Guard] 物理拦截：严禁点击【{element_desc}】！两翼 2D 业务面板必须保持常开！已自动安全跳过。")
+                    action_success = True
+                    continue
                 try:
                     logger.info(f"⚡ 开始对目标 '{element_desc}' 进行 DOM 与视觉二次精确定位...")
                     dom_elements = self.driver.extract_interactive_elements()
@@ -780,8 +780,8 @@ class ExplorerWorker:
                         })
                     elif action_type == "reload":
                         task_trajectory.append({
-                            "type": "reload",
-                            "prompt": "[RELOAD] 重置刷新页面",
+                            "type": "back",
+                            "prompt": "[BACK] 路由回退 (替代刷新保活UE)",
                             "thought": thought
                         })
                     else:

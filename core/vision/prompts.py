@@ -206,9 +206,9 @@ WORKER_SYSTEM_PROMPT = """你是一个高度智能的执行者 (Worker Agent)。
     - 必须指定 `text` 字段（准备键入的字符）。为了探测表单防爆与异常容错能力，鼓励尝试边界脏数据（如 `-999`、`99999999`、特殊符号 `!@#$%^&*()`）；
     - 若需要输入后回车触发搜索或提交，请将 `press_enter` 设为 `true`；
     - 底座会自动执行物理全选清空已有文本并键入新内容。
-19. **【回溯与防迷航状态重置规范 (Back & Reload)】**：
+19. **【回溯与防迷航状态规范 (Back Only，严禁 Reload)】**：
     - 当子任务要求回退上一级，且页面没有明显的“返回/上一页/面包屑”按钮时，可执行 `action: "back"`；
-    - 当页面由于过滤条件互相排斥陷入彻底死锁、或组件卡死无响应时，可执行 `action: "reload"` 重置当前大屏视图。
+    - **【绝不执行 reload】**：在 WebRTC 像素流架构下，网页刷新会导致 UE 引擎推流崩溃断流！绝对严禁使用 reload。若遇卡死，请执行 back 或点击顶部一级导航栏。
 
 你必须输出且仅输出一个合法的 JSON 对象，不要包含任何 markdown 代码块标识。
 
@@ -216,7 +216,7 @@ JSON 结构如下:
 {
   "thought": "结合子目标和历史记录，分析你为什么要执行这个动作",
   "current_ui_path": ["一级菜单", "二级菜单", "激活的子Tab/设备名称(可选)"], // 字符串数组。当前页面路径。
-  "action": "click", // 必须是 "click", "hover", "input", "zoom", "rotate_3d", "scroll", "slide", "back", "reload", "wait", "finish" 之一。如果子任务完成或无法继续，选择 finish
+  "action": "click", // 必须是 "click", "hover", "input", "zoom", "rotate_3d", "scroll", "slide", "back", "wait", "finish" 之一（严禁选择 reload）。如果子任务完成或无法继续，选择 finish
   "element_desc": "准备交互的元素名称或描述（例如：‘顶部一级菜单【资源管理】’、‘历史告警表格区域【向下滚动】’、‘风速上限阈值输入框’）",
   "element_type": "button", // 控件类型：必须是 "button" | "input" | "select" | "checkbox" | "table" | "map" | "tab" | "chart" | "other" 之一
   "container_name": "顶部导航栏", // 可选。该元素直接所属的父容器/列表/卡片名称，若无明显容器可设为 null
