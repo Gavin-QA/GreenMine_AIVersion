@@ -114,6 +114,7 @@ class ReportGenerator:
 
         shots_dir = self.run_dir / "screenshots"
         bugs_dir = self.run_dir / "bugs"
+        raw_bugs_list = []
         if bugs_dir.exists():
             for bug_json in sorted(bugs_dir.glob("*.json")):
                 try:
@@ -156,11 +157,52 @@ class ReportGenerator:
                     # 智能元数据增强：单一源头统一推导缺失的 action_type, target_element, ui_path, tags
                     enrich_bug_metadata(b_info, shots_dir=shots_dir, matched_step=matched_step)
 
-                    data["bugs"].append(b_info)
+                    raw_bugs_list.append(b_info)
                 except Exception as e:
                     logger.warning(f"读取 Bug 文件 {bug_json.name} 失败: {e}")
 
+        # 智能同类缺陷聚合折叠：按 bug_id 聚合，保留全部复现轨迹与现场
+        from collections import OrderedDict
+        grouped_bugs = OrderedDict()
+        for b in raw_bugs_list:
+            b_id = b.get("id") or b.get("card_id") or "BUG"
+            if b_id not in grouped_bugs:
+                # 以主编号文件（非带时间戳的）或第一个条目为主卡片
+                main_bug = dict(b)
+                main_bug["recurrences"] = []
+                grouped_bugs[b_id] = main_bug
+            elif b.get("card_id") == b_id:
+                # 遇到原生主单据，补全主信息
+                for k, v in b.items():
+                    if v and not grouped_bugs[b_id].get(k):
+                        grouped_bugs[b_id][k] = v
+
+            details = b.get("details") if isinstance(b.get("details"), dict) else {}
+            rec_item = {
+                "card_id": b.get("card_id", b_id),
+                "step_num": b.get("step_num"),
+                "step": details.get("step") or b.get("step", ""),
+                "actual": details.get("actual") or b.get("actual", ""),
+                "target_element": b.get("target_element", ""),
+                "ui_path": b.get("ui_path", ""),
+                "rel_screenshot": b.get("rel_screenshot"),
+                "before_screenshot": b.get("before_screenshot"),
+                "date": b.get("creation_date") or b.get("date", "")
+            }
+            grouped_bugs[b_id]["recurrences"].append(rec_item)
+
+        for b_id, main_bug in grouped_bugs.items():
+            main_bug["run_occurrences_count"] = len(main_bug["recurrences"])
+            # 如果主卡片自身缺失截图或步骤，用第一个有效复现条目补充
+            if not main_bug.get("rel_screenshot"):
+                for r in main_bug["recurrences"]:
+                    if r.get("rel_screenshot"):
+                        main_bug["rel_screenshot"] = r["rel_screenshot"]
+                        break
+            data["bugs"].append(main_bug)
+
         data["kpi"]["bugs_count"] = len(data["bugs"])
+        data["kpi"]["total_bug_hits"] = len(raw_bugs_list)
 
         # 3. 解析页面拓扑树 (checkpoint/page_tree.json 或根目录 page_tree.json)
         tree_cand = self.run_dir / "checkpoint" / "page_tree.json"

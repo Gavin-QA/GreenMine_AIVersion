@@ -508,6 +508,36 @@
       transform: translateY(-1px);
     }
 
+    .rec-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11px;
+      padding: 4px 10px;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(30, 41, 59, 0.7);
+      color: #94a3b8;
+      cursor: pointer;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      font-family: var(--font-sans);
+    }
+
+    .rec-btn:hover {
+      background: rgba(99, 102, 241, 0.2);
+      border-color: rgba(99, 102, 241, 0.4);
+      color: #fff;
+      transform: translateY(-1px);
+    }
+
+    .rec-btn.active {
+      background: rgba(244, 63, 94, 0.25);
+      border-color: #f43f5e;
+      color: #fff;
+      font-weight: 700;
+      box-shadow: 0 0 10px rgba(244, 63, 94, 0.3);
+    }
+
     .jump-bug-btn {
       display: inline-flex;
       align-items: center;
@@ -1179,7 +1209,7 @@
       </div>
       <div class="kpi-card bugs-card">
         <div class="kpi-label">🐞 捕获缺陷</div>
-        <div class="kpi-value">{{ data['kpi']['bugs_count'] }} <span class="sub">个</span></div>
+        <div class="kpi-value">{{ data['kpi']['bugs_count'] }} <span class="sub">个独立缺陷</span>{% if data['kpi'].get('total_bug_hits', 0) > data['kpi']['bugs_count'] %}<span style="font-size: 13px; color: #f43f5e; font-weight: 600; margin-left: 2px;">({{ data['kpi']['total_bug_hits'] }}次触发)</span>{% endif %}</div>
       </div>
       <div class="kpi-card">
         <div class="kpi-label">🗺️ 触达业务页面</div>
@@ -1229,7 +1259,7 @@
     <div id="tab-bugs" class="tab-pane">
       <div class="timeline-filter-bar">
         <div class="filter-btn-group">
-          <button class="filter-pill active" onclick="filterBugs('all', event)">全部缺陷 ({{ data['kpi']['bugs_count'] }})</button>
+          <button class="filter-pill active" onclick="filterBugs('all', event)">全部缺陷 ({{ data['kpi']['bugs_count'] }} 个独立{% if data['kpi'].get('total_bug_hits', 0) > data['kpi']['bugs_count'] %} / {{ data['kpi']['total_bug_hits'] }} 次触发{% endif %})</button>
         </div>
         <input type="text" id="bugSearch" class="search-box" placeholder="搜索 缺陷编号、标题、报错详情或步骤..." oninput="handleBugSearch()">
       </div>
@@ -1772,12 +1802,41 @@
         const sm = statusMeta[curStatus] || { bg: 'rgba(100,116,139,0.15)', color: '#94a3b8', border: 'rgba(100,116,139,0.3)' };
         const statusBadgeHtml = `<span style="background:${sm.bg};color:${sm.color};border:1px solid ${sm.border};padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;">${curStatus}</span>`;
 
+        const recurrencesCount = (b.recurrences && b.recurrences.length) ? b.recurrences.length : 1;
+        const recBadgeHtml = recurrencesCount > 1 ? 
+          `<span style="background:rgba(244,63,94,0.18);color:#f43f5e;border:1px solid rgba(244,63,94,0.35);padding:2px 8px;border-radius:9999px;font-size:11px;font-weight:700;display:inline-flex;align-items:center;gap:4px;" title="该缺陷在本次巡检中多处交互高频触发">🔥 本次复现 ${recurrencesCount} 次</span>` : '';
+
+        let recSelectorHtml = '';
+        if (recurrencesCount > 1) {
+          recSelectorHtml = `
+            <div style="margin: 0 20px 14px 20px; background:rgba(15,23,42,0.65); border:1px solid rgba(244,63,94,0.25); border-radius:8px; padding:10px 14px;">
+              <div style="font-size:12px; color:#fca5a5; margin-bottom:8px; font-weight:700; display:flex; align-items:center; gap:6px;">
+                <span>📍 本次巡检交互复现点 (共 ${recurrencesCount} 处):</span>
+                <span style="font-size:11px; color:var(--text-dim); font-weight:normal;">点击下方标签切换核验对应步骤与现场截图</span>
+              </div>
+              <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                ${b.recurrences.map((r, rIdx) => {
+                  const stepNumText = r.step_num ? `Step ${r.step_num}` : `#${rIdx+1}`;
+                  let targetText = r.target_element || '';
+                  if (!targetText && r.step) {
+                    const m = r.step.match(/'(.*?)'|【(.*?)】/);
+                    if (m) targetText = m[1] || m[2];
+                  }
+                  if (!targetText) targetText = r.ui_path || `复现点 ${rIdx+1}`;
+                  const activeClass = rIdx === 0 ? 'active' : '';
+                  return `<button class="rec-btn ${activeClass}" id="rec-btn-${card_id}-${rIdx}" onclick="switchRecurrence('${card_id}', ${rIdx})">${escapeHtml(stepNumText)} · ${escapeHtml(targetText)}</button>`;
+                }).join('')}
+              </div>
+            </div>`;
+        }
+
         html += `
           <div class="bug-card" id="bug-card-${card_id}">
             <div class="bug-card-header">
               <div class="bug-id-group">
                 <span class="bug-badge">${b_id}</span>
                 ${statusBadgeHtml}
+                ${recBadgeHtml}
                 ${b.zentao_id ? `<a href="http://192.140.163.129:8080/index.php?m=bug&f=view&bugID=${escapeHtml(b.zentao_id)}" target="_blank" style="background:rgba(59,130,246,0.18);color:#60a5fa;border:1px solid rgba(59,130,246,0.35);padding:2px 8px;border-radius:9999px;font-size:11px;text-decoration:none;display:inline-flex;align-items:center;gap:4px;font-family:var(--font-mono);font-weight:600;" title="点击直达禅道缺陷"><span style="font-size:10px;">🏷️</span> #${escapeHtml(b.zentao_id)} ↗</a>` : ''}
                 <span class="bug-title">${b_title}</span>
               </div>
@@ -1786,24 +1845,25 @@
                 <button class="jump-btn" style="padding:4px 10px;font-size:11px;background:rgba(99,102,241,0.2);border:1px solid var(--primary);color:#c7d2fe;" onclick="showBugModal('${card_id}')">🔍 Bug 详情</button>
               </div>
             </div>
+            ${recSelectorHtml}
             <div class="bug-body">
               <div>
                 <div class="bug-field">
                   <div class="bug-field-label">触发步骤与路径</div>
-                  <div class="bug-step-text">${b_step}</div>
+                  <div class="bug-step-text" id="bug-step-${card_id}">${b_step}</div>
                 </div>
                 <div class="bug-field">
                   <div class="bug-field-label">异常堆栈 / 接口报错详情</div>
-                  <div class="bug-error-box">${b_actual}</div>
+                  <div class="bug-error-box" id="bug-error-${card_id}">${b_actual}</div>
                 </div>
                 <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;">
                   ${viewDetailBtn}
-                  ${jumpBtnHtml}
+                  <span id="bug-jump-${card_id}">${jumpBtnHtml}</span>
                 </div>
               </div>
               <div>
                 <div class="bug-field-label">案发现场截图凭据 (操作前 vs 报错现场)</div>
-                ${screenshotsHtml}
+                <div id="bug-shots-${card_id}">${screenshotsHtml}</div>
               </div>
             </div>
           </div>
@@ -1835,6 +1895,69 @@
             <button class="jump-btn-action" onclick="const p=parseInt(document.getElementById('bugPageJumpInput').value);if(!isNaN(p)&&p>=1&&p<=${totalPages})changeBugPage(p);">跳转</button>
           </div>
         `;
+      }
+    }
+
+    function switchRecurrence(cardId, idx) {
+      const bug = allBugs.find(b => (b.card_id === cardId || b.id === cardId));
+      if (!bug || !bug.recurrences || !bug.recurrences[idx]) return;
+      const rec = bug.recurrences[idx];
+
+      // 切换按钮高亮状态
+      bug.recurrences.forEach((_, i) => {
+        const btn = document.getElementById(`rec-btn-${cardId}-${i}`);
+        if (btn) {
+          if (i === idx) btn.classList.add('active');
+          else btn.classList.remove('active');
+        }
+      });
+
+      // 切换触发步骤描述
+      const stepEl = document.getElementById(`bug-step-${cardId}`);
+      if (stepEl) stepEl.innerHTML = escapeHtml(rec.step || bug.step || '');
+
+      // 切换报错堆栈
+      const errEl = document.getElementById(`bug-error-${cardId}`);
+      if (errEl) errEl.innerHTML = escapeHtml(rec.actual || bug.actual || '');
+
+      // 切换跳转步骤按钮
+      const jumpEl = document.getElementById(`bug-jump-${cardId}`);
+      if (jumpEl) {
+        jumpEl.innerHTML = rec.step_num ? `
+          <button class="jump-btn" onclick="jumpToStep(${rec.step_num})">
+            🎬 查看执行树对应步骤 (Step ${rec.step_num}) ➔
+          </button>` : '';
+      }
+
+      // 切换截图
+      const shotsEl = document.getElementById(`bug-shots-${cardId}`);
+      if (shotsEl) {
+        const before_shot = rec.before_screenshot || '';
+        const rel_shot = rec.rel_screenshot || bug.rel_screenshot || '';
+        const b_id = escapeHtml(bug.id || 'BUG');
+        if (before_shot && rel_shot) {
+          shotsEl.innerHTML = `
+            <div class="bug-screenshots-duo">
+              <div class="bug-thumb-box" onclick="openLightbox('${before_shot}', '${b_id} 操作前 (目标位置)')" title="点击放大操作前截图">
+                <span class="bug-thumb-tag tag-before">操作前 (目标)</span>
+                <img src="${before_shot}" alt="Before" loading="lazy">
+                <div class="zoom-hint">🔍 操作前</div>
+              </div>
+              <div class="bug-thumb-box" onclick="openLightbox('${rel_shot}', '${b_id} 案发现场 (报错)')" title="点击放大案发现场截图">
+                <span class="bug-thumb-tag tag-after">案发现场 (报错)</span>
+                <img src="${rel_shot}" alt="Crash" loading="lazy">
+                <div class="zoom-hint">🔍 案发现场</div>
+              </div>
+            </div>`;
+        } else if (rel_shot) {
+          shotsEl.innerHTML = `
+            <div class="bug-screenshot-preview" onclick="openLightbox('${rel_shot}', '${b_id} 案发现场')">
+              <img src="${rel_shot}" alt="Crash Screenshot" loading="lazy">
+              <div class="zoom-hint">🔍 点击放大核验</div>
+            </div>`;
+        } else {
+          shotsEl.innerHTML = '<div style="font-size:12px;color:var(--text-dim);padding:20px;text-align:center;">无现场截图凭据</div>';
+        }
       }
     }
 
