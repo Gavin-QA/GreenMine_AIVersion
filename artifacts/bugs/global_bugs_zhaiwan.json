@@ -2797,8 +2797,8 @@
     ],
     "last_recurrence_step": 1242,
     "zentao_id": "1159",
-    "assignee": "梅本霞",
-    "analysis_notes": "🤖【AI 智能初诊与排查指引】\n1. 缺陷定位与表现：网络接口 403/权限不足\n2. 核心疑点与推断根因：用户当前登录角色无权调用接口 getCommunicationOverview（URL: /nplusone/fdcWiredDispatchPhone/getCommunicationOverview），返回业务码 7（权限不足）；该接口在点击【应急救援】菜单项时被触发，但前端未做权限校验拦截或兜底提示。\n3. 建议排查方向：建议联系后端权限模块开发确认该接口的 RBAC 权限配置（如角色-菜单-接口映射关系），同时前端需在菜单渲染前校验用户是否具备访问该功能的权限，并在无权限时隐藏菜单项或弹出友好提示；人工复核时关注：1）当前用户角色；2）该接口所属微服务（fdcWiredDispatchPhone）的权限策略；3）菜单配置表中【应急救援】是否关联了该接口。"
+    "assignee": "Unassigned",
+    "analysis_notes": ""
   },
   {
     "id": "BUG-20261023-005",
