@@ -68,7 +68,7 @@ llm:
   api_key: ""        # 请在 .env 文件中配置 LLM_API_KEY，此处留空以防泄露
   base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
   model: "qwen3-vl-plus"
-  bug_analysis_model: "qwen-vl-max" # 缺陷归因与根因排查专属模型 (高智商旗舰多模态，后台异步执行不影响主流程速度)
+  bug_analysis_model: "qwen3-vl-plus" # 缺陷归因与根因排查专属模型 (通义高智商旗舰多模态，后台异步执行不影响主流程速度)
   timeout: 60        # 单次大模型调用超时保障(秒)
   temperature: 0.1   # 模型采样温度 (控制视觉定位稳定性)
 
