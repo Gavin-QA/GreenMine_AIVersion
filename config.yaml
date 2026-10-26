@@ -78,3 +78,8 @@ reports:
   feishu_webhook: "https://open.feishu.cn/open-apis/bot/v2/hook/c7c57a81-0bb1-4af0-b7e2-2d0fbf53d62e" # 飞书群机器人推送地址
   feishu_secret: "Uo84rXzarL4FQqsiRQNI6e" # 飞书签名密钥
   report_base_url: "http://192.168.1.156" # 外部访问报告的基础 URL (如 IIS 服务地址)
+
+zentao:
+  url: "http://192.140.163.129:8080" # 禅道系统根地址
+  account: "guoxiaoqi"               # 提单账号
+  default_product_id: 10             # 默认关联产品 ID

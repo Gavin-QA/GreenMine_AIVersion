@@ -1404,7 +1404,10 @@
 
         html += `
           <tr>
-            <td><span style="font-family:var(--font-mono);font-weight:700;color:#fb7185;font-size:12px;">${escapeHtml(b.id)}</span></td>
+            <td>
+              <span style="font-family:var(--font-mono);font-weight:700;color:#fb7185;font-size:12px;">${escapeHtml(b.id)}</span>
+              ${b.zentao_id ? `<div style="margin-top:4px;"><a href="http://192.140.163.129:8080/bug-view-${escapeHtml(b.zentao_id)}.html" target="_blank" style="background:rgba(59,130,246,0.18);color:#60a5fa;border:1px solid rgba(59,130,246,0.35);padding:2px 7px;border-radius:9999px;font-size:11px;text-decoration:none;display:inline-flex;align-items:center;gap:3px;font-family:var(--font-mono);font-weight:600;" title="点击直达禅道缺陷"><span style="font-size:10px;">🏷️</span> #${escapeHtml(b.zentao_id)} ↗</a></div>` : ''}
+            </td>
             <td>${bugAppBadge}</td>
             <td>${sevBadge}</td>
             <td><span style="font-family:var(--font-mono);color:var(--text-muted);font-size:11px;">${escapeHtml(b.run_id)}</span></td>
@@ -1498,6 +1501,13 @@
       document.getElementById('modalTargetElement').innerText = b.target_element || '无';
       document.getElementById('modalAssignee').innerHTML = `<span style="color:#f8fafc;">${escapeHtml(b.assignee || 'Unassigned')}</span>`;
       
+      const elZentao = document.getElementById('modalZentaoId');
+      if (elZentao) {
+        elZentao.innerHTML = b.zentao_id ? 
+          `<a href="http://192.140.163.129:8080/bug-view-${escapeHtml(b.zentao_id)}.html" target="_blank" style="background:rgba(59,130,246,0.18);color:#60a5fa;border:1px solid rgba(59,130,246,0.4);padding:2px 8px;border-radius:4px;font-size:12px;text-decoration:none;display:inline-flex;align-items:center;gap:4px;" title="在新标签页中打开禅道缺陷">🏷️ 禅道 #${escapeHtml(b.zentao_id)} ↗</a>` : 
+          '<span style="color:#64748b;font-weight:normal;">(未关联)</span>';
+      }
+
       const tagsList = Array.isArray(b.tags) ? b.tags : (b.tags && b.tags !== '无' ? String(b.tags).split(',').map(s => s.trim()) : []);
       if (tagsList.length > 0) {
         document.getElementById('modalTags').innerHTML = tagsList.map(t => `<span style="background:rgba(99,102,241,0.15);color:#a5b4fc;border:1px solid rgba(99,102,241,0.3);padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;margin-right:4px;">${escapeHtml(t)}</span>`).join('');
@@ -1583,17 +1593,25 @@
         <input type="text" id="editBugAssignee" value="${escapeHtml(b.assignee || 'Unassigned')}" style="width:100%;background:#0f172a;border:1px solid rgba(255,255,255,0.2);color:#fff;padding:6px 8px;border-radius:4px;font-size:12px;outline:none;">
       `;
 
-      // 4. 业务路径变为输入框
+      // 4. 关联禅道单号变为输入框
+      const elZentao = document.getElementById('modalZentaoId');
+      if (elZentao) {
+        elZentao.innerHTML = `
+          <input type="text" id="editBugZentaoId" value="${escapeHtml(b.zentao_id || '')}" placeholder="例如: 852" style="width:100%;background:#0f172a;border:1px solid rgba(59,130,246,0.6);color:#60a5fa;padding:6px 8px;border-radius:4px;font-size:12px;font-family:var(--font-mono);font-weight:700;outline:none;">
+        `;
+      }
+
+      // 5. 业务路径变为输入框
       document.getElementById('modalUiPath').innerHTML = `
         <input type="text" id="editBugUiPath" value="${escapeHtml(b.ui_path || '首页')}" style="width:100%;background:#0f172a;border:1px solid rgba(255,255,255,0.2);color:#38bdf8;padding:8px 10px;border-radius:6px;font-size:13px;font-weight:600;outline:none;">
       `;
 
-      // 5. 分析备注变为多行文本输入框
+      // 6. 分析备注变为多行文本输入框
       document.getElementById('modalAnalysis').innerHTML = `
         <textarea id="editBugAnalysis" rows="4" style="width:100%;background:#0f172a;border:1px solid var(--primary);color:#f8fafc;padding:10px;border-radius:6px;font-size:13px;line-height:1.5;outline:none;resize:vertical;" placeholder="在此输入原因分析、关闭理由、误报归因或复盘结论...">${escapeHtml(b.analysis_notes || '')}</textarea>
       `;
 
-      // 6. 底部切换保存与取消按钮
+      // 7. 底部切换保存与取消按钮
       document.getElementById('modalActionFooter').innerHTML = `
         <button id="saveBugBtn" onclick="saveBugDetail('${escapeHtml(b.id)}')" style="background:#10b981;color:#fff;border:none;font-size:13px;font-weight:700;padding:8px 20px;border-radius:6px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;box-shadow:0 4px 12px rgba(16,185,129,0.3);transition:all 0.2s;">💾 保存修改</button>
         <button onclick="showBugModal('${escapeHtml(b.id)}')" style="background:var(--bg-card);border:1px solid rgba(255,255,255,0.15);color:var(--text-muted);font-size:13px;padding:8px 16px;border-radius:6px;cursor:pointer;">取消</button>
@@ -1617,6 +1635,7 @@
       const newAssignee = document.getElementById('editBugAssignee').value.trim() || 'Unassigned';
       const newUiPath = document.getElementById('editBugUiPath').value.trim() || '首页';
       const newAnalysis = document.getElementById('editBugAnalysis').value.trim();
+      const newZentaoId = document.getElementById('editBugZentaoId') ? document.getElementById('editBugZentaoId').value.trim() : (b.zentao_id || '');
 
       let apiBase = '';
       if (location.protocol === 'file:') {
@@ -1635,7 +1654,8 @@
               severity: newSeverity,
               assignee: newAssignee,
               ui_path: newUiPath,
-              analysis_notes: newAnalysis
+              analysis_notes: newAnalysis,
+              zentao_id: newZentaoId
           })
       }).then(async res => {
           if (!res.ok) {
@@ -1644,11 +1664,12 @@
           return res.json();
       }).then(data => {
           if (data.success) {
-              b.status = newStatus;
+              b.status = (newZentaoId && newStatus === '激活') ? '已提单' : newStatus;
               b.severity = newSeverity;
               b.assignee = newAssignee;
               b.ui_path = newUiPath;
               b.analysis_notes = newAnalysis;
+              b.zentao_id = newZentaoId;
 
               // 退出编辑模式并重新渲染大盘
               showBugModal(bugId);

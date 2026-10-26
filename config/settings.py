@@ -106,6 +106,13 @@ class Settings:
         self.log_file_path: str = os.getenv("LOG_FILE_PATH", "reports/runs/pytest_execution.log")
         self.screenshot_on_failure: bool = os.getenv("SCREENSHOT_ON_FAILURE", "true").lower() == "true"
 
+        # 9. 禅道缺陷管理系统配置
+        zentao_cfg = self._yaml_config.get("zentao", {})
+        self.zentao_url: str = os.getenv("ZENTAO_URL") or zentao_cfg.get("url", "http://192.140.163.129:8080")
+        self.zentao_account: str = os.getenv("ZENTAO_ACCOUNT") or zentao_cfg.get("account", "guoxiaoqi")
+        self.zentao_password: str = os.getenv("ZENTAO_PASSWORD") or zentao_cfg.get("password", "")
+        self.zentao_default_product_id: int = int(os.getenv("ZENTAO_DEFAULT_PRODUCT_ID") or zentao_cfg.get("default_product_id", 10))
+
 
 settings = Settings()
 

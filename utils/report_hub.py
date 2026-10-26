@@ -220,7 +220,8 @@ class ReportHub:
                 "tags": ", ".join(gb.get("tags", [])) if isinstance(gb.get("tags"), list) else (gb.get("tags") or "无"),
                 "severity": normalize_severity(gb.get("severity", 3)),
                 "ui_path": raw_ui_path,
-                "analysis_notes": raw_analysis
+                "analysis_notes": raw_analysis,
+                "zentao_id": gb.get("zentao_id", "")
             }
             enrich_bug_metadata(all_bugs_dict[b_id])
 
@@ -261,6 +262,8 @@ class ReportHub:
                         all_bugs_dict[b_id]["target_element"] = b["target_element"]
                     if b.get("tags") and b["tags"] != "无":
                         all_bugs_dict[b_id]["tags"] = b["tags"]
+                    if not all_bugs_dict[b_id].get("zentao_id") and b.get("zentao_id"):
+                        all_bugs_dict[b_id]["zentao_id"] = b.get("zentao_id")
                     enrich_bug_metadata(all_bugs_dict[b_id])
                 else:
                     if rel_shot and target_run_dir and not (target_run_dir / rel_shot).exists():
@@ -307,7 +310,8 @@ class ReportHub:
                         "tags": b.get("tags") or "无",
                         "severity": normalize_severity(b.get("severity", 3)),
                         "ui_path": run_ui_path,
-                        "analysis_notes": run_analysis
+                        "analysis_notes": run_analysis,
+                        "zentao_id": b.get("zentao_id", "")
                     }
                     enrich_bug_metadata(all_bugs_dict[b_id])
                     
@@ -432,6 +436,7 @@ class ReportHub:
                         new_assignee = data.get('assignee')
                         new_ui_path = data.get('ui_path')
                         new_analysis = data.get('analysis_notes')
+                        new_zentao_id = data.get('zentao_id')
 
                         success = False
                         updated_targets = []
@@ -447,6 +452,11 @@ class ReportHub:
                                 b_dict['ui_path'] = new_ui_path
                             if new_analysis is not None:
                                 b_dict['analysis_notes'] = new_analysis
+                            if new_zentao_id is not None:
+                                z_val = str(new_zentao_id).strip()
+                                b_dict['zentao_id'] = z_val
+                                if z_val and not new_status and b_dict.get('status') in ('激活', '待处理', '', None, 'Open'):
+                                    b_dict['status'] = '已提单'
 
                         # 1. 在全局缺陷知识库 (artifacts/bugs/global_bugs*.json) 中查找并更新
                         if GLOBAL_BUGS_DIR.exists():

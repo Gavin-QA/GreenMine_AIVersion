@@ -148,9 +148,9 @@ class ReportGenerator:
                     # 注入全局缺陷库权威元数据 (status, occurrences, last_seen, assignee, tags, analysis_notes, etc.)
                     if bug_id in global_bugs_map:
                         gb = global_bugs_map[bug_id]
-                        for k in ["occurrences", "last_seen", "status", "severity", "action_type", "ui_path", "target_element", "assignee", "tags", "analysis_notes", "date"]:
+                        for k in ["occurrences", "last_seen", "status", "severity", "action_type", "ui_path", "target_element", "assignee", "tags", "analysis_notes", "date", "zentao_id"]:
                             if k in gb:
-                                if k in ["status", "severity", "assignee", "tags", "analysis_notes", "occurrences", "last_seen"] or k not in b_info or not b_info[k] or b_info[k] == "Medium":
+                                if k in ["status", "severity", "assignee", "tags", "analysis_notes", "occurrences", "last_seen", "zentao_id"] or k not in b_info or not b_info[k] or b_info[k] == "Medium":
                                     b_info[k] = gb[k]
 
                     # 智能元数据增强：单一源头统一推导缺失的 action_type, target_element, ui_path, tags
