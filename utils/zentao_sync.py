@@ -125,6 +125,35 @@ class ZenTaoClient:
             raise RuntimeError(f"提交禅道缺陷失败 (HTTP {resp.status_code}): {resp.text}")
         return resp.json()
 
+    def update_bug(
+        self,
+        bug_id: int,
+        steps_html: Optional[str] = None,
+        title: Optional[str] = None,
+        severity: Optional[int] = None,
+        assigned_to: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """更新禅道已有的缺陷单据"""
+        import requests
+
+        token = self.get_token()
+        url = f"{self.url}/api.php/v1/bugs/{int(bug_id)}"
+        payload = {}
+        if steps_html:
+            payload["steps"] = steps_html
+        if title:
+            payload["title"] = title
+        if severity is not None:
+            payload["severity"] = int(severity)
+            payload["pri"] = int(severity)
+        if assigned_to:
+            payload["assignedTo"] = assigned_to
+
+        resp = requests.put(url, json=payload, headers={"Token": token}, timeout=15)
+        if resp.status_code not in (200, 201):
+            raise RuntimeError(f"更新禅道缺陷失败 (HTTP {resp.status_code}): {resp.text}")
+        return resp.json()
+
 
 def find_bug_in_databases(bug_id: str, app_name: Optional[str] = None) -> tuple[Optional[Dict[str, Any]], Optional[Path], List[Path]]:
     """在全局库与运行目录中精准定位 Bug 数据与对应的物理文件路径"""
@@ -271,6 +300,58 @@ def resolve_bug_assignee(bug: Dict[str, Any], override: Optional[str] = None) ->
     return "陈贻雄", "chenyixiong", "默认指派前端大屏开发"
 
 
+def ensure_bug_ai_analysis(bug: Dict[str, Any], global_file: Optional[Path] = None, run_files: Optional[List[Path]] = None) -> str:
+    """
+    智能前置 AI 守卫：
+    若 Bug 尚未拥有 AI 归因研判，提单前自动调用大模型进行实时诊断并回填本地单据，确保禅道工单具有完整分析。
+    """
+    notes = bug.get("analysis_notes")
+    if notes and notes.strip() and notes.strip() != "AI 暂未录入复盘备注":
+        return notes
+
+    logger.info(f"🧠 [Pre-submit AI Guard] 检测到缺陷 [{bug.get('id')}] 缺少 AI 分析，正在调起大模型进行实时研判...")
+    try:
+        from core.vision.agent import VisionAgent
+        from config import settings
+        from utils.backfill_bug_analysis import analyze_single_bug
+
+        model = getattr(settings, "bug_analysis_model", "qwen3-vl-plus") or "qwen3-vl-plus"
+        agent = VisionAgent()
+        formatted_notes = analyze_single_bug(agent, model, bug)
+        bug["analysis_notes"] = formatted_notes
+
+        # 立即回填到全局缺陷库和运行目录
+        if global_file and global_file.exists():
+            try:
+                with open(global_file, "r", encoding="utf-8") as gf:
+                    g_data = json.load(gf)
+                for gb in g_data:
+                    if gb.get("id") == bug.get("id"):
+                        gb["analysis_notes"] = formatted_notes
+                        break
+                with open(global_file, "w", encoding="utf-8") as gf:
+                    json.dump(g_data, gf, ensure_ascii=False, indent=2)
+            except Exception as ge:
+                logger.debug(f"回填全局库分析备注失败: {ge}")
+
+        if run_files:
+            for rf in run_files:
+                try:
+                    with open(rf, "r", encoding="utf-8") as rff:
+                        r_data = json.load(rff)
+                    r_data["analysis_notes"] = formatted_notes
+                    with open(rf, "w", encoding="utf-8") as rff:
+                        json.dump(r_data, rff, ensure_ascii=False, indent=2)
+                except Exception as rfe:
+                    logger.debug(f"回填运行单据分析备注失败: {rfe}")
+
+        logger.info(f"✨ [Pre-submit AI Guard] 实时研判成功完成并已回填单据！")
+        return formatted_notes
+    except Exception as e:
+        logger.warning(f"⚠️ [Pre-submit AI Guard] 自动补全 AI 分析失败 (跳过): {e}")
+        return bug.get("analysis_notes") or "AI 暂未录入复盘备注"
+
+
 def format_bug_details_html(bug: Dict[str, Any], app_key: str, assignee_name: str = "", assignee_account: str = "") -> str:
     """组织提交给禅道的结构化富文本内容"""
     app_chinese = APP_NAME_MAP.get(app_key, "寨湾矿山")
@@ -350,6 +431,7 @@ def main():
     parser = argparse.ArgumentParser(description="禅道缺陷双向绑定与自动提单工具")
     parser.add_argument("--list-products", action="store_true", help="列出当前禅道实例中所有可访问的产品")
     parser.add_argument("--submit-bug", type=str, help="指定本地 Bug ID 并自动提交到禅道 (如 BUG-20261023-003)")
+    parser.add_argument("--update-bug", type=str, help="重新研判并同步更新已在禅道创建的缺陷内容 (如 BUG-20261023-004)")
     parser.add_argument("--bind", type=str, help="指定本地 Bug ID 进行手动绑定")
     parser.add_argument("--zentao-id", type=str, help="与 --bind 搭配使用的禅道 Bug 编号 (如 852)")
     parser.add_argument("--assignee", type=str, help="指定指派人 (如 '陈贻雄' / '梅本霞'，不填则根据AI及报错智能研判)")
@@ -400,6 +482,55 @@ def main():
             sys.exit(1)
         return
 
+    if args.update_bug:
+        bug_id = args.update_bug.strip()
+        bug, g_file, r_files = find_bug_in_databases(bug_id, args.app)
+        if not bug:
+            print(f"❌ 在本地缺陷知识库及运行目录中未找到 Bug: {bug_id}")
+            sys.exit(1)
+
+        zen_id = bug.get("zentao_id")
+        if not zen_id:
+            print(f"❌ 缺陷 [{bug_id}] 尚未关联禅道单号，请先使用 --submit-bug 提交！")
+            sys.exit(1)
+
+        app_key = args.app or getattr(settings, "active_app", "zhaiwan")
+        if not args.app and g_file and "liwutong" in g_file.name:
+            app_key = "liwutong"
+        app_chinese = APP_NAME_MAP.get(app_key, "寨湾矿山")
+
+        raw_title = bug.get("title") or "自动化探索发现异常"
+        clean_title = raw_title.replace("【AI自动化】", "").strip()
+        final_title = f"【AI自动化·{app_chinese}】[{bug_id}] {clean_title}"
+
+        # 智能前置 AI 守卫：自动补齐分析
+        ensure_bug_ai_analysis(bug, g_file, r_files)
+
+        # 智能研判责任人
+        assignee_name, assignee_account, reason = resolve_bug_assignee(bug, args.assignee)
+        steps_html = format_bug_details_html(bug, app_key, assignee_name, assignee_account)
+
+        print(f"\n🔄 正在同步更新禅道缺陷 #{zen_id}...")
+        print(f"  • 缺陷单号: #{zen_id} ({bug_id})")
+        print(f"  • 标题名称: {final_title}")
+        print(f"  • 指派人员: {assignee_name} ({assignee_account})")
+        print(f"  • 归因判定: {reason}")
+
+        try:
+            client.update_bug(
+                bug_id=int(zen_id),
+                title=final_title,
+                steps_html=steps_html,
+                assigned_to=assignee_account
+            )
+            update_bug_records(bug_id, str(zen_id), g_file, r_files, assignee=assignee_name)
+            print(f"✅ 禅道缺陷 #{zen_id} 已成功刷新并同步至最新版本！")
+            print(f"🔗 禅道查看直达链接: {client.url}/index.php?m=bug&f=view&bugID={zen_id}\n")
+        except Exception as e:
+            print(f"❌ 更新禅道缺陷失败: {e}")
+            sys.exit(1)
+        return
+
     if args.submit_bug:
         bug_id = args.submit_bug.strip()
         target_product_id = args.product_id or client.default_product_id
@@ -426,6 +557,9 @@ def main():
             sev_int = 3
         if sev_int not in (1, 2, 3, 4):
             sev_int = 3
+
+        # 智能前置 AI 守卫：自动补齐分析
+        ensure_bug_ai_analysis(bug, g_file, r_files)
 
         # 智能研判责任人
         assignee_name, assignee_account, reason = resolve_bug_assignee(bug, args.assignee)

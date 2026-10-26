@@ -2758,7 +2758,7 @@
     "occurrences": 34,
     "last_seen": "2026-10-26",
     "step": "[CLICK] 交互目标: '下拉菜单项【智能胶带运输】' (页面路径: 智控管理)",
-    "actual": "[console_error (代码位置: index-76G2d69p.js:4416)] http请求通用错误： {code: 7, data: Object, msg: 获取失败,Error 1054 (42S22): Unknown column 'fdb_belt_basic.mine_area_id' in 'on clause', err: null}\n[console_error (代码位置: index-76G2d69p.js:4416)] http请求通用错误： {code: 7, data: Object, msg: 获取失败,Error 1054 (42S22): Unknown column 'fdb_belt_basic.mine_area_id' in 'on clause', err: null}\n[console_error (代码位置: index-76G2d69p.js:4416)] http请求通用错误： {code: 7, data: Object, msg: 获取失败,Error 1054 (42S22): Unknown column 'fdb_belt_basic.mine_area_id' in 'on clause', err: null}\n[console_error (代码位置: index-76G2d69p.js:4416)] http请求通用错误： {code: 7, data: Object, msg: Error 1054 (42S22): Unknown column 'fdb_belt_basic.mine_area_id' in 'on clause', err: null}\n[api_biz_error] 接口业务报错: 获取失败,Error 1054 (42S22): Unknown column 'fdb_belt_basic.mine_area_id' in 'on clause'\n[api_biz_error] 接口业务报错: 获取失败,Error 1054 (42S22): Unknown column 'fdb_belt_basic.mine_area_id' in 'on clause'\n[api_biz_error] 接口业务报错: 获取失败,Error 1054 (42S22): Unknown column 'fdb_belt_basic.mine_area_id' in 'on clause'\n[api_biz_error] 接口业务报错: Error 1054 (42S22): Unknown column 'fdb_belt_basic.mine_area_id' in 'on clause'",
+    "actual": "[console_error (代码位置: index-76G2d69p.js:4416)] http请求通用错误： {code: 7, data: Object, msg: 获取失败,Error 1054 (42S22): Unknown column 'fdb_belt_basic.mine_area_id' in 'on clause', err: null}\n[api_biz_error] 接口业务报错: 获取失败,Error 1054 (42S22): Unknown column 'fdb_belt_basic.mine_area_id' in 'on clause' (接口方法: getFdbBeltBasicList, URL: http://localhost:9528/nplusone/fdbBeltBasic/getFdbBeltBasicList, 业务码: 7)\n[api_biz_error] 接口业务报错: 获取失败,Error 1054 (42S22): Unknown column 'fdb_belt_basic.mine_area_id' in 'on clause' (接口方法: getFdbBeltBasicHistoryData, URL: http://localhost:9528/nplusone/fdbBeltBasic/getFdbBeltBasicHistoryData, 业务码: 7)",
     "app": "zhaiwan",
     "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/explore_20261025_190340/bugs/BUG-20261023-003_062358.png",
     "action_type": "CLICK",
@@ -2772,13 +2772,13 @@
     "last_recurrence_step": 1770,
     "zentao_id": "1157",
     "assignee": "梅本霞",
-    "analysis_notes": ""
+    "analysis_notes": "🤖【AI 智能初诊与排查指引】\n1. 缺陷定位与表现：网络接口 500（数据库 SQL 错误）\n2. 核心疑点与推断根因：SQL 查询中引用了不存在的字段 'fdb_belt_basic.mine_area_id'，错误码 Error 1054 (42S22) 表明在 JOIN 的 ON 子句中该字段未定义；推测为后端 MyBatis 或 JPA 映射层 SQL 拼接错误，或数据库表结构已变更但代码未同步更新。\n3. 建议排查方向：建议优先联系后端微服务（nplusone模块）开发人员：1）检查 getFdbBeltBasicList 与 getFdbBeltBasicHistoryData 对应的 SQL 语句（特别是 JOIN 条件）；2）核对 fdb_belt_basic 表实际字段结构是否含 mine_area_id；3）确认近期是否有 DB 迁移脚本遗漏或字段重命名操作。前端无需修改，但可临时加日志输出完整 SQL 便于排查。"
   },
   {
     "id": "BUG-20261023-004",
     "run_id": "explore_20261025_190340",
     "title": "[explore_20261023_184712] 探索操作 '下拉菜单项【应急救援】' 触发底层异常",
-    "severity": "Medium",
+    "severity": 3,
     "status": "已提单",
     "date": "2026-10-23",
     "occurrences": 5,
@@ -2796,8 +2796,9 @@
       "安全管理"
     ],
     "last_recurrence_step": 1242,
-    "zentao_id": "853",
-    "assignee": "梅本霞"
+    "zentao_id": "1159",
+    "assignee": "梅本霞",
+    "analysis_notes": "🤖【AI 智能初诊与排查指引】\n1. 缺陷定位与表现：网络接口 403/权限不足\n2. 核心疑点与推断根因：用户当前登录角色无权调用接口 getCommunicationOverview（URL: /nplusone/fdcWiredDispatchPhone/getCommunicationOverview），返回业务码 7（权限不足）；该接口在点击【应急救援】菜单项时被触发，但前端未做权限校验拦截或兜底提示。\n3. 建议排查方向：建议联系后端权限模块开发确认该接口的 RBAC 权限配置（如角色-菜单-接口映射关系），同时前端需在菜单渲染前校验用户是否具备访问该功能的权限，并在无权限时隐藏菜单项或弹出友好提示；人工复核时关注：1）当前用户角色；2）该接口所属微服务（fdcWiredDispatchPhone）的权限策略；3）菜单配置表中【应急救援】是否关联了该接口。"
   },
   {
     "id": "BUG-20261023-005",

@@ -665,9 +665,18 @@ class ExplorerWorker:
                     for b in bugs:
                         t = b.get("type", "error")
                         text_val = b.get("msg") or b.get("text") or ""
-                        if t == "network_error" and b.get("url"):
+                        if t == "api_biz_error":
+                            endpoint = b.get("endpoint") or ""
+                            url = b.get("url") or ""
+                            biz_code = b.get("biz_code")
+                            code_str = f", 业务码: {biz_code}" if biz_code is not None else ""
+                            raw_msg = b.get("msg") or ""
+                            if raw_msg.startswith("接口业务报错: "):
+                                raw_msg = raw_msg[len("接口业务报错: "):]
+                            text_val = f"接口业务报错: {raw_msg} (接口方法: {endpoint or '未知'}, URL: {url}{code_str})"
+                        elif t == "network_error" and b.get("url"):
                             status_val = b.get("status", "Error")
-                            text_val = f"HTTP {status_val}: {b.get('url')}"
+                            text_val = f"网络请求失败 HTTP {status_val}: {b.get('url')}"
                         loc = b.get("location", "")
                         loc_str = f" (代码位置: {loc})" if loc else ""
                         line_str = f"[{t}{loc_str}] {text_val}".strip()
