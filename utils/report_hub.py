@@ -90,11 +90,25 @@ class ReportHub:
         for d in all_dirs:
             report_file = d / "report.html"
             generator = ReportGenerator(d)
-            if not report_file.exists():
+            should_rebuild = not report_file.exists()
+            if not should_rebuild:
+                try:
+                    rep_mtime = report_file.stat().st_mtime
+                    # 检查该 run 目录下的 bugs/*.json 是否有更新
+                    bugs_dir = d / "bugs"
+                    if bugs_dir.exists():
+                        for bf in bugs_dir.glob("*.json"):
+                            if bf.stat().st_mtime > rep_mtime:
+                                should_rebuild = True
+                                break
+                except Exception:
+                    pass
+
+            if should_rebuild:
                 try:
                     generator.generate_html(disable_push=True, update_hub=False)
                 except Exception as e:
-                    logger.warning(f"为 {d.name} 补充生成 report.html 失败: {e}")
+                    logger.warning(f"为 {d.name} 渲染 report.html 失败: {e}")
 
             try:
                 data = generator.parse_run_data()
@@ -494,6 +508,15 @@ class ReportHub:
                                     logger.warning(f"更新运行目录 Bug 文件异常 ({run_bug_file}): {re_err}")
 
                         if success:
+                            # 自动刷新受影响运行目录的 report.html
+                            for run_dir in get_all_run_folders():
+                                run_bug_file = run_dir / "bugs" / f"{bug_id}.json"
+                                if run_bug_file.exists():
+                                    try:
+                                        ReportGenerator(run_dir).generate_html(disable_push=True, update_hub=False)
+                                    except Exception as ge:
+                                        logger.warning(f"刷新 {run_dir.name}/report.html 异常: {ge}")
+
                             # 异步防抖重构静态大盘与 runs_data.js，立即返回 HTTP 响应，毫秒级响应
                             hub_instance.trigger_async_rebuild(delay=1.0)
                             resp_data = {"success": True, "bug_id": bug_id, "updated": updated_targets}

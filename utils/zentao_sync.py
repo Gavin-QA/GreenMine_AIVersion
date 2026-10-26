@@ -565,6 +565,22 @@ def update_bug_records(bug_id: str, zentao_id: str, global_file: Optional[Path],
         except Exception as e:
             logger.error(f"更新运行单据 {rf} 失败: {e}")
 
+    # 3. 自动重新渲染受影响运行目录的 report.html 并更新大盘
+    if updated:
+        affected_run_dirs = set(rf.parent.parent for rf in run_files if rf.parent.name == "bugs")
+        for rd in affected_run_dirs:
+            try:
+                from utils.report_generator import ReportGenerator
+                ReportGenerator(rd).generate_html(disable_push=True, update_hub=False)
+                logger.info(f"🎨 已自动重新渲染报告: {rd.name}/report.html")
+            except Exception as re_err:
+                logger.warning(f"刷新 {rd.name}/report.html 失败: {re_err}")
+        try:
+            from utils.report_hub import ReportHub
+            ReportHub().build_index_html()
+        except Exception:
+            pass
+
     return updated
 
 

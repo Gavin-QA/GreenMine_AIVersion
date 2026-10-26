@@ -259,7 +259,7 @@ class ReportGenerator:
             return
 
         # 首先尝试提取逻辑层明确打印的执行统计 (新版逻辑)
-        stats_match = re.search(r"⏳ 任务执行统计 \| 起始时间: (.*?) \| 结束时间: (.*?) \| 实际耗时: (.*?)(?=\n|\Z)", text)
+        stats_match = re.search(r"⏳ 任务执行统计 \| 起始时间: (.*?) \| 结束时间: (.*?) \| 实际耗时: (.*?)(?=\s*\||\n|\Z)", text)
         if stats_match:
             data["start_time"] = stats_match.group(1).strip()
             data["end_time"] = stats_match.group(2).strip()
