@@ -984,16 +984,13 @@
           if(firstPill) firstPill.classList.add('active');
           renderRuns();
       } else if (tabId === 'tab-bugs') {
-          currentBugFilter = 'all';
-          currentBugStatusFilter = 'all';
-          currentBugPage = 1;
-          bugSearchQuery = '';
           const modeSel = document.getElementById('bugModeFilter');
           const statusSel = document.getElementById('bugStatusFilter');
           const searchInput = document.getElementById('bugSearch');
-          if (modeSel) modeSel.value = 'all';
-          if (statusSel) statusSel.value = 'all';
-          if (searchInput) searchInput.value = '';
+          currentBugFilter = modeSel ? modeSel.value : 'all';
+          currentBugStatusFilter = (statusSel && statusSel.value) ? statusSel.value : '激活';
+          if (statusSel && !statusSel.value) statusSel.value = '激活';
+          currentBugPage = 1;
           renderBugs();
       }
     }
