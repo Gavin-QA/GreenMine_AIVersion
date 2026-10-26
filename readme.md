@@ -240,7 +240,10 @@ python utils/zentao_sync.py --bind BUG-20261024-001 1157
 # 1. 仅重新构建静态大盘数据 (编译生成 index.html 与 runs_data.js)
 python utils/report_hub.py --build
 
-# 2. 启动常驻 Web 服务 (默认监听 8080 端口，局域网与外网均可实时访问)
+# 2. 批量重新编译刷新所有历史运行报告与大盘 (全量应用最新排版、去重与绑定数据)
+python utils/report_hub.py --refresh-all
+
+# 3. 启动常驻 Web 服务 (默认监听 8080 端口，局域网与外网均可实时访问)
 python utils/report_hub.py --serve --port 8080
 ```
 
