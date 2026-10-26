@@ -915,7 +915,7 @@
           <span style="color:var(--text-muted); font-size:13px; font-weight:600;">状态:</span>
           <select id="bugStatusFilter" class="hub-select" onchange="handleBugFilterChange()">
             <option value="all">全部状态</option>
-            <option value="激活">激活</option>
+            <option value="激活" selected>激活</option>
             <option value="已解决">已解决</option>
             <option value="已提单">已提单</option>
             <option value="已关闭">已关闭</option>
@@ -1230,7 +1230,7 @@
     let currentBugPage = 1;
     let bugsPerPage = 10;
     let currentBugFilter = 'all';
-    let currentBugStatusFilter = 'all';
+    let currentBugStatusFilter = '激活';
     let bugSearchQuery = '';
 
     function handleBugFilterChange() {
@@ -1244,7 +1244,7 @@
 
     function resetBugFilters() {
       currentBugFilter = 'all';
-      currentBugStatusFilter = 'all';
+      currentBugStatusFilter = '激活';
       currentBugAppFilter = 'all';
       bugSearchQuery = '';
       currentBugPage = 1;
@@ -1254,7 +1254,7 @@
       const searchInput = document.getElementById('bugSearch');
       if (appSel) appSel.value = 'all';
       if (modeSel) modeSel.value = 'all';
-      if (statusSel) statusSel.value = 'all';
+      if (statusSel) statusSel.value = '激活';
       if (searchInput) searchInput.value = '';
       renderBugs();
     }
