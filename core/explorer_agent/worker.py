@@ -1000,7 +1000,37 @@ class ExplorerWorker:
             curr[l2] = {}
         curr = curr[l2]
 
-        if l3_container:
+        # 4.1 空间三翼容器智能归位 (以首页->矿山简介为例)
+        spatial_routed = False
+        all_text = f"{element_desc or ''} {container_name or ''} {custom_label or ''}"
+
+        # 仅在非深层模态弹窗且当前页面具备空间三翼结构时进行空间对齐
+        if not container_stack and ("📂 👈 左侧业务面板" in curr or "📂 👉 右侧业务面板" in curr or "📂 🧭 底部视角导航Tab" in curr):
+            target_spatial_key = None
+            target_sub_key = None
+
+            if any(k in all_text for k in ["企业简介", "视频", "播放", "暂停", "平台介绍", "入井须知", "全屏"]):
+                target_spatial_key = "📂 👈 左侧业务面板"
+                target_sub_key = "🔲 【企业简介】"
+            elif any(k in all_text for k in ["矿山简介", "采矿权人", "开采方式", "开采矿种", "矿区面积"]):
+                target_spatial_key = "📂 👈 左侧业务面板"
+                target_sub_key = "📋 【矿山简介】"
+            elif any(k in all_text for k in ["作业人员", "带班领导", "井下人员"]):
+                target_spatial_key = "📂 👉 右侧业务面板"
+                target_sub_key = "👥 【作业人员】"
+            elif any(k in all_text for k in ["资源储量", "核实资源量", "矿石品级", "品位", "储量", "品级"]):
+                target_spatial_key = "📂 👉 右侧业务面板"
+                target_sub_key = "💎 【资源储量】"
+            elif any(k in all_text for k in ["矿山全貌", "智控中心", "智能矿仓", "地表办公室", "603主平硐", "725平硐", "603漫游", "725漫游", "底部Tab"]):
+                target_spatial_key = "📂 🧭 底部视角导航Tab"
+
+            if target_spatial_key and target_spatial_key in curr:
+                curr = curr[target_spatial_key]
+                if target_sub_key and target_sub_key in curr:
+                    curr = curr[target_sub_key]
+                spatial_routed = True
+
+        if not spatial_routed and l3_container:
             if l3_container not in curr or not isinstance(curr[l3_container], dict):
                 curr[l3_container] = {}
             curr = curr[l3_container]

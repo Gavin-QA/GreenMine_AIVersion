@@ -68,6 +68,51 @@ class PageMapBuilder:
         return copy.deepcopy(base_tree)
 
     @staticmethod
+    def get_baseline_spatial_skeleton(app_name: str, l1: str, l2: str) -> dict:
+        """
+        获取关键大屏页面的物理空间三翼基准骨架 (Spatial 3-Wing Baseline)
+        包含：左侧面板、右侧面板、底部视角Tab栏，并赋予标准化业务前缀 (📊核心图表、🔲业务控件、📋表格列表等)
+        """
+        app = (app_name or "").lower()
+        clean_l1 = (l1 or "").strip()
+        clean_l2 = (l2 or "").strip()
+
+        if "zhaiwan" in app and clean_l1 == "首页" and clean_l2 == "矿山简介":
+            return {
+                "📂 👈 左侧业务面板": {
+                    "🔲 【企业简介】": {
+                        "📑 标签切换卡 (企业简介 / 平台介绍 / 入井须知)": {},
+                        "🎬 视频播放区域 (含播放/暂停控制按钮)": {},
+                        "📄 企业介绍滚动文字看板": {}
+                    },
+                    "📋 【矿山简介】": {
+                        "ℹ️ 矿区基本属性信息 (采矿权人/矿山地址/开采规模/矿区面积)": {}
+                    }
+                },
+                "📂 👉 右侧业务面板": {
+                    "👥 【作业人员】": {
+                        "📋 带班领导监控 (吴述银-未下井)": {},
+                        "📊 井下人员实时总数统计 (115人)": {}
+                    },
+                    "💎 【资源储量】": {
+                        "📊 最新核实资源量 (证实/可信/推断条形对比与品位)": {},
+                        "📊 矿石品级 (I/II/III级品环形分布与阈值)": {}
+                    }
+                },
+                "📂 🧭 底部视角导航Tab": {
+                    "🔭 矿山全貌 (默认主视界)": {},
+                    "🔭 智控中心": {},
+                    "🔭 智能矿仓": {},
+                    "🔭 地表办公室": {},
+                    "🔭 603主平硐": {},
+                    "🔭 725平硐": {},
+                    "🎥 603漫游": {},
+                    "🎥 725漫游": {}
+                }
+            }
+        return {}
+
+    @staticmethod
     def normalize_page_scopes(raw_scopes: Any) -> Dict[str, Any]:
         """
         根据 docs/explore_rules.md 的权威基准菜单树，对探索过程中捕获的原始网络路径 (raw page_scopes)
@@ -443,8 +488,44 @@ class PageMapBuilder:
                             if isinstance(child_sub, dict):
                                 PageMapBuilder._deep_merge(parent_subtree, child_sub)
 
-        # 13. 若为根节点，强制收敛为确定性 4 级架构
+        # 13. 若为根节点，对大屏首页等核心业务页面执行空间三翼骨架融合与错挂异类清洗
         if is_root:
+            if "首页" in sanitized and isinstance(sanitized["首页"], dict):
+                home_dict = sanitized["首页"]
+                if "矿山简介" in home_dict and isinstance(home_dict["矿山简介"], dict):
+                    intro_node = home_dict["矿山简介"]
+                    # 识别非首页的异类节点并清除 (通风机、配电室、断层、生产运输柱状图等跨模块误挂)
+                    foreign_keywords = [
+                        "风机", "配电室", "断层", "运输概况", "采掘计划", 
+                        "810远控", "保养记录", "人员安全指数", "矿仓数据弹窗", 
+                        "红外感应", "机器人", "气体检测", "预警记录"
+                    ]
+                    for rk in list(intro_node.keys()):
+                        if any(fk in rk for fk in foreign_keywords):
+                            del intro_node[rk]
+                            logger.info(f"🧹 [Sanitize] 从【首页 -> 矿山简介】中清除跨模块错挂节点: [{rk}]")
+
+                    # 空间三翼纯净化：首页严格以标准物理空间结构为单一真理源呈现
+                    try:
+                        import copy
+                        from config.settings import settings
+                        active_app = getattr(settings, "active_app", "zhaiwan")
+                    except Exception:
+                        active_app = "zhaiwan"
+                    skeleton = PageMapBuilder.get_baseline_spatial_skeleton(active_app, "首页", "矿山简介")
+                    if skeleton:
+                        pure_intro_node = {}
+                        for s_key, s_sub in skeleton.items():
+                            pure_intro_node[s_key] = copy.deepcopy(s_sub)
+
+                        # 兼顾保留由用户/AI在首页交互点开的有效合法模态弹窗
+                        for k, v in intro_node.items():
+                            if k.startswith("🪟") and not any(kw in k for kw in ["刷新", "退出", "重载", "重置", "排污"]):
+                                pure_intro_node[k] = v
+
+                        home_dict["矿山简介"] = pure_intro_node
+                        logger.info("🌳 [Sanitize] 成功将【首页 -> 矿山简介】收敛为精准空间三翼结构底座！")
+
             sanitized = PageMapBuilder._enforce_max_4_levels(sanitized)
 
         return sanitized
@@ -475,18 +556,23 @@ class PageMapBuilder:
                         flat_l2[l3] = l3_sub
                         continue
                     flat_l3 = {}
+                    is_spatial_container = str(l3).startswith("📂")
                     for l4, l4_sub in l3_sub.items():
-                        flat_l3[l4] = {}
-                        if isinstance(l4_sub, dict) and l4_sub:
-                            def _collect_leaves(sub_d):
-                                leaves = []
-                                for k_leaf, v_leaf in sub_d.items():
-                                    leaves.append(k_leaf)
-                                    if isinstance(v_leaf, dict) and v_leaf:
-                                        leaves.extend(_collect_leaves(v_leaf))
-                                return leaves
-                            for deep_leaf in _collect_leaves(l4_sub):
-                                flat_l3[deep_leaf] = {}
+                        if is_spatial_container and isinstance(l4_sub, dict) and l4_sub:
+                            # 物理空间容器允许保留其内部大卡片与业务控件的真实层级
+                            flat_l3[l4] = dict(l4_sub)
+                        else:
+                            flat_l3[l4] = {}
+                            if isinstance(l4_sub, dict) and l4_sub:
+                                def _collect_leaves(sub_d):
+                                    leaves = []
+                                    for k_leaf, v_leaf in sub_d.items():
+                                        leaves.append(k_leaf)
+                                        if isinstance(v_leaf, dict) and v_leaf:
+                                            leaves.extend(_collect_leaves(v_leaf))
+                                    return leaves
+                                for deep_leaf in _collect_leaves(l4_sub):
+                                    flat_l3[deep_leaf] = {}
                     flat_l2[l3] = flat_l3
                 flat_l1[l2] = flat_l2
             flat_tree[l1] = flat_l1
