@@ -891,6 +891,64 @@
       overflow-x: auto;
     }
 
+    .top-filter-btn {
+      background: rgba(30, 41, 59, 0.7);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      color: #94a3b8;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      font-weight: 500;
+    }
+    .top-filter-btn:hover {
+      background: rgba(59, 130, 246, 0.2);
+      color: #93c5fd;
+      border-color: rgba(59, 130, 246, 0.3);
+    }
+    .top-filter-btn.active {
+      background: #2563eb;
+      color: #ffffff;
+      border-color: #3b82f6;
+      box-shadow: 0 0 12px rgba(37, 99, 235, 0.4);
+    }
+    .top-line {
+      padding: 2px 6px;
+      border-radius: 4px;
+      transition: background 0.15s ease;
+    }
+    .top-line:hover {
+      background: rgba(255, 255, 255, 0.04);
+    }
+    .top-l1 {
+      color: #38bdf8;
+      font-weight: 700;
+      font-size: 14px;
+      margin-top: 8px;
+    }
+    .top-l2 {
+      color: #a78bfa;
+      font-weight: 600;
+      font-size: 13.5px;
+      margin-top: 4px;
+    }
+    .top-modal {
+      color: #f43f5e;
+      font-weight: 600;
+    }
+    .top-chart {
+      color: #34d399;
+      font-weight: 500;
+    }
+    .top-control {
+      color: #cbd5e1;
+    }
+    .top-tab {
+      color: #fbbf24;
+      font-weight: 500;
+    }
+
     /* Section 4: API Pool */
     .api-card {
       background: var(--bg-card);
@@ -976,6 +1034,63 @@
       max-height: 600px;
       overflow-y: auto;
       white-space: pre;
+    }
+
+    /* Interactive Topology Tree Styles */
+    .top-filter-btn {
+      background: rgba(30, 41, 59, 0.6);
+      border: 1px solid var(--border-subtle);
+      color: #94a3b8;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .top-filter-btn:hover {
+      color: #fff;
+      border-color: rgba(99, 102, 241, 0.5);
+    }
+    .top-filter-btn.active {
+      background: rgba(99, 102, 241, 0.25);
+      border-color: var(--primary);
+      color: #c7d2fe;
+      font-weight: 600;
+    }
+    .top-line {
+      transition: background 0.15s;
+      border-radius: 4px;
+      padding: 1px 4px;
+      font-family: var(--font-mono);
+      font-size: 13px;
+    }
+    .top-line:hover {
+      background: rgba(255, 255, 255, 0.05);
+    }
+    .top-l1 {
+      color: #818cf8;
+      font-weight: 700;
+      font-size: 14px;
+      margin-top: 10px;
+    }
+    .top-l2 {
+      color: #38bdf8;
+      font-weight: 600;
+    }
+    .top-modal {
+      color: #f472b6;
+      font-weight: 500;
+    }
+    .top-chart {
+      color: #34d399;
+      font-weight: 500;
+    }
+    .top-control {
+      color: #cbd5e1;
+    }
+    .top-tab {
+      color: #fbbf24;
     }
 
     /* Image Modal Lightbox */
@@ -1284,13 +1399,26 @@
       <div id="bugsPaginationControls" class="pagination-bar"></div>
     </div>
 
-    <!-- Tab 3: Pure Markdown Topology -->
+    <!-- Tab 3: Interactive Component Topology -->
     <div id="tab-topology" class="tab-pane">
       <div class="topology-card" style="padding:0; background:var(--bg-card); border-radius:12px; border:1px solid var(--border-subtle); overflow:hidden;">
-        <div style="padding:16px 20px; border-bottom:1px solid var(--border-subtle); background:rgba(15,23,42,0.5);">
-            <h3 style="font-size:15px;margin:0;color:#fff;display:flex;align-items:center;gap:8px;">🗺️ 纯 Markdown 组件拓扑树 <span style="font-size:12px;color:var(--text-dim);font-weight:normal;"></span></h3>
+        <div style="padding:14px 20px; border-bottom:1px solid var(--border-subtle); background:rgba(15,23,42,0.6); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+            <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+                <h3 style="font-size:15px;margin:0;color:#fff;display:flex;align-items:center;gap:8px;">🗺️ 业务组件拓扑树</h3>
+                <div class="topology-filters" style="display:flex; gap:6px; flex-wrap:wrap;">
+                    <button class="top-filter-btn active" onclick="filterTopology('all', this)">全部</button>
+                    <button class="top-filter-btn" onclick="filterTopology('chart', this)">📊 核心图表</button>
+                    <button class="top-filter-btn" onclick="filterTopology('control', this)">🔲 业务控件</button>
+                    <button class="top-filter-btn" onclick="filterTopology('modal', this)">🪟 模态弹窗</button>
+                    <button class="top-filter-btn" onclick="filterTopology('table', this)">📋 表格/列表</button>
+                </div>
+            </div>
+            <div style="display:flex; align-items:center; gap:10px;">
+                <input type="text" id="topology-search" placeholder="🔍 搜索组件或路径..." oninput="searchTopology(this.value)" style="background:rgba(15,23,42,0.8); border:1px solid var(--border-subtle); color:#e2e8f0; font-size:12px; padding:6px 12px; border-radius:6px; outline:none; width:180px;">
+                <button class="copy-btn" onclick="copyTopologyMarkdown()">📋 复制 Markdown</button>
+            </div>
         </div>
-        <div class="code-view" style="margin:0; border-radius:0; border:none; padding:20px; font-family:var(--font-mono); font-size:14px; line-height:1.6; white-space:pre; color:#a5b4fc; overflow-x:auto;">{{ mermaid_escaped }}</div>
+        <div id="topology-tree-container" class="code-view" style="margin:0; border-radius:0; border:none; padding:20px; font-family:var(--font-mono); font-size:13px; line-height:1.7; color:#cbd5e1; max-height:750px; overflow-y:auto; white-space:pre;">{{ mermaid_escaped }}</div>
       </div>
     </div>
 
@@ -2496,10 +2624,100 @@
       }, 100);
     }
 
+    function copyTopologyMarkdown() {
+      const el = document.getElementById('topology-tree-container');
+      if (!el) return;
+      const text = el.getAttribute('data-raw') || el.innerText;
+      navigator.clipboard.writeText(text).then(() => {
+        alert('✅ 已将组件拓扑树 Markdown 复制到剪贴板！');
+      }).catch(err => {
+        console.error('复制失败:', err);
+      });
+    }
+
+    let rawTopologyLines = [];
+    function initTopologyTree() {
+      const el = document.getElementById('topology-tree-container');
+      if (el) {
+        el.setAttribute('data-raw', el.innerText);
+        rawTopologyLines = el.innerText.split('\n');
+        renderRichTopology(rawTopologyLines);
+      }
+    }
+
+    function renderRichTopology(lines) {
+      const container = document.getElementById('topology-tree-container');
+      if (!container) return;
+      let html = '';
+      lines.forEach((line, idx) => {
+        const trimmed = line.trim();
+        let cls = 'top-line';
+        if (trimmed.startsWith('📁')) cls += ' top-l1';
+        else if (trimmed.includes('📄') || trimmed.includes('🗺️')) cls += ' top-l2';
+        else if (trimmed.includes('🪟')) cls += ' top-modal';
+        else if (trimmed.includes('📊')) cls += ' top-chart';
+        else if (trimmed.includes('🔲')) cls += ' top-control';
+        else if (trimmed.includes('📋') || trimmed.includes('📑')) cls += ' top-tab';
+        
+        let styled = line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        html += `<div class="${cls}" data-idx="${idx}">${styled}</div>`;
+      });
+      container.innerHTML = html || '<div style="color:#64748b;padding:20px;">暂无匹配组件</div>';
+    }
+
+    function filterTopology(type, btn) {
+      document.querySelectorAll('.top-filter-btn').forEach(b => b.classList.remove('active'));
+      if (btn) btn.classList.add('active');
+      const searchVal = (document.getElementById('topology-search')?.value || '').toLowerCase();
+      applyTopologyFilter(type, searchVal);
+    }
+
+    function searchTopology(keyword) {
+      const activeBtn = document.querySelector('.top-filter-btn.active');
+      const activeType = activeBtn ? activeBtn.getAttribute('onclick').match(/filterTopology\('([^']+)'/)?.[1] || 'all' : 'all';
+      applyTopologyFilter(activeType, keyword.toLowerCase());
+    }
+
+    function applyTopologyFilter(type, keyword) {
+      if (!rawTopologyLines.length) return;
+      if (type === 'all' && !keyword) {
+        renderRichTopology(rawTopologyLines);
+        return;
+      }
+      const matchingIdxs = new Set();
+      rawTopologyLines.forEach((line, idx) => {
+        let matchType = true;
+        if (type === 'chart') matchType = line.includes('📊');
+        else if (type === 'control') matchType = line.includes('🔲') || line.includes('☑️') || line.includes('📝');
+        else if (type === 'modal') matchType = line.includes('🪟');
+        else if (type === 'table') matchType = line.includes('📋');
+        
+        let matchKw = true;
+        if (keyword) matchKw = line.toLowerCase().includes(keyword);
+
+        if (matchType && matchKw) {
+          matchingIdxs.add(idx);
+          let indent = line.search(/\S/);
+          for (let p = idx - 1; p >= 0; p--) {
+            const pLine = rawTopologyLines[p];
+            const pIndent = pLine.search(/\S/);
+            if (pIndent < indent && pIndent >= 0) {
+              matchingIdxs.add(p);
+              indent = pIndent;
+              if (indent === 0) break;
+            }
+          }
+        }
+      });
+      const filtered = rawTopologyLines.filter((_, idx) => matchingIdxs.has(idx));
+      renderRichTopology(filtered);
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
       renderSteps();
       renderBugs();
       renderSidebar();
+      initTopologyTree();
     });
   </script>
   </div> <!-- end container -->

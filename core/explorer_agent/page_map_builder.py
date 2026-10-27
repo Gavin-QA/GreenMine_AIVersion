@@ -335,33 +335,52 @@ class PageMapBuilder:
         base_l1_keys = set(base_rules.keys()) if base_rules else set()
         suffix_pattern = r'(?:数据卡片|卡片区域|卡片|模块|区域|容器|列表|表格|图表)$'
 
+        tactical_noise = [
+            "历史回退", "回退按钮", "返回上一页", "navigate_back",
+            "点击遮罩层", "遮罩层", "三维地图背景区域", "强驻留模态弹窗",
+            "折叠展开按钮", "收起面板", "展开面板", "一键展开", "一键隐藏", "foldbar", "折叠项", "展开箭头",
+            "空白区域", "物理关闭热区", "物理边缘热区", "空白热区", "热区", "顶点区域", "交界处", "内边界空白", "极右空白",
+            "印章图案", "间隙", "花纹", "空白带", "空白横缝", "无文字无图案", "1px", "几何中心", "中心点", "中心区域",
+            "横线", "分隔线", "标题文字", "Logo图标", "未激活"
+        ]
+
         sanitized = {}
         for key, subtree in tree.items():
             # 1. 剔除导航栏、下拉菜单等临时过渡组件
             if any(noise in key for noise in nav_noise_keywords):
                 continue
 
-            # 2. 剔除等待/过渡动作辅助描述（如“等待‘胶带监测预警’列表加载完成”）
-            if any(noise in key for noise in wait_noise_keywords):
+            # 2. 剔除测试框架战术动作、脱困辅助与临时等待动作
+            if any(noise in key for noise in wait_noise_keywords) or any(noise in key for noise in tactical_noise):
                 continue
 
-            # 3. 避免一级菜单被错误嵌套在非根层级下（例如“首页”下面错误嵌套了“生产管理”）
+            if "浏览器" in key and any(k in key for k in ["后退", "返回", "清除", "重置"]):
+                continue
+
+            # 3. 弹窗关闭按钮语义归一化
+            if any(k in key for k in ["关闭按钮", "关闭叉号", "❌", "叉号"]) and any(k in key for k in ["弹窗", "浮窗", "抽屉", "对话框"]):
+                key = "🔲 弹窗关闭按钮(✕)"
+
+            # 4. 避免一级菜单被错误嵌套在非根层级下（例如“首页”下面错误嵌套了“生产管理”）
             if not is_root and base_rules and key in base_l1_keys:
                 continue
 
-            # 4. 递归清洗子树
+            # 5. 递归清洗子树
             cleaned_subtree = PageMapBuilder.sanitize_page_tree(subtree, base_rules=base_rules, is_root=False)
 
-            # 5. 解包伪浮窗（例如““智能胶带运输”浮窗”或““底部标签栏中的‘1#中央配电室’标签”浮窗”）
+            # 6. 解包伪浮窗（例如““智能胶带运输”浮窗”或““底部标签栏中的‘1#中央配电室’标签”浮窗”）
             # 许多 Tab 切换或按钮点击因 3D 渲染光影变暗被误当成了浮窗，将子节点提升解包到当前层级
             if ("”浮窗" in key or "”弹窗" in key or "浮窗" in key) and any(k in key for k in ["标签", "tab", "Tab", "按钮", "菜单", "导航", "总览", "运输"]):
                 PageMapBuilder._deep_merge(sanitized, cleaned_subtree)
                 continue
 
-            # 6. 跨模块子Tab泄漏伪容器智能解包（如“证照管理”下误挂包含证照卡片的“资源储量”；或“矿山简介”下误挂包含简介内容的“采矿许可证”）
+            # 7. 过滤空容器（自身是容器标签名且无实质子组件）
+            if isinstance(cleaned_subtree, dict) and len(cleaned_subtree) == 0:
+                if any(k in key for k in ["Tab栏", "标签栏", "业务面板", "面板区域"]):
+                    continue
+
+            # 8. 跨模块子Tab泄漏伪容器智能解包（如“证照管理”下误挂包含证照卡片的“资源储量”）
             cert_keywords = ["许可证", "执照", "证号", "证照"]
-            if "证照管理" in sanitized or any(k in key for k in ["证照", "资质"]):
-                pass
             if "资源储量" in key and any(any(kw in item for kw in cert_keywords) for item in cleaned_subtree.keys()):
                 logger.info(f"🧹 [Sanitize] 识别并解包跨页泄漏的伪容器: [{key}]，将其中的证照组件提升至上一级")
                 PageMapBuilder._deep_merge(sanitized, cleaned_subtree)
@@ -372,7 +391,7 @@ class PageMapBuilder:
                 PageMapBuilder._deep_merge(sanitized, cleaned_subtree)
                 continue
 
-            # 7. 解包在数据卡片内部误吞的独立媒体播放器（如“资源储量”内部误吞了“企业简介视频播放器”）
+            # 9. 解包在数据卡片内部误吞的独立媒体播放器
             if any(card in key for card in ["资源储量", "数据卡片", "统计", "品位"]) and "企业简介视频播放器" in cleaned_subtree:
                 player_node = cleaned_subtree.pop("企业简介视频播放器")
                 if "企业简介视频播放器" not in sanitized:
@@ -380,26 +399,24 @@ class PageMapBuilder:
                 else:
                     PageMapBuilder._deep_merge(sanitized["企业简介视频播放器"], player_node)
 
-            # 8. 标签名称规范化（去除前缀冗余，使重复标签自动折叠合并）
+            # 10. 标签名称规范化（去除前缀冗余，使重复标签自动折叠合并）
             norm_key = key
             if "底部标签栏中的‘" in norm_key:
                 norm_key = norm_key.replace("底部标签栏中的‘", "").replace("’标签", "标签").replace("’", "")
             elif "底部标签栏中‘" in norm_key:
                 norm_key = norm_key.replace("底部标签栏中‘", "").replace("’标签", "标签").replace("’", "")
 
-            # 9. 同名/同义套娃容器自动解包（如“资源储量”同级存在“资源储量数据卡片”，或内部包含同名卡片）
+            # 11. 同名/同义套娃容器自动解包
             clean_norm = re.sub(r'^[📁📄📋🪟🔲📝🔽☑️🗺️📊📦⚙️\s]+', '', norm_key).strip()
             suffix_pattern = r'(?:数据卡片|卡片区域|卡片|模块|区域|容器|列表|表格|图表)$'
             core_norm = re.sub(suffix_pattern, '', clean_norm).strip()
 
-            # 检查 sanitized 中是否已有核心词一致的容器，若有则直接合并
             merged_into_existing = False
             if core_norm:
                 for existing_k in list(sanitized.keys()):
                     clean_ex = re.sub(r'^[📁📄📋🪟🔲📝🔽☑️🗺️📊📦⚙️\s]+', '', existing_k).strip()
                     core_ex = re.sub(suffix_pattern, '', clean_ex).strip()
                     if core_ex and (core_norm == core_ex or (len(core_norm) >= 3 and core_norm in core_ex) or (len(core_ex) >= 3 and core_ex in core_norm)):
-                        # 合并入现存的较精炼名称的节点
                         PageMapBuilder._deep_merge(sanitized[existing_k], cleaned_subtree)
                         merged_into_existing = True
                         break
@@ -410,7 +427,7 @@ class PageMapBuilder:
                 else:
                     sanitized[norm_key] = cleaned_subtree
 
-        # 10. 检查当前层级内部各子树，解包其内部与自身同义的套娃子容器
+        # 12. 检查当前层级内部各子树，解包其内部与自身同义的套娃子容器
         for parent_k, parent_subtree in list(sanitized.items()):
             if isinstance(parent_subtree, dict):
                 clean_pk = re.sub(r'^[📁📄📋🪟🔲📝🔽☑️🗺️📊📦⚙️\s]+', '', parent_k).strip()
@@ -420,12 +437,58 @@ class PageMapBuilder:
                         clean_ck = re.sub(r'^[📁📄📋🪟🔲📝🔽☑️🗺️📊📦⚙️\s]+', '', child_k).strip()
                         core_ck = re.sub(suffix_pattern, '', clean_ck).strip()
                         if core_ck and (core_pk == core_ck or (len(core_pk) >= 3 and core_pk in core_ck)):
-                            # 解包该子节点
                             child_sub = parent_subtree.pop(child_k)
                             if isinstance(child_sub, dict):
                                 PageMapBuilder._deep_merge(parent_subtree, child_sub)
 
+        # 13. 若为根节点，强制收敛为确定性 4 级架构
+        if is_root:
+            sanitized = PageMapBuilder._enforce_max_4_levels(sanitized)
+
         return sanitized
+
+    @staticmethod
+    def _enforce_max_4_levels(tree: dict) -> dict:
+        """
+        保证组件拓扑树严格限制在确定性 4 级架构以内：
+        Level 1 (模块) -> Level 2 (页面) -> Level 3 (容器/Tab/弹窗) -> Level 4 (业务控件)
+        若存在第 5 级及更深的子节点，自动解包提升合并至第 4 级，杜绝无序嵌套套娃。
+        """
+        if not isinstance(tree, dict):
+            return tree
+
+        flat_tree = {}
+        for l1, l1_sub in tree.items():
+            if not isinstance(l1_sub, dict):
+                flat_tree[l1] = l1_sub
+                continue
+            flat_l1 = {}
+            for l2, l2_sub in l1_sub.items():
+                if not isinstance(l2_sub, dict):
+                    flat_l1[l2] = l2_sub
+                    continue
+                flat_l2 = {}
+                for l3, l3_sub in l2_sub.items():
+                    if not isinstance(l3_sub, dict):
+                        flat_l2[l3] = l3_sub
+                        continue
+                    flat_l3 = {}
+                    for l4, l4_sub in l3_sub.items():
+                        flat_l3[l4] = {}
+                        if isinstance(l4_sub, dict) and l4_sub:
+                            def _collect_leaves(sub_d):
+                                leaves = []
+                                for k_leaf, v_leaf in sub_d.items():
+                                    leaves.append(k_leaf)
+                                    if isinstance(v_leaf, dict) and v_leaf:
+                                        leaves.extend(_collect_leaves(v_leaf))
+                                return leaves
+                            for deep_leaf in _collect_leaves(l4_sub):
+                                flat_l3[deep_leaf] = {}
+                    flat_l2[l3] = flat_l3
+                flat_l1[l2] = flat_l2
+            flat_tree[l1] = flat_l1
+        return flat_tree
 
     @staticmethod
     def _deep_merge(target: dict, source: dict):

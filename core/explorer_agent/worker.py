@@ -899,13 +899,30 @@ class ExplorerWorker:
     ) -> None:
         """
         动态构建与维护业务组件拓扑树 (Component Awareness Topology)。
-        将当前探索到的业务控件、图表、表格、弹窗挂载到对应的 1/2 级业务菜单节点下。
+        严格遵循确定性四级架构 (Level 1 模块 -> Level 2 页面 -> Level 3 容器/Tab/弹窗 -> Level 4 业务控件)。
+        过滤测试防御动作与多语序冗余，将 3D 漫游视点与 2D 业务路由清晰物理隔离。
         """
         if not isinstance(page_tree, dict) or not current_ui_path:
             return
 
         container_stack = container_stack or []
         nav_noise_keywords = ["顶部导航栏", "导航栏", "下拉菜单", "菜单栏"]
+
+        # 1. 严格过滤测试框架战术动作、页面防御动作与临时过渡
+        tactical_noise = [
+            "历史回退", "回退按钮", "返回上一页", "navigate_back",
+            "点击遮罩层", "遮罩层", "三维地图背景区域", "强驻留模态弹窗",
+            "折叠展开按钮", "收起面板", "展开面板", "一键展开", "一键隐藏", "foldbar", "折叠项", "展开箭头",
+            "等待", "wait", "加载完成", "完全加载", "完全可见", "渲染完成",
+            "空白区域", "物理关闭热区", "物理边缘热区", "空白热区", "热区", "顶点区域", "交界处", "内边界空白", "极右空白",
+            "印章图案", "间隙", "花纹", "空白带", "空白横缝", "无文字无图案", "1px", "几何中心", "中心点", "中心区域",
+            "横线", "分隔线", "标题文字", "Logo图标", "未激活"
+        ]
+        if element_desc:
+            if any(noise in element_desc for noise in tactical_noise):
+                return
+            if "浏览器" in element_desc and any(k in element_desc for k in ["后退", "返回", "清除", "重置"]):
+                return
 
         base_l1_names = set(page_tree.keys())
         base_l2_all = set()
@@ -930,71 +947,76 @@ class ExplorerWorker:
                 container_stack.clear()
             self.active_tab = None
 
-        # 记录页面内激活的子 Tab 状态 (如点击风机标签切换到对应设备视图)
+        # 记录页面内激活的子 Tab 状态
         if element_type == "tab" and clean_target and action_type == "click":
-            self.active_tab = clean_target
-            logger.info(f"🔖 [Tab Navigation] 激活当前子标签/视图为: {self.active_tab}")
+            if not any(k in clean_target for k in ["折叠", "展开", "退出"]):
+                self.active_tab = clean_target
+                logger.info(f"🔖 [Tab Navigation] 激活当前子标签/视图为: {self.active_tab}")
 
         # 如果是导航交互且没有自定义标签，不作为子组件挂载到页面拓扑中
         if is_nav_interaction and not custom_label:
             return
+
+        # 2. 弹窗关闭按钮语义归一化（消除模型多步骤微小语序差异导致的节点重复）
+        if element_desc and any(k in element_desc for k in ["关闭按钮", "关闭叉号", "❌", "叉号"]) and any(k in element_desc for k in ["弹窗", "浮窗", "抽屉", "对话框"]):
+            element_desc = "弹窗关闭按钮(✕)"
 
         # 清洗路径，剔除可能混入的导航冗余词或跨模块一级菜单
         clean_path = [p for p in current_ui_path if not any(k in p for k in nav_noise_keywords)]
         if len(clean_path) > 1 and clean_path[1] in base_l1_names:
             clean_path = [clean_path[1]] + clean_path[2:]
 
-        # 若大模型已在 current_ui_path 中指定了第3级子Tab (如 ["智控管理", "智能通风", "1242回风竖井风机"])
-        if len(clean_path) >= 3:
-            self.active_tab = clean_path[2]
-        elif self.active_tab and len(clean_path) == 2:
-            is_standalone = any(k in (element_desc or "") for k in ["播放器", "弹窗", "浮窗", "抽屉", "对话框"])
-            if not is_standalone and self.active_tab not in clean_path and clean_target != self.active_tab:
-                clean_path.append(self.active_tab)
+        # 3. 3D 漫游视点与 2D 业务路由解耦物理隔离
+        # 当在首页 3D 大屏点击钻孔、地表、采场等视点标签时，划归到独立的数字孪生视界，避免污染 2D 矿山简介
+        is_3d_viewpoint = any(k in (container_name or "") or k in (clean_target or "") or k in (self.active_tab or "") for k in [
+            "钻孔", "地表", "远控", "平硐", "平巷", "采场", "溜井", "办公室", "603", "725", "760", "810", "800", "三维", "视点"
+        ])
+        if len(clean_path) >= 2 and clean_path[0] == "首页" and clean_path[1] == "矿山简介" and is_3d_viewpoint:
+            clean_path = ["首页", "三维数字孪生视界"]
 
-        effective_path = list(clean_path)
+        # 4. 强制确定性 4 级架构 (Level 1 -> Level 2 -> Level 3 Container -> Level 4 Leaf)
+        l1 = clean_path[0] if clean_path else "首页"
+        l2 = clean_path[1] if len(clean_path) > 1 else "矿山简介"
 
-        def _is_redundant_container(c_name: str, p_list: list) -> bool:
-            if not p_list:
-                return False
-            last_p = p_list[-1]
-            c_core = re.sub(r'(?:数据卡片|卡片区域|卡片|模块|区域|容器|列表|表格|图表)$', '', c_name).strip()
-            p_core = re.sub(r'(?:数据卡片|卡片区域|卡片|模块|区域|容器|列表|表格|图表)$', '', last_p).strip()
-            if c_core and p_core and (c_core == p_core or c_core in p_core or p_core in c_core):
-                return True
-            return False
+        # 确定唯一的 Level 3 容器节点 (弹窗 > 活跃子Tab > 局部业务面板，杜绝无序嵌套套娃)
+        l3_container = None
+        if container_stack:
+            modal = container_stack[-1]
+            l3_container = PageMapBuilder.format_node_label(modal, depth=2)
+        elif self.active_tab and self.active_tab not in (l1, l2):
+            l3_container = f"📑 {self.active_tab}"
+        elif container_name and not any(k in container_name for k in nav_noise_keywords):
+            clean_c = re.sub(r'^(?:左侧|右侧|顶部|底部|中部)[‘"\'“]?', '', container_name).strip("’\"' ")
+            if clean_c and clean_c not in (l1, l2):
+                l3_container = PageMapBuilder.format_node_label(clean_c, depth=2)
 
-        # 补充局部容器上下文 (排除导航噪音与语义套娃重复)
-        if container_name and not any(k in container_name for k in nav_noise_keywords):
-            if container_name not in effective_path and container_name not in container_stack:
-                if not _is_redundant_container(container_name, effective_path):
-                    effective_path.append(container_name)
+        # 构建整棵树的前三级
+        if l1 not in page_tree or not isinstance(page_tree[l1], dict):
+            page_tree[l1] = {}
+        curr = page_tree[l1]
 
-        # 补充当前活跃的模态弹窗调用栈
-        for modal in container_stack:
-            if modal not in effective_path and not _is_redundant_container(modal, effective_path):
-                effective_path.append(modal)
+        if l2 not in curr or not isinstance(curr[l2], dict):
+            curr[l2] = {}
+        curr = curr[l2]
 
-        curr_node = page_tree
-        for path_node in effective_path:
-            if path_node not in curr_node or not isinstance(curr_node[path_node], dict):
-                curr_node[path_node] = {}
-            curr_node = curr_node[path_node]
+        if l3_container:
+            if l3_container not in curr or not isinstance(curr[l3_container], dict):
+                curr[l3_container] = {}
+            curr = curr[l3_container]
 
-        # 挂载叶子节点
+        # 5. 挂载 Level 4 叶子节点 (原子业务控件，严禁向下再产生子节点)
         if custom_label:
-            leaf_name = custom_label
-            curr_node[leaf_name] = {}
-            logger.info(f"🌳 [Topology] 挂载聚合图表节点: {' -> '.join(effective_path)} -> {leaf_name}")
+            curr[custom_label] = {}
+            logger.info(f"🌳 [Topology] 挂载聚合图表节点: {l1} -> {l2}{' -> ' + l3_container if l3_container else ''} -> {custom_label}")
         else:
-            is_wait_action = (action_type == "wait") or (element_desc and any(k in element_desc for k in ["等待", "wait", "加载完成", "完全加载", "完全可见", "渲染完成"]))
-            # 避免容器自身作为子节点套娃（例如点击打开弹窗时，弹窗已被注入为容器父节点）
-            is_same_as_container = any(modal and (modal == element_desc or modal in element_desc or element_desc in modal) for modal in container_stack)
-            if element_desc and action_type != "finish" and not is_wait_action and not is_same_as_container:
-                leaf_name = PageMapBuilder.format_node_label(element_desc, depth=len(effective_path))
-                if leaf_name and leaf_name not in curr_node:
-                    curr_node[leaf_name] = {}
-                    logger.info(f"🌳 [Topology] 挂载业务组件节点: {' -> '.join(effective_path)} -> {leaf_name}")
+            if element_desc and action_type != "finish":
+                # 避免容器自身作为自己的子节点套娃
+                if l3_container and (element_desc in l3_container or l3_container in element_desc):
+                    return
+                leaf_name = PageMapBuilder.format_node_label(element_desc, depth=3)
+                if leaf_name and leaf_name not in curr:
+                    curr[leaf_name] = {}
+                    logger.info(f"🌳 [Topology] 挂载业务组件节点: {l1} -> {l2}{' -> ' + l3_container if l3_container else ''} -> {leaf_name}")
 
         # 实时持久化树到本地 checkpoint
         try:
