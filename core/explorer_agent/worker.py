@@ -106,7 +106,7 @@ class ExplorerWorker:
             try:
                 worker_context = context
                 if is_panel_hidden:
-                    worker_context += "\n⚠️【极度紧急：大屏处于一键隐藏状态】当前页面 2D 业务面板已被收起/隐藏！下一步必须且只能执行：点击右上角【一键展开/一键显示】按钮（含 << 图标，如 class_foldBarRightunfold）恢复大屏面板显示！\n"
+                    worker_context += "\n⚠️【大屏处于一键隐藏状态】当前页面 2D 业务面板已被收起/隐藏！如果页面存在【一键展开】按钮，必须保持一键展开状态：点击右侧面板边缘的【一键展开/一键显示】按钮（含 << 图标）恢复大屏面板展示！绝对严禁点击顶部状态栏最右侧的系统退出图标！\n"
                 if mailing_dialog_open or any("迈灵" in m for m in container_stack):
                     worker_context += "\n⚠️【极度紧急：【迈灵】助手对话弹窗处于打开状态】当前屏幕底部悬浮着【迈灵】AI助手对话窗！下一步必须立即将其关闭：直接再次点击顶部状态栏右上角的【迈灵】圆形功能按钮！绝对严禁在屏幕极右上角盲找或点击关闭叉号（极易误触系统退出按钮）！\n"
 
@@ -189,11 +189,19 @@ class ExplorerWorker:
                 action_success = True
             elif action_type in ("click", "hover", "input", "zoom", "rotate_3d", "scroll", "slide"):
                 desc_lower = (element_desc or "").lower()
-                # 🛡️ 核心物理防线：绝对严禁点击【一键隐藏/收起面板】，大屏两翼 2D 看板必须永久保持展开！
+                # 🛡️ 核心物理防线 1：绝对严禁主动点击【一键隐藏/收起面板】，大屏两翼 2D 看板必须永久保持展开！
                 if action_type == "click" and any(k in desc_lower for k in ["一键隐藏", "收起面板", "class_foldbarright"]) and not any(k in desc_lower for k in ["unfold", "展开", "显示"]):
                     logger.warning(f"🚫 [Sidebar Guard] 物理拦截：严禁点击【{element_desc}】！两翼 2D 业务面板必须保持常开！已自动安全跳过。")
                     action_success = True
                     continue
+
+                # 🛡️ 核心物理防线 2：自主探索期系统退出拦截护栏 (Explorer Exit Guard)
+                # 仅在无序探索业务期间生效，防止把极右上角系统退出图标当成业务按钮误触
+                if action_type == "click" and any(k in desc_lower for k in ["退出系统", "退出应用", "exit", "注销", "关闭系统"]) and not any(k in desc_lower for k in ["弹窗", "❌", "叉号", "关闭", "headerbtn", "close"]):
+                    logger.warning(f"🚫 [Explorer Exit Guard] 探索期安全拦截：自主探索期间严禁主动点击退出控件【{element_desc}】！已自动安全跳过。")
+                    action_success = True
+                    continue
+
                 try:
                     logger.info(f"⚡ 开始对目标 '{element_desc}' 进行 DOM 与视觉二次精确定位...")
                     dom_elements = self.driver.extract_interactive_elements()
@@ -206,20 +214,62 @@ class ExplorerWorker:
                     )
                 except Exception as e:
                     logger.warning(f"⚠️ 精确定位失败 ({e})，尝试回退使用纯视觉坐标估算...")
-                    x_pct = decision.get("x_percent")
-                    y_pct = decision.get("y_percent")
-                    if x_pct is None or y_pct is None:
-                        if action_type in ("zoom", "rotate_3d", "scroll"):
-                            x = width // 2
-                            y = height // 2
-                            logger.info(f"🌐 [Center Fallback] 未指定具体微观坐标，默认采用主视口中央: ({x}, {y})")
-                        else:
-                            logger.error(f"❌ Worker 亦未返回可用坐标，跳过此步。")
-                            continue
+                    # 保护：若目标是关闭退出弹窗但定位失败，绝不可使用可能指向 OK 的粗略坐标，直接使用弹窗右上角 ❌
+                    if any(k in desc_lower for k in ["退出确认弹窗", "退出当前应用", "是否退出"]) and any(k in desc_lower for k in ["❌", "关闭", "叉号", "取消", "close"]):
+                        x = int(width * 0.575)
+                        y = int(height * 0.468)
+                        logger.info(f"🛡️ [Exit Modal Defense] 定位弹窗关闭叉号失败，采用保底弹窗右上角 ❌ 物理坐标: ({x}, {y})")
                     else:
-                        x = int(max(0, min(1, float(x_pct))) * width)
-                        y = int(max(0, min(1, float(y_pct))) * height)
-                        logger.info(f"🎯 使用纯视觉估算物理坐标: ({x}, {y})")
+                        x_pct = decision.get("x_percent")
+                        y_pct = decision.get("y_percent")
+                        if x_pct is None or y_pct is None:
+                            if action_type in ("zoom", "rotate_3d", "scroll"):
+                                x = width // 2
+                                y = height // 2
+                                logger.info(f"🌐 [Center Fallback] 未指定具体微观坐标，默认采用主视口中央: ({x}, {y})")
+                            else:
+                                logger.error(f"❌ Worker 亦未返回可用坐标，跳过此步。")
+                                continue
+                        else:
+                            x = int(max(0, min(1, float(x_pct))) * width)
+                            y = int(max(0, min(1, float(y_pct))) * height)
+                            logger.info(f"🎯 使用纯视觉估算物理坐标: ({x}, {y})")
+
+                # 🛡️ 核心物理防线 3：退出确认弹窗【OK】死锁拦截与重定向盾 (Exit Modal Lockdown)
+                # 若当前处于“是否退出当前应用”确认弹窗中：
+                # 绝对严禁点击蓝色的【OK】/【确定】按钮！若目标误中 OK，强行重定向至弹窗右上角 ❌
+                is_exit_modal_visible = False
+                try:
+                    for el in dom_elements:
+                        txt = str(el.get("text", "")).strip()
+                        if "退出当前应用" in txt or "是否退出" in txt:
+                            is_exit_modal_visible = True
+                            break
+                    if not is_exit_modal_visible and any(k in desc_lower for k in ["退出当前应用", "退出确认弹窗", "是否退出"]):
+                        is_exit_modal_visible = True
+                except Exception:
+                    pass
+
+                if is_exit_modal_visible and action_type == "click":
+                    # 检查坐标是否落在弹窗底部确认按钮区域 (按比例或关键词)
+                    modal_close_x = int(width * 0.575)
+                    modal_close_y = int(height * 0.468)
+                    is_targeting_ok = (
+                        (int(width * 0.52) <= x <= int(width * 0.59) and int(height * 0.49) <= y <= int(height * 0.55))
+                        or any(k in desc_lower for k in ["ok", "确定", "确认", "退出"])
+                    )
+                    if is_targeting_ok and not any(k in desc_lower for k in ["❌", "叉号", "关闭", "close"]):
+                        logger.critical(f"🚨 [Exit Modal Defense] 致命拦截：检测到点击目标/坐标 ({x}, {y}) 命中退出弹窗【OK】按钮！触发紧急重定向！")
+                        x, y = modal_close_x, modal_close_y
+                        logger.info(f"🛡️ [Exit Modal Defense] 已强制重定向至弹窗右上角 ❌ 叉号坐标: ({x}, {y})")
+
+                # 🛡️ 核心物理防线 4：屏幕极右上角退出图标误触拦截
+                # 顶部状态栏时间日期右侧的退出图标 (x > width * 0.94, y < height * 0.12)
+                if action_type == "click" and x > width * 0.94 and y < height * 0.12:
+                    if not any(k in desc_lower for k in ["❌", "叉号", "关闭"]):
+                        logger.warning(f"🚫 [Explorer Exit Guard] 物理拦截：目标坐标 ({x}, {y}) 命中屏幕极右上角系统退出图标区！严禁误触！已自动安全跳过。")
+                        action_success = True
+                        continue
 
                 # 在当步截图上绘制准星
                 try:
