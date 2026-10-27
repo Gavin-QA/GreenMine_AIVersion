@@ -921,7 +921,7 @@ class ExplorerWorker:
         if element_desc:
             if any(noise in element_desc for noise in tactical_noise):
                 return
-            if "浏览器" in element_desc and any(k in element_desc for k in ["后退", "返回", "清除", "重置"]):
+            if any(k in element_desc for k in ["浏览器", "历史栈"]) and any(k in element_desc for k in ["后退", "回退", "返回", "清除", "重置"]):
                 return
 
         base_l1_names = set(page_tree.keys())
@@ -966,25 +966,26 @@ class ExplorerWorker:
         if len(clean_path) > 1 and clean_path[1] in base_l1_names:
             clean_path = [clean_path[1]] + clean_path[2:]
 
-        # 3. 3D 漫游视点与 2D 业务路由解耦物理隔离
-        # 当在首页 3D 大屏点击钻孔、地表、采场等视点标签时，划归到独立的数字孪生视界，避免污染 2D 矿山简介
-        is_3d_viewpoint = any(k in (container_name or "") or k in (clean_target or "") or k in (self.active_tab or "") for k in [
-            "钻孔", "地表", "远控", "平硐", "平巷", "采场", "溜井", "办公室", "603", "725", "760", "810", "800", "三维", "视点"
-        ])
-        if len(clean_path) >= 2 and clean_path[0] == "首页" and clean_path[1] == "矿山简介" and is_3d_viewpoint:
-            clean_path = ["首页", "三维数字孪生视界"]
-
-        # 4. 强制确定性 4 级架构 (Level 1 -> Level 2 -> Level 3 Container -> Level 4 Leaf)
+        # 3. 确定确定性 4 级架构前两级 (Level 1: 顶部一级模块 -> Level 2: 顶部二级页面)
+        # 严格忠实于系统物理菜单，不凭空捏造不存在的二级页面，大屏 3D 底座直接归属于该二级页面 (如 矿山简介)
         l1 = clean_path[0] if clean_path else "首页"
         l2 = clean_path[1] if len(clean_path) > 1 else "矿山简介"
 
-        # 确定唯一的 Level 3 容器节点 (弹窗 > 活跃子Tab > 局部业务面板，杜绝无序嵌套套娃)
+        # 4. 确定唯一的 Level 3 容器节点 (弹窗 > 底部Tab控制的子视图 > 左右侧信息看板)
         l3_container = None
         if container_stack:
             modal = container_stack[-1]
             l3_container = PageMapBuilder.format_node_label(modal, depth=2)
         elif self.active_tab and self.active_tab not in (l1, l2):
-            l3_container = f"📑 {self.active_tab}"
+            # 格式化底部 Tab 按钮所控制的当前三维视界与左右看板联动场景 (如: 📑 810远控视图, 📑 地表视图)
+            clean_tab = self.active_tab
+            for pfx in ["底部Tab标签中的【", "底部Tab标签栏中的【", "底部标签页中的【", "底部标签栏中的", "【", "“", "'", "\""]:
+                clean_tab = clean_tab.replace(pfx, "")
+            for sfx in ["】标签", "】", "”", "'", "\"", "标签"]:
+                clean_tab = clean_tab.replace(sfx, "")
+            clean_tab = clean_tab.strip()
+            if clean_tab:
+                l3_container = f"📑 {clean_tab}视图" if not clean_tab.endswith("视图") else f"📑 {clean_tab}"
         elif container_name and not any(k in container_name for k in nav_noise_keywords):
             clean_c = re.sub(r'^(?:左侧|右侧|顶部|底部|中部)[‘"\'“]?', '', container_name).strip("’\"' ")
             if clean_c and clean_c not in (l1, l2):

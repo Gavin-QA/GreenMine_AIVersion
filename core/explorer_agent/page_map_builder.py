@@ -175,7 +175,7 @@ class PageMapBuilder:
         if not clean_name:
             return ""
         # 如果已经带有常见 Emoji，则直接返回
-        if any(clean_name.startswith(em) for em in ["📁", "📄", "📋", "🪟", "🔲", "📝", "🔽", "☑️", "🗺️", "📊", "📦", "⚙️"]):
+        if any(clean_name.startswith(em) for em in ["📁", "📄", "📋", "🪟", "🔲", "📝", "🔽", "☑️", "🗺️", "📊", "📦", "⚙️", "📑"]):
             return clean_name
 
         lower = clean_name.lower()
@@ -354,7 +354,7 @@ class PageMapBuilder:
             if any(noise in key for noise in wait_noise_keywords) or any(noise in key for noise in tactical_noise):
                 continue
 
-            if "浏览器" in key and any(k in key for k in ["后退", "返回", "清除", "重置"]):
+            if any(k in key for k in ["浏览器", "历史栈"]) and any(k in key for k in ["后退", "回退", "返回", "清除", "重置"]):
                 continue
 
             # 3. 弹窗关闭按钮语义归一化
@@ -379,10 +379,12 @@ class PageMapBuilder:
                 if any(k in key for k in ["Tab栏", "标签栏", "业务面板", "面板区域"]):
                     continue
 
-            # 8. 跨模块子Tab泄漏伪容器智能解包（如“证照管理”下误挂包含证照卡片的“资源储量”）
-            cert_keywords = ["许可证", "执照", "证号", "证照"]
-            if "资源储量" in key and any(any(kw in item for kw in cert_keywords) for item in cleaned_subtree.keys()):
-                logger.info(f"🧹 [Sanitize] 识别并解包跨页泄漏的伪容器: [{key}]，将其中的证照组件提升至上一级")
+            # 8. 跨模块子Tab泄漏伪容器智能解包（如“证照管理”或“资料管理”下误挂包含证照卡片或分类标题的 3D 视点伪容器）
+            web_keywords = ["许可证", "执照", "证号", "证照", "资料", "规程", "分类标题", "存档"]
+            is_3d_tab_label = any(tab in key for tab in ["地表", "钻孔", "810远控", "725平硐", "760平巷", "采场", "溜井", "资源储量", "智控中心"])
+            has_web_content = isinstance(cleaned_subtree, dict) and any(any(kw in item for kw in web_keywords) for item in cleaned_subtree.keys())
+            if is_3d_tab_label and has_web_content:
+                logger.info(f"🧹 [Sanitize] 识别并解包纯 Web 页面误挂的 3D 视点伪容器: [{key}]，将其实质业务组件提升至上一级")
                 PageMapBuilder._deep_merge(sanitized, cleaned_subtree)
                 continue
 
