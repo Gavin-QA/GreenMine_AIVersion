@@ -204,6 +204,16 @@ class ReportGenerator:
         data["kpi"]["bugs_count"] = len(data["bugs"])
         data["kpi"]["total_bug_hits"] = len(raw_bugs_list)
 
+        # 统计缺陷各状态分布 (激活 / 误报 / 已提单 / 已关闭 / 已解决)
+        status_counts = {"激活": 0, "已提单": 0, "误报": 0, "已关闭": 0, "已解决": 0}
+        for b in data["bugs"]:
+            st = b.get("status") or "激活"
+            if st == "Open":
+                st = "激活"
+            status_counts[st] = status_counts.get(st, 0) + 1
+        data["kpi"]["bug_status_counts"] = status_counts
+        data["kpi"]["active_bugs_count"] = status_counts.get("激活", 0)
+
         # 3. 解析页面拓扑树 (checkpoint/page_tree.json 或根目录 page_tree.json)
         tree_cand = self.run_dir / "checkpoint" / "page_tree.json"
         if not tree_cand.exists():
