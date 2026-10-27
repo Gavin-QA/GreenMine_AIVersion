@@ -169,7 +169,8 @@ class ExplorerAgent:
                 last_l2_route=self.last_l2_route,
                 start_step=steps_taken,
                 max_steps=max_steps,
-                current_path=self.current_path
+                current_path=self.current_path,
+                active_tab=self.active_tab
             )
 
             # 3. 汇总与状态机同步
@@ -179,6 +180,7 @@ class ExplorerAgent:
             self.is_panel_hidden = worker_res["is_panel_hidden"]
             self.mailing_dialog_open = worker_res["mailing_dialog_open"]
             self.last_l2_route = worker_res["last_l2_route"]
+            self.active_tab = worker_res.get("active_tab", self.active_tab)
 
             # 4. 极端卡死与死锁逃逸：若连续派发同一子任务且 Worker 进展极小(<=1步)，说明界面已卡死无解
             if last_sub_objective == sub_objective and worker_res.get("steps_used", 0) <= 1:
@@ -295,7 +297,14 @@ class ExplorerAgent:
         except Exception as api_err:
             logger.warning(f"导出接口大盘异常: {api_err}")
 
-        # 3. 生成交互式 HTML 大盘报告
+        # 3. 统一持久化架构树并更新全局真理源
+        try:
+            PageMapBuilder.export_page_map(self.page_tree)
+            logger.info("🗺️ [PageMapBuilder] 全局页面架构树已完成持久化与同步更新。")
+        except Exception as tree_err:
+            logger.warning(f"持久化架构树失败: {tree_err}")
+
+        # 4. 生成交互式 HTML 大盘报告
         try:
             from utils.report_generator import ReportGenerator
             reporter = ReportGenerator(self.run_dir)

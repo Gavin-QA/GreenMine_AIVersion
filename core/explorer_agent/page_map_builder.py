@@ -204,8 +204,8 @@ class PageMapBuilder:
         if any(k in clean_name for k in ["输入框", "搜索框", "文本框", "input"]):
             return f"📝 {clean_name}"
 
-        # 7. 按钮/操作
-        if any(k in clean_name for k in ["按钮", "查询", "重置", "确定", "取消", "导出", "提交", "刷新", "操作"]) or "btn" in lower or "button" in lower:
+        # 7. 按钮/操作/控制/滑块
+        if any(k in clean_name for k in ["按钮", "查询", "重置", "确定", "取消", "导出", "提交", "刷新", "操作", "滑块", "调节", "控制", "slider", "点击"]) or "btn" in lower or "button" in lower:
             return f"🔲 {clean_name}"
 
         # 8. 图表/曲线/进度条
@@ -219,6 +219,8 @@ class PageMapBuilder:
             return f"📄 {clean_name}"
         elif depth == 2:
             return f"📋 {clean_name}"
+        else:
+            return f"🔲 {clean_name}"
 
         return clean_name
 

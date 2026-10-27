@@ -23,6 +23,7 @@ from PIL import Image, ImageChops
 
 from .guards import ExplorerGuards
 from .post_click_diff import PostClickDetector
+from .page_map_builder import PageMapBuilder
 
 logger = logging.getLogger("explorer_agent.worker")
 
@@ -50,6 +51,8 @@ class ExplorerWorker:
 
         # 图表全量嗅探缓存
         self.chart_data_buffer: Dict[str, Any] = {}
+        # 当前页面内活跃激活的子 Tab / 视图 (如风机标签、分控设备等)
+        self.active_tab: Optional[str] = None
 
     def run_sub_task(
         self,
@@ -65,12 +68,15 @@ class ExplorerWorker:
         last_l2_route: Optional[Tuple[str, str]] = None,
         start_step: int = 0,
         max_steps: int = 2000,
-        current_path: Optional[List[str]] = None
+        current_path: Optional[List[str]] = None,
+        active_tab: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         执行单次分配的子任务战术循环。
         返回包含步骤消耗数、状态更新、新增轨迹等的字典。
         """
+        if active_tab is not None:
+            self.active_tab = active_tab
         container_stack = container_stack if container_stack is not None else []
         action_history: List[Dict[str, Any]] = []
         task_trajectory: List[Dict[str, Any]] = []
@@ -148,6 +154,7 @@ class ExplorerWorker:
                     container_stack.clear()
                     is_panel_hidden = False
                     mailing_dialog_open = False
+                    self.active_tab = None
                 last_l2_route = current_l2
                 self.driver.set_page_scope(f"{current_ui_path[0]} -> {current_ui_path[1]}")
             elif current_ui_path and len(current_ui_path) == 1:
@@ -407,6 +414,19 @@ class ExplorerWorker:
                                 else:
                                     logger.info(f"ℹ️ [BatchChart] 未检索到图表 '{chart_title}' 的专属后台接口报文，记录图表已嗅探。")
                                     action_success = True
+
+                                # 将拓扑树收敛为一个规范的聚合图表节点
+                                consolidated_label = f"📊 {chart_title} (全量{len(points)}个数据点已核验)"
+                                self._attach_component_to_topology(
+                                    page_tree=page_tree,
+                                    current_ui_path=current_ui_path,
+                                    element_desc=element_desc,
+                                    action_type=action_type,
+                                    container_name=container_name,
+                                    container_stack=container_stack,
+                                    element_type="chart",
+                                    custom_label=consolidated_label
+                                )
 
                             batch_chart_handled = True
                             worker_finished_early = True
@@ -778,6 +798,17 @@ class ExplorerWorker:
                     "current_ui_path": current_ui_path
                 })
                 if action_success:
+                    if not batch_chart_handled:
+                        self._attach_component_to_topology(
+                            page_tree=page_tree,
+                            current_ui_path=current_ui_path,
+                            element_desc=element_desc,
+                            action_type=action_type,
+                            container_name=container_name,
+                            container_stack=container_stack,
+                            element_type=element_type
+                        )
+
                     if action_type == "zoom":
                         dir_str = str(decision.get("direction", "in")).upper()
                         steps_val = int(decision.get("steps", 3))
@@ -851,5 +882,125 @@ class ExplorerWorker:
             "container_stack": container_stack,
             "is_panel_hidden": is_panel_hidden,
             "mailing_dialog_open": mailing_dialog_open,
-            "last_l2_route": last_l2_route
+            "last_l2_route": last_l2_route,
+            "active_tab": self.active_tab
         }
+
+    def _attach_component_to_topology(
+        self,
+        page_tree: Dict[str, Any],
+        current_ui_path: List[str],
+        element_desc: str,
+        action_type: str,
+        container_name: str = "",
+        container_stack: Optional[List[str]] = None,
+        element_type: str = "other",
+        custom_label: Optional[str] = None
+    ) -> None:
+        """
+        动态构建与维护业务组件拓扑树 (Component Awareness Topology)。
+        将当前探索到的业务控件、图表、表格、弹窗挂载到对应的 1/2 级业务菜单节点下。
+        """
+        if not isinstance(page_tree, dict) or not current_ui_path:
+            return
+
+        container_stack = container_stack or []
+        nav_noise_keywords = ["顶部导航栏", "导航栏", "下拉菜单", "菜单栏"]
+
+        base_l1_names = set(page_tree.keys())
+        base_l2_all = set()
+        for l2_dict in page_tree.values():
+            if isinstance(l2_dict, dict):
+                base_l2_all.update(l2_dict.keys())
+
+        clean_target = (
+            element_desc.replace("按钮", "").replace("选项", "").replace("菜单", "").strip("‘’'\"“” ")
+            if element_desc else ""
+        )
+
+        is_nav_interaction = (
+            (any(k in element_desc for k in nav_noise_keywords) if element_desc else False) or
+            (any(k in container_name for k in nav_noise_keywords) if container_name else False) or
+            (bool(clean_target) and (clean_target in base_l1_names or clean_target in base_l2_all))
+        )
+
+        # 路由跃迁：若点击了二级菜单项，清空模态调用栈与子Tab状态
+        if action_type == "click" and clean_target and clean_target in base_l2_all:
+            if container_stack:
+                container_stack.clear()
+            self.active_tab = None
+
+        # 记录页面内激活的子 Tab 状态 (如点击风机标签切换到对应设备视图)
+        if element_type == "tab" and clean_target and action_type == "click":
+            self.active_tab = clean_target
+            logger.info(f"🔖 [Tab Navigation] 激活当前子标签/视图为: {self.active_tab}")
+
+        # 如果是导航交互且没有自定义标签，不作为子组件挂载到页面拓扑中
+        if is_nav_interaction and not custom_label:
+            return
+
+        # 清洗路径，剔除可能混入的导航冗余词或跨模块一级菜单
+        clean_path = [p for p in current_ui_path if not any(k in p for k in nav_noise_keywords)]
+        if len(clean_path) > 1 and clean_path[1] in base_l1_names:
+            clean_path = [clean_path[1]] + clean_path[2:]
+
+        # 若大模型已在 current_ui_path 中指定了第3级子Tab (如 ["智控管理", "智能通风", "1242回风竖井风机"])
+        if len(clean_path) >= 3:
+            self.active_tab = clean_path[2]
+        elif self.active_tab and len(clean_path) == 2:
+            is_standalone = any(k in (element_desc or "") for k in ["播放器", "弹窗", "浮窗", "抽屉", "对话框"])
+            if not is_standalone and self.active_tab not in clean_path and clean_target != self.active_tab:
+                clean_path.append(self.active_tab)
+
+        effective_path = list(clean_path)
+
+        def _is_redundant_container(c_name: str, p_list: list) -> bool:
+            if not p_list:
+                return False
+            last_p = p_list[-1]
+            c_core = re.sub(r'(?:数据卡片|卡片区域|卡片|模块|区域|容器|列表|表格|图表)$', '', c_name).strip()
+            p_core = re.sub(r'(?:数据卡片|卡片区域|卡片|模块|区域|容器|列表|表格|图表)$', '', last_p).strip()
+            if c_core and p_core and (c_core == p_core or c_core in p_core or p_core in c_core):
+                return True
+            return False
+
+        # 补充局部容器上下文 (排除导航噪音与语义套娃重复)
+        if container_name and not any(k in container_name for k in nav_noise_keywords):
+            if container_name not in effective_path and container_name not in container_stack:
+                if not _is_redundant_container(container_name, effective_path):
+                    effective_path.append(container_name)
+
+        # 补充当前活跃的模态弹窗调用栈
+        for modal in container_stack:
+            if modal not in effective_path and not _is_redundant_container(modal, effective_path):
+                effective_path.append(modal)
+
+        curr_node = page_tree
+        for path_node in effective_path:
+            if path_node not in curr_node or not isinstance(curr_node[path_node], dict):
+                curr_node[path_node] = {}
+            curr_node = curr_node[path_node]
+
+        # 挂载叶子节点
+        if custom_label:
+            leaf_name = custom_label
+            curr_node[leaf_name] = {}
+            logger.info(f"🌳 [Topology] 挂载聚合图表节点: {' -> '.join(effective_path)} -> {leaf_name}")
+        else:
+            is_wait_action = (action_type == "wait") or (element_desc and any(k in element_desc for k in ["等待", "wait", "加载完成", "完全加载", "完全可见", "渲染完成"]))
+            # 避免容器自身作为子节点套娃（例如点击打开弹窗时，弹窗已被注入为容器父节点）
+            is_same_as_container = any(modal and (modal == element_desc or modal in element_desc or element_desc in modal) for modal in container_stack)
+            if element_desc and action_type != "finish" and not is_wait_action and not is_same_as_container:
+                leaf_name = PageMapBuilder.format_node_label(element_desc, depth=len(effective_path))
+                if leaf_name and leaf_name not in curr_node:
+                    curr_node[leaf_name] = {}
+                    logger.info(f"🌳 [Topology] 挂载业务组件节点: {' -> '.join(effective_path)} -> {leaf_name}")
+
+        # 实时持久化树到本地 checkpoint
+        try:
+            tree_file = Path(self.checkpoint_dir) / "page_tree.json"
+            tree_file.parent.mkdir(parents=True, exist_ok=True)
+            with open(tree_file, "w", encoding="utf-8") as f:
+                json.dump(page_tree, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.warning(f"持久化 page_tree.json 失败: {e}")
