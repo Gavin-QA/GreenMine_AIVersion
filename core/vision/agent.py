@@ -17,7 +17,8 @@ from .prompts import (
     ASSERT_SYSTEM_PROMPT,
     API_ASSERT_SYSTEM_PROMPT,
     BATCH_CHART_ASSERT_SYSTEM_PROMPT,
-    SELF_HEAL_SYSTEM_PROMPT
+    SELF_HEAL_SYSTEM_PROMPT,
+    PAGE_SKELETON_SCAN_SYSTEM_PROMPT
 )
 
 logger = logging.getLogger("core.vision_agent")
@@ -478,3 +479,48 @@ class VisionAgent:
             user_prompt=user_prompt,
             base64_image=base64_image
         )
+
+    def scan_page_skeleton(
+        self,
+        base64_image: str,
+        dom_elements: Optional[List[Dict[str, Any]]] = None,
+        page_title: str = "",
+        ui_path: str = ""
+    ) -> Dict[str, Any]:
+        """
+        全景页面结构多模态自适应扫描器
+        当进入任意一个全新页面时，调用大模型对页面版式与核心业务组件进行全景建模，
+        自动输出结构化的空间容器与四大类（📊核心图表、🔲业务控件、📋表格列表、🪟模态弹窗）规范骨架。
+        """
+        user_prompt = f"【当前所处页面】: {ui_path or page_title or '未知页面'}\n"
+
+        if dom_elements:
+            dom_summary = []
+            for el in dom_elements[:60]:
+                tag = el.get("tag", "")
+                text = (el.get("text", "") or "").strip()
+                cid = el.get("id", "")
+                role = el.get("role", "")
+                if text or tag in ["canvas", "table", "button", "input"]:
+                    desc = f"[{tag}] {text}" if text else f"[{tag} id={cid} role={role}]"
+                    dom_summary.append(desc[:80])
+            if dom_summary:
+                user_prompt += "【页面可见精简 DOM 概览】:\n" + "\n".join(dom_summary) + "\n\n"
+
+        user_prompt += "请根据全屏截图与 DOM 信息，识别当前页面的版式形态（3D大屏双翼看板 vs 纯Web/报表/文档区），提取全部切实可见的业务卡片与核心组件，并严格赋予标准分类 Emoji 前缀输出标准 JSON 骨架。"
+
+        logger.info(f"🛰️ [全景骨架扫描] 正在对页面【{ui_path or page_title}】进行多模态全景组件结构化建模...")
+        try:
+            res = self._call_llm(
+                system_prompt=PAGE_SKELETON_SCAN_SYSTEM_PROMPT,
+                user_prompt=user_prompt,
+                base64_image=base64_image
+            )
+            if isinstance(res, dict):
+                return res
+            logger.warning("全景骨架扫描返回非字典格式，降级为空骨架")
+            return {}
+        except Exception as e:
+            logger.warning(f"全景骨架扫描异常: {e}")
+            return {}
+

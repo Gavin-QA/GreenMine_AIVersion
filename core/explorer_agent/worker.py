@@ -53,6 +53,76 @@ class ExplorerWorker:
         self.chart_data_buffer: Dict[str, Any] = {}
         # 当前页面内活跃激活的子 Tab / 视图 (如风机标签、分控设备等)
         self.active_tab: Optional[str] = None
+        # 已完成全景骨架扫描的二级业务页面缓存 (避免单次运行中重复扫描)
+        self.scanned_pages: set = set()
+
+    def _auto_scan_page_skeleton(
+        self,
+        l1: str,
+        l2: str,
+        base64_image: str,
+        page_tree: Dict[str, Any]
+    ) -> None:
+        """
+        全景页面骨架自动扫描与自适应拓扑注入 (通用零维护自适应引擎)
+        当初次进入任意一个二级业务页面时，自动触发一次多模态全景建模，将页面各物理区域及组件预先写入拓扑树。
+        无论中间是三维视界还是纯 Web 表格/文档图纸，均自适应提取归口！
+        """
+        page_key = f"{l1} -> {l2}"
+        if page_key in self.scanned_pages:
+            return
+
+        self.scanned_pages.add(page_key)
+
+        # 1. 优先检查是否已声明空间基准（如首页已有预置三翼基准），若已有则直接秒级融合基准
+        try:
+            from config.settings import settings
+            active_app = getattr(settings, "active_app", "zhaiwan")
+        except Exception:
+            active_app = "zhaiwan"
+
+        baseline_skeleton = PageMapBuilder.get_baseline_spatial_skeleton(active_app, l1, l2)
+        if baseline_skeleton:
+            if l1 not in page_tree:
+                page_tree[l1] = {}
+            if l2 not in page_tree[l1]:
+                page_tree[l1][l2] = {}
+            PageMapBuilder._deep_merge(page_tree[l1][l2], baseline_skeleton)
+            logger.info(f"✨ [Skeleton Engine] 页面【{page_key}】已快速挂载基准空间三翼骨架！")
+            return
+
+        # 2. 若无静态基准，则全自动启用 AI 多模态全景扫描引擎 (零维护通用自适应)
+        try:
+            dom_elements = []
+            try:
+                dom_elements = self.driver.get_interactive_elements() or []
+            except Exception:
+                pass
+
+            scanned_skeleton = self.vision.scan_page_skeleton(
+                base64_image=base64_image,
+                dom_elements=dom_elements,
+                ui_path=page_key
+            )
+
+            if isinstance(scanned_skeleton, dict) and scanned_skeleton:
+                if l1 not in page_tree:
+                    page_tree[l1] = {}
+                if l2 not in page_tree[l1]:
+                    page_tree[l1][l2] = {}
+                PageMapBuilder._deep_merge(page_tree[l1][l2], scanned_skeleton)
+                logger.info(f"🌟 [Skeleton Engine] AI 通用全景扫描成功！已为页面【{page_key}】自动建立 {len(scanned_skeleton)} 个物理区域组件骨架！")
+
+                # 实时持久化更新
+                try:
+                    tree_file = Path(self.checkpoint_dir) / "page_tree.json"
+                    tree_file.parent.mkdir(parents=True, exist_ok=True)
+                    with open(tree_file, "w", encoding="utf-8") as f:
+                        json.dump(page_tree, f, ensure_ascii=False, indent=2)
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.warning(f"⚠️ [Skeleton Engine] 自动页面骨架扫描异常: {e}")
 
     def run_sub_task(
         self,
@@ -157,6 +227,13 @@ class ExplorerWorker:
                     self.active_tab = None
                 last_l2_route = current_l2
                 self.driver.set_page_scope(f"{current_ui_path[0]} -> {current_ui_path[1]}")
+                # 触发全景页面骨架自动扫描与自适应拓扑建模 (零维护通用自适应)
+                self._auto_scan_page_skeleton(
+                    l1=str(current_ui_path[0]),
+                    l2=str(current_ui_path[1]),
+                    base64_image=base64_img,
+                    page_tree=page_tree
+                )
             elif current_ui_path and len(current_ui_path) == 1:
                 self.driver.set_page_scope(current_ui_path[0])
 

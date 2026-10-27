@@ -2688,9 +2688,9 @@
       rawTopologyLines.forEach((line, idx) => {
         let matchType = true;
         if (type === 'chart') matchType = line.includes('📊');
-        else if (type === 'control') matchType = line.includes('🔲') || line.includes('☑️') || line.includes('📝');
+        else if (type === 'control') matchType = line.includes('🔲') || line.includes('☑️') || line.includes('📝') || line.includes('🔭') || line.includes('🎥') || line.includes('🎬') || line.includes('📑') || line.includes('🔽') || line.includes('🔘');
         else if (type === 'modal') matchType = line.includes('🪟');
-        else if (type === 'table') matchType = line.includes('📋');
+        else if (type === 'table') matchType = line.includes('📋') || line.includes('ℹ️') || line.includes('📄');
         
         let matchKw = true;
         if (keyword) matchKw = line.toLowerCase().includes(keyword);
