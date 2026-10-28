@@ -622,6 +622,48 @@ class ElectronDriver(NetworkMonitorMixin, DomExtractorMixin, ScreenshotMixin, Ch
         if delay_after > 0:
             time.sleep(delay_after)
 
+    def close_active_modal(self, delay_after: float = 0.5) -> bool:
+        """
+        确定性直接关闭当前页面激活的模态弹窗、PDF/图纸预览或抽屉。
+        优先命中前端专属 Teleport 挂载关闭叉号 (.class_teleportbox-close)，
+        兜底命中通用 Element/AntD 弹窗关闭按钮，彻底避免纯视觉猜坐标或误触工具栏内部图标。
+        """
+        self.get_active_page()
+        if not self.page or self.page.is_closed():
+            return False
+
+        try:
+            closed = self.page.evaluate("""() => {
+                // 1. 优先命中大屏专属 Teleport 挂载的关闭叉号
+                const teleportClose = document.querySelector('.class_teleportbox-close, [class*="teleportbox-close"]');
+                if (teleportClose) {
+                    const style = window.getComputedStyle(teleportClose);
+                    if (style.display !== 'none' && style.visibility !== 'hidden') {
+                        teleportClose.click();
+                        return true;
+                    }
+                }
+                // 2. 通用 Element UI / Ant Design / Bootstrap 弹窗关闭按钮
+                const modalClose = document.querySelector('.el-dialog__headerbtn, .ant-modal-close, .modal .close, [aria-label="Close"], .modal-close');
+                if (modalClose) {
+                    const style = window.getComputedStyle(modalClose);
+                    if (style.display !== 'none' && style.visibility !== 'hidden') {
+                        modalClose.click();
+                        return true;
+                    }
+                }
+                return false;
+            }""")
+            if closed:
+                logger.info("🛡️ [Modal Close] 已通过底层原生 DOM 确定性触发弹窗关闭！")
+                if delay_after > 0:
+                    time.sleep(delay_after)
+                return True
+            return False
+        except Exception as e:
+            logger.warning(f"触发原生关闭弹窗异常: {e}")
+            return False
+
     def restart_app(self, delay_after: float = 3.0) -> Page:
         """
         【安全冷重启】当大屏或界面彻底卡死时，优雅关闭当前 Electron/UE 启动器并冷重启重新挂载 CDP

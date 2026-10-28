@@ -286,6 +286,28 @@ class ExplorerWorker:
                     action_success = True
                     continue
 
+                is_modal_close_action = (
+                    action_type == "click" and
+                    any(k in desc_lower for k in ["弹窗", "浮窗", "查看器", "pdf", "图纸", "证书", "详情", "modal", "dialog"]) and
+                    any(k in desc_lower for k in ["关闭", "❌", "叉号", "close", "退出", "收起"])
+                )
+
+                # 🚀 确定性优先：若目标为关闭模态弹窗，优先直接触发底层原生关闭机制
+                if is_modal_close_action and self.driver.close_active_modal():
+                    logger.info(f"🎉 [Modal Close] 通过确定性 DOM 机制成功关闭弹窗: '{element_desc}'！")
+                    if container_stack:
+                        popped = container_stack.pop()
+                        logger.info(f"📤 [Container Stack] 弹窗关闭出栈: {popped}")
+                    action_success = True
+                    after_img_path = self.explore_dir / f"explore_step_{current_step}_after.png"
+                    self.driver.capture_screenshot_base64(str(after_img_path))
+                    trajectory.append({
+                        "type": "action",
+                        "prompt": f"[CLICK] {element_desc}",
+                        "step_index": current_step
+                    })
+                    continue
+
                 try:
                     logger.info(f"⚡ 开始对目标 '{element_desc}' 进行 DOM 与视觉二次精确定位...")
                     dom_elements = self.driver.extract_interactive_elements()
@@ -303,6 +325,11 @@ class ExplorerWorker:
                         x = int(width * 0.575)
                         y = int(height * 0.468)
                         logger.info(f"🛡️ [Exit Modal Defense] 定位弹窗关闭叉号失败，采用保底弹窗右上角 ❌ 物理坐标: ({x}, {y})")
+                    elif is_modal_close_action:
+                        # 弹窗通用保底：使用大屏弹窗专属右上角 ❌ 物理坐标 (class_teleportbox-close)
+                        x = int(width * 0.797)
+                        y = int(height * 0.08)
+                        logger.info(f"🛡️ [Modal Close Fallback] 使用专属右上角 ❌ 物理坐标: ({x}, {y})")
                     else:
                         x_pct = decision.get("x_percent")
                         y_pct = decision.get("y_percent")
@@ -318,6 +345,15 @@ class ExplorerWorker:
                             x = int(max(0, min(1, float(x_pct))) * width)
                             y = int(max(0, min(1, float(y_pct))) * height)
                             logger.info(f"🎯 使用纯视觉估算物理坐标: ({x}, {y})")
+
+                # 🛡️ 核心物理防线 2.5：PDF/图纸查看器工具栏打印图标防误触盾
+                # 严禁在关闭弹窗时点击 PDF 工具栏内部 (比如打印图标区 x: 0.75~0.82, y: 0.12~0.17)
+                if is_modal_close_action and any(k in desc_lower for k in ["pdf", "查看器", "图纸"]):
+                    if (int(width * 0.74) <= x <= int(width * 0.83)) and (int(height * 0.11) <= y <= int(height * 0.18)):
+                        logger.warning(f"🚫 [PDF Toolbar Guard] 物理拦截：目标坐标 ({x}, {y}) 命中 PDF 工具栏内部图标！自动重定向至弹窗右上角 ❌ 叉号！")
+                        x = int(width * 0.797)
+                        y = int(height * 0.08)
+                        logger.info(f"🛡️ [PDF Toolbar Guard] 已重定向至弹窗右上角 ❌ 物理坐标: ({x}, {y})")
 
                 # 🛡️ 核心物理防线 3：退出确认弹窗【OK】死锁拦截与重定向盾 (Exit Modal Lockdown)
                 # 若当前处于“是否退出当前应用”确认弹窗中：

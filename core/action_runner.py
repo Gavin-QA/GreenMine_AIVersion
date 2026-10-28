@@ -360,6 +360,13 @@ class ActionRunner:
             self.driver.reload_page()
             return
 
+        # 针对关闭弹窗动作优先尝试原生确定性关闭
+        prompt_lower = prompt.lower()
+        if action_type == "click" and any(k in prompt_lower for k in ["弹窗", "浮窗", "查看器", "pdf", "图纸", "证书", "详情", "modal", "dialog"]) and any(k in prompt_lower for k in ["关闭", "❌", "叉号", "close", "收起"]):
+            if self.driver.close_active_modal():
+                logger.info(f"🎉 [Modal Close] ActionRunner 已通过底层原生 DOM 成功关闭弹窗: '{prompt}'！")
+                return
+
         # 2. Cognition
         x, y = self.vision.find_element(
             instruction=prompt,

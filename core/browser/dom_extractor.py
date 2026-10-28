@@ -65,8 +65,13 @@ class DomExtractorMixin:
                     text = String(text).trim().replace(/\\n/g, ' ').slice(0, 50);
                     
                     // 如果本身没有文字，且不是 input，可能是一个纯图标，尽量尝试获取 aria-label, title, alt 或 class
-                    if (!text && !['input', 'textarea'].includes(tag)) {
-                        let cls = (typeof el.className === 'string' ? el.className : el.getAttribute('class')) || '';
+                    let cls = (typeof el.className === 'string' ? el.className : el.getAttribute('class')) || '';
+                    const lowerCls = cls.toLowerCase();
+                    const isModalCloseBtn = lowerCls.includes('teleportbox-close') || lowerCls.includes('dialog__close') || lowerCls.includes('modal-close') || lowerCls.includes('dialog__headerbtn');
+
+                    if (isModalCloseBtn) {
+                        text = '弹窗右上角关闭按钮❌ (class_teleportbox-close)';
+                    } else if (!text && !['input', 'textarea'].includes(tag)) {
                         let clsHint = cls.trim() ? 'class_' + cls.trim().split(/\\s+/).join('_') : 'icon_or_empty';
                         let altText = el.getAttribute('alt');
                         text = el.getAttribute('title') || (altText && altText.trim() !== '' ? altText : null) || clsHint;
@@ -88,9 +93,11 @@ class DomExtractorMixin:
                     }
                     
                     // 3. 推断组件类型与语义角色 (Component Awareness)
-                    let isInteractiveCandidate = isPointer || isNativeInteractive || hasClickRole || hasOnClick;
+                    let isInteractiveCandidate = isPointer || isNativeInteractive || hasClickRole || hasOnClick || isModalCloseBtn;
                     let componentType = isInteractiveCandidate ? 'clickable' : 'text_display';
-                    if (tag === 'input') {
+                    if (isModalCloseBtn) {
+                        componentType = 'button';
+                    } else if (tag === 'input') {
                         const inputType = (el.getAttribute('type') || 'text').toLowerCase();
                         if (inputType === 'checkbox') componentType = 'checkbox';
                         else if (inputType === 'radio') componentType = 'radio';
@@ -111,12 +118,14 @@ class DomExtractorMixin:
                     let containerName = null;
                     let containerType = null;
 
-                    const modalEl = el.closest('.el-dialog, .el-drawer, .ant-modal, .ant-drawer, [role="dialog"], .modal');
+                    const modalEl = el.closest('.el-dialog, .el-drawer, .ant-modal, .ant-drawer, [role="dialog"], .modal, .class_teleportbox, [class*="teleportbox"]');
                     if (modalEl) {
                         containerType = 'modal';
                         const titleEl = modalEl.querySelector('.el-dialog__title, .ant-modal-title, .modal-title, [class*="header"] [class*="title"], h3, h4');
                         if (titleEl && titleEl.innerText) {
                             containerName = titleEl.innerText.trim();
+                        } else if (modalEl.className && modalEl.className.includes('teleportbox')) {
+                            containerName = '模态弹窗预览窗口';
                         }
                     } else {
                         const tableEl = el.closest('table, .el-table, .ant-table, [role="grid"]');
