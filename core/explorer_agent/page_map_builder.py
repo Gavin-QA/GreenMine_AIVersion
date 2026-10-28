@@ -366,12 +366,42 @@ class PageMapBuilder:
         return "\n".join(lines)
 
     @staticmethod
+    def normalize_tree_nodes(node: Any) -> dict:
+        """
+        递归归一化架构树节点为纯净的 Dict[str, dict] 结构。
+        兼容大模型返回的列表 (list of dicts / list of str) 或基础标量，确保全局数据结构自洽与零报错合并。
+        """
+        if isinstance(node, dict):
+            new_d = {}
+            for k, v in node.items():
+                new_d[k] = PageMapBuilder.normalize_tree_nodes(v)
+            return new_d
+        elif isinstance(node, (list, tuple, set)):
+            new_d = {}
+            for item in node:
+                if isinstance(item, dict):
+                    t = item.get("type", "")
+                    n = item.get("name", "")
+                    label = f"{t} {n}".strip() if (t and not str(n).startswith(t)) else (n or str(item))
+                    new_d[label] = {}
+                elif isinstance(item, str):
+                    new_d[item] = {}
+                else:
+                    new_d[str(item)] = {}
+            return new_d
+        elif isinstance(node, (str, int, float, bool)):
+            return {str(node): {}}
+        return {}
+
+    @staticmethod
     def sanitize_page_tree(tree: dict, base_rules: dict = None, is_root: bool = True) -> dict:
         """
         清洗架构树，剔除全局导航冗余（如“顶部导航栏”、“下拉菜单”、非法嵌套的一级菜单等），
         剔除“等待...加载完成”等纯过渡性辅助动作，解包伪浮窗容器，
         确保只有纯粹的业务组件和页面容器被挂载在架构树中。
         """
+        if is_root:
+            tree = PageMapBuilder.normalize_tree_nodes(tree)
         if not isinstance(tree, dict):
             return tree
 
@@ -581,12 +611,16 @@ class PageMapBuilder:
     @staticmethod
     def _deep_merge(target: dict, source: dict):
         """递归深度合并两棵架构树，自动过滤全局导航与过渡等待噪音"""
+        if not isinstance(target, dict) or not isinstance(source, dict):
+            return
         noise_keywords = ["顶部导航栏", "导航栏", "下拉菜单", "菜单栏", "等待", "wait", "加载完成", "完全加载", "完全可见", "渲染完成"]
         for k, v in source.items():
             if any(noise in k for noise in noise_keywords):
                 continue
             if k in target and isinstance(target[k], dict) and isinstance(v, dict):
                 PageMapBuilder._deep_merge(target[k], v)
+            elif isinstance(v, dict):
+                target[k] = dict(v)
             else:
                 target[k] = v
 
@@ -761,18 +795,20 @@ class PageMapBuilder:
             for l1, l2_dict in base_tree.items():
                 merged_tree[l1] = dict(l2_dict)
 
+            norm_page_tree = PageMapBuilder.normalize_tree_nodes(page_tree)
+
             # 先合入全局历史持久化树（防止清空日志后丢失以往探索的模块）
             read_history_file = artifacts_global_file
             if read_history_file.exists():
                 try:
                     with open(read_history_file, "r", encoding="utf-8") as f:
                         history_tree = json.load(f)
-                    PageMapBuilder._deep_merge(merged_tree, history_tree)
+                    PageMapBuilder._deep_merge(merged_tree, PageMapBuilder.normalize_tree_nodes(history_tree))
                 except Exception:
                     pass
                 
             # 将本次探索到的数据合入全局树
-            PageMapBuilder._deep_merge(merged_tree, page_tree)
+            PageMapBuilder._deep_merge(merged_tree, norm_page_tree)
 
             # 核心防污染防线：以当前应用的 base_tree 为权威白名单，彻底剔除不存在的一级主模块
             valid_l1_keys = set(base_tree.keys())
