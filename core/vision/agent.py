@@ -44,7 +44,7 @@ class VisionAgent:
         self.provider = settings.llm_provider
         self.temperature = float(getattr(settings, "llm_temperature", 0.1))
         self.timeout = float(getattr(settings, "llm_timeout", 60.0))
-        self.max_tokens = int(getattr(settings, "llm_max_tokens", 1024))
+        self.max_tokens = max(1536, int(getattr(settings, "llm_max_tokens", 2048)))
         self.max_retries = int(getattr(settings, "llm_max_retries", 3))
         self.session = requests.Session()
 
@@ -60,6 +60,12 @@ class VisionAgent:
         return text.strip()
 
     def _call_llm(self, system_prompt: str, user_prompt: str, base64_image: Optional[str] = None, base64_images: Optional[List[str]] = None, model: Optional[str] = None) -> Dict[str, Any]:
+        """发起对大模型的 HTTP 请求 (自动挂载看门狗思考期免死金牌，防慢思考误判死锁)"""
+        from core.explorer_agent.watchdog import StepWatchdog
+        with StepWatchdog.llm_thinking_guard():
+            return self._call_llm_inner(system_prompt, user_prompt, base64_image, base64_images, model)
+
+    def _call_llm_inner(self, system_prompt: str, user_prompt: str, base64_image: Optional[str] = None, base64_images: Optional[List[str]] = None, model: Optional[str] = None) -> Dict[str, Any]:
         """发起对大模型的 HTTP 请求 (支持单次调用指定特定模型覆盖默认 model)"""
         if not self.api_key:
             raise VisionAgentException("LLM_API_KEY is not configured.")
@@ -137,6 +143,12 @@ class VisionAgent:
                 logger.debug(f"[VisionAgent] 原始响应:\n{clean_content}")
                 return json.loads(clean_content)
 
+            except json.JSONDecodeError as je:
+                last_exception = je
+                logger.warning(f"⚠️ [VisionAgent] 大模型返回 JSON 截断或格式异常 ({je})，自动扩容 max_tokens 并重试...")
+                payload["max_tokens"] = max(2560, int(payload.get("max_tokens") or self.max_tokens) + 1024)
+                if attempt < max_retries:
+                    time.sleep(1.0)
             except requests.exceptions.RequestException as e:
                 last_exception = e
                 # Check for 400/401/403 which are usually not retryable

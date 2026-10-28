@@ -320,10 +320,12 @@ class ExplorerWorker:
                     action_success = True
                     after_img_path = self.explore_dir / f"explore_step_{current_step}_after.png"
                     self.driver.capture_screenshot_base64(str(after_img_path))
-                    trajectory.append({
+                    task_trajectory.append({
                         "type": "action",
                         "prompt": f"[CLICK] {element_desc}",
-                        "step_index": current_step
+                        "step_index": current_step,
+                        "ui_path": list(current_ui_path) if current_ui_path else [],
+                        "container": container_name or (container_stack[-1] if container_stack else "")
                     })
                     continue
 
@@ -457,6 +459,9 @@ class ExplorerWorker:
 
                 is_chart_target = (action_type not in ("zoom", "rotate_3d", "scroll", "slide", "input")) and ((element_type == "chart") or any(k in element_desc for k in ["折线图", "柱状图", "面积图", "数据拐点", "趋势图", "七天风量", "风量数据"]))
 
+                # 刷新看门狗计时基准：进入纯本地物理交互阶段
+                watchdog.begin_step(f"Step {worker_step}/{budget}: 执行 [{action_type.upper()}] '{element_desc}'")
+
                 # --- 分支 A: 图表全量批量嗅探引擎 ---
                 if is_chart_target:
                     try:
@@ -465,6 +470,9 @@ class ExplorerWorker:
                             points = probe_res["points"]
                             chart_title = probe_res.get("chart_title") or element_desc
                             logger.info(f"📊 [BatchChart] 成功抓取图表 '{chart_title}' 全部 {len(points)} 个数据节点！准备执行集中接口核验...")
+                            batch_chart_handled = True
+                            worker_finished_early = True
+                            action_success = True
 
                             self.chart_data_buffer[chart_title] = {
                                 "points": points,
@@ -946,6 +954,9 @@ class ExplorerWorker:
                             element_type=element_type
                         )
 
+                    current_container = container_name or (container_stack[-1] if container_stack else (self.active_tab if self.active_tab else ""))
+                    ui_path_copy = list(current_ui_path) if current_ui_path else []
+
                     if action_type == "zoom":
                         dir_str = str(decision.get("direction", "in")).upper()
                         steps_val = int(decision.get("steps", 3))
@@ -954,7 +965,9 @@ class ExplorerWorker:
                             "prompt": f"[ZOOM_{dir_str}] {element_desc}",
                             "direction": decision.get("direction", "in"),
                             "steps": steps_val,
-                            "thought": thought
+                            "thought": thought,
+                            "ui_path": ui_path_copy,
+                            "container": current_container
                         })
                     elif action_type == "rotate_3d":
                         dir_str = str(decision.get("direction", "left")).upper()
@@ -964,7 +977,9 @@ class ExplorerWorker:
                             "prompt": f"[ROTATE_{dir_str}] {element_desc}",
                             "direction": decision.get("direction", "left"),
                             "distance": dist_val,
-                            "thought": thought
+                            "thought": thought,
+                            "ui_path": ui_path_copy,
+                            "container": current_container
                         })
                     elif action_type == "scroll":
                         dir_str = str(decision.get("direction", "down")).upper()
@@ -974,13 +989,17 @@ class ExplorerWorker:
                             "prompt": f"[SCROLL_{dir_str}] {element_desc}",
                             "direction": decision.get("direction", "down"),
                             "delta": delta_val,
-                            "thought": thought
+                            "thought": thought,
+                            "ui_path": ui_path_copy,
+                            "container": current_container
                         })
                     elif action_type == "slide":
                         task_trajectory.append({
                             "type": "slide",
                             "prompt": f"[SLIDE] {element_desc}",
-                            "thought": thought
+                            "thought": thought,
+                            "ui_path": ui_path_copy,
+                            "container": current_container
                         })
                     elif action_type == "input":
                         task_trajectory.append({
@@ -988,25 +1007,33 @@ class ExplorerWorker:
                             "prompt": element_desc,
                             "text": input_text if 'input_text' in locals() else decision.get("text", ""),
                             "press_enter": bool(decision.get("press_enter", False)),
-                            "thought": thought
+                            "thought": thought,
+                            "ui_path": ui_path_copy,
+                            "container": current_container
                         })
                     elif action_type == "back":
                         task_trajectory.append({
                             "type": "back",
                             "prompt": "[BACK] 路由历史回退",
-                            "thought": thought
+                            "thought": thought,
+                            "ui_path": ui_path_copy,
+                            "container": current_container
                         })
                     elif action_type == "reload":
                         task_trajectory.append({
                             "type": "back",
                             "prompt": "[BACK] 路由回退 (替代刷新保活UE)",
-                            "thought": thought
+                            "thought": thought,
+                            "ui_path": ui_path_copy,
+                            "container": current_container
                         })
                     else:
                         task_trajectory.append({
                             "type": action_type,
                             "prompt": element_desc,
-                            "thought": thought
+                            "thought": thought,
+                            "ui_path": ui_path_copy,
+                            "container": current_container
                         })
 
                 # 结束当前单步计时
