@@ -98,6 +98,7 @@ class Settings:
         self.max_planner_failures: int = int(os.getenv("MAX_PLANNER_FAILURES") or explorer_cfg.get("max_planner_failures", 8))
         self.llm_max_tokens: int = int(os.getenv("LLM_MAX_TOKENS") or explorer_cfg.get("max_tokens", 1024))
         self.llm_max_retries: int = int(os.getenv("LLM_MAX_RETRIES") or explorer_cfg.get("max_retries", 3))
+        self.step_timeout: float = float(os.getenv("STEP_TIMEOUT") or explorer_cfg.get("step_timeout", 90.0))
 
         # 8. 日志与报告配置
         self.log_level: str = os.getenv("LOG_LEVEL", "INFO")

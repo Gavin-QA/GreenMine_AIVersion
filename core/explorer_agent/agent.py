@@ -182,6 +182,22 @@ class ExplorerAgent:
             self.last_l2_route = worker_res["last_l2_route"]
             self.active_tab = worker_res.get("active_tab", self.active_tab)
 
+            # 3.1 看门狗超时死锁逃逸与陷阱跳过判定 (Sub-Objective Skip & Memory Sync)
+            if worker_res.get("stuck_deadlock"):
+                deadlock_reason = worker_res.get("deadlock_reason", "单步操作超时死锁")
+                logger.critical(
+                    f"\n{'='*70}\n"
+                    f"⏭️ [Planner Skip] 战略放弃卡死子目标: '{sub_objective}'\n"
+                    f"   原因: {deadlock_reason}\n"
+                    f"   动作: 启动器已全自动冷重启完成解冻，当前子任务作为已知陷阱记录入全局记忆，直接向下规划！\n"
+                    f"{'='*70}"
+                )
+                global_history.append(f"子目标: '{sub_objective}' (因'{deadlock_reason}'触发安全冷重启，已跳过此陷阱)")
+                self._save_checkpoint(global_history)
+                stuck_task_count = 0
+                last_sub_objective = None
+                continue
+
             # 4. 极端卡死与死锁逃逸：若连续派发同一子任务且 Worker 进展极小(<=1步)，说明界面已卡死无解
             if last_sub_objective == sub_objective and worker_res.get("steps_used", 0) <= 1:
                 stuck_task_count += 1

@@ -21,9 +21,11 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from PIL import Image, ImageChops
 
+from config.settings import settings
 from .guards import ExplorerGuards
 from .post_click_diff import PostClickDetector
 from .page_map_builder import PageMapBuilder
+from .watchdog import StepWatchdog
 
 logger = logging.getLogger("explorer_agent.worker")
 
@@ -157,6 +159,12 @@ class ExplorerWorker:
         tested_targets_in_scope = set()
         consecutive_redundant_count = 0
 
+        timeout_sec = getattr(settings, "step_timeout", 90.0)
+        watchdog = StepWatchdog(timeout_sec=timeout_sec, driver=self.driver)
+        watchdog.start()
+        is_deadlocked = False
+        deadlock_reason = ""
+
         for worker_step in range(1, budget + 1):
             if current_step >= max_steps:
                 break
@@ -165,12 +173,20 @@ class ExplorerWorker:
             steps_used += 1
             logger.info(f"\n--- [Worker Step {worker_step}/{budget}] (Global: {current_step}/{max_steps}) ---")
 
+            # 启动看门狗单步监控
+            watchdog.begin_step(f"Step {worker_step}/{budget}: 视觉推断与快照截取")
+
             # 1. 截图并获取 Base64
             step_img_path = self.explore_dir / f"explore_step_{current_step}.png"
             try:
                 base64_img = self.driver.capture_screenshot_base64(str(step_img_path))
                 logger.info(f"📸 捕获环境快照: {step_img_path.name} (全屏)")
             except Exception as e:
+                if watchdog.is_triggered():
+                    logger.critical(f"🚨 [Worker Deadlock] 步骤截图期间看门狗强杀脱困: {e}")
+                    is_deadlocked = True
+                    deadlock_reason = f"步骤 {worker_step}/{budget} 截图期间发生挂起死锁 ({timeout_sec:.0f}s)"
+                    break
                 logger.error(f"❌ Worker 截图失败，中止当前任务: {e}")
                 break
 
@@ -215,6 +231,9 @@ class ExplorerWorker:
 
             logger.info(f"💡 [Worker] 思考链: {thought}")
             logger.info(f"📍 [Worker] 当前推断路径: {current_ui_path} | 类型: {element_type} | 容器: {container_name}")
+
+            # 更新看门狗步数描述
+            watchdog.begin_step(f"Step {worker_step}/{budget}: 执行 [{action_type.upper()}] '{element_desc}'")
 
             # 3. 路由跨页检测与状态隔离
             if current_ui_path and len(current_ui_path) >= 2:
@@ -738,6 +757,11 @@ class ExplorerWorker:
 
                         action_success = True
                     except Exception as e_exec:
+                        if watchdog.is_triggered():
+                            logger.critical(f"🚨 [Worker Deadlock] 动作 [{action_type.upper()}] '{element_desc}' 执行期间触发看门狗强杀脱困: {e_exec}")
+                            is_deadlocked = True
+                            deadlock_reason = f"执行 [{action_type.upper()}] '{element_desc}' 单步超时挂死 ({timeout_sec:.0f}s)"
+                            break
                         logger.error(f"❌ 物理执行失败: {e_exec}")
                         action_success = False
                         crash_img_path = str(self.explore_dir / f"crash_step_{current_step}_{worker_step}.png")
@@ -985,9 +1009,41 @@ class ExplorerWorker:
                             "thought": thought
                         })
 
+                # 结束当前单步计时
+                watchdog.end_step()
+
+                if watchdog.is_triggered():
+                    logger.critical(f"🚨 [Worker Deadlock] 步骤 [{action_type.upper()}] '{element_desc}' 触发看门狗死锁超时！")
+                    is_deadlocked = True
+                    deadlock_reason = f"步骤 [{action_type.upper()}] '{element_desc}' 单步超时挂死 ({timeout_sec:.0f}s)"
+                    break
+
                 if worker_finished_early:
                     logger.info("✅ [Worker] 批量嗅探与集中核验已达成，提前交还控制权给 Planner。")
                     break
+
+        watchdog.stop()
+
+        if is_deadlocked:
+            logger.warning("🔄 [Launcher Cold Restart] 单步看门狗已斩断死锁，正在执行应用底座冷重启以彻底恢复纯净现场...")
+            try:
+                self.driver.restart_app()
+                logger.info("✅ [Launcher Cold Restart] 底座冷重启完成，应用已就绪。")
+            except Exception as e_restart:
+                logger.error(f"❌ [Launcher Cold Restart] 冷重启失败: {e_restart}")
+
+            container_stack.clear()
+            return {
+                "steps_used": steps_used,
+                "trajectory": task_trajectory,
+                "container_stack": [],
+                "is_panel_hidden": False,
+                "mailing_dialog_open": False,
+                "last_l2_route": None,
+                "active_tab": None,
+                "stuck_deadlock": True,
+                "deadlock_reason": deadlock_reason
+            }
 
         return {
             "steps_used": steps_used,
