@@ -185,7 +185,8 @@ class VisionAgent:
         """
         logger.info(f"⚖️ 执行 API 双重断言指令: '{instruction}'")
         
-        user_prompt = f"当前页面截图如附图所示。断言指令：{instruction}\n\n【最新拦截到的 API JSON 响应数据】：\n{api_data_json}\n\n请比对截图与 JSON 数据是否一致。"
+        current_date_str = time.strftime("%Y-%m-%d")
+        user_prompt = f"当前页面截图如附图所示。【当前系统基准日期】：{current_date_str}（若截图右上角时钟被局部裁剪不全，核验有效期/倒计时天数时必须以系统基准日期为准，严禁主观脑补日期！）。断言指令：{instruction}\n\n【最新拦截到的 API JSON 响应数据】：\n{api_data_json}\n\n请比对截图与 JSON 数据是否一致。"
         
         try:
             result = self._call_llm(

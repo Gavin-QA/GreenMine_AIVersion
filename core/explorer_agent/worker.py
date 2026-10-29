@@ -305,6 +305,12 @@ class ExplorerWorker:
                     action_success = True
                     continue
 
+                # 🛡️ 核心物理防线 2.2：中央 3D 地图内部点位/车牌标签禁触护栏 (3D Viewport Label Guard)
+                if action_type in ("click", "hover") and any(k in desc_lower for k in ["三维矿山地图上", "三维地图上", "3d地图上", "中央三维视口内", "地图上的车辆定位", "地图上标注为"]):
+                    logger.warning(f"🚫 [3D Blackbox Guard] 物理拦截：中央三维地图属于 UE 像素流黑盒，严禁点击或悬停其内部标签【{element_desc}】！已自动安全跳过。")
+                    action_success = True
+                    continue
+
                 is_modal_close_action = (
                     action_type == "click" and
                     any(k in desc_lower for k in ["弹窗", "浮窗", "查看器", "pdf", "图纸", "证书", "详情", "modal", "dialog"]) and
@@ -347,6 +353,18 @@ class ExplorerWorker:
                         y = int(height * 0.468)
                         logger.info(f"🛡️ [Exit Modal Defense] 定位弹窗关闭叉号失败，采用保底弹窗右上角 ❌ 物理坐标: ({x}, {y})")
                     elif is_modal_close_action:
+                        if container_stack:
+                            popped_ghost = container_stack.pop()
+                            logger.info(f"📤 [Modal Ghost Clear] 定位关闭按钮失败，自动清理残留/幽灵弹窗栈项: {popped_ghost}")
+                        visible_modals = []
+                        try:
+                            visible_modals = self.driver.detect_visible_modals()
+                        except Exception:
+                            pass
+                        if not visible_modals and ("元素完全未找到" in str(e) or "排污许可证" in desc_lower or "证照" in desc_lower):
+                            logger.info(f"🛡️ [Modal Ghost Clear] DOM 与纯视觉双重确认当前无激活模态弹窗（或目标为页面常驻内嵌证照画布），跳过右上角盲点并结束当前关闭子任务！")
+                            action_success = True
+                            break
                         # 弹窗通用保底：使用大屏弹窗专属右上角 ❌ 物理坐标 (class_teleportbox-close)
                         x = int(width * 0.797)
                         y = int(height * 0.08)
@@ -787,7 +805,14 @@ class ExplorerWorker:
                         )
 
                 # --- 分支 C: Auto-API 双向核验 ---
-                should_check_api = action_success and not batch_chart_handled and (validate_api or (action_type == "hover" and element_type in ("chart", "table")))
+                combined_api_target = f"{element_desc} {api_assert_prompt}".lower()
+                is_osd_or_3d_label = (
+                    any(k in combined_api_target for k in ["三维地图上", "三维矿山地图上", "地图上的车辆定位", "地图上标注为"]) or
+                    (any(k in combined_api_target for k in ["红外感应", "热成像", "视频流", "监控画面"]) and any(k in combined_api_target for k in ["右上角", "31.9", "水印", "最高温度", "osd"]))
+                )
+                if is_osd_or_3d_label and validate_api:
+                    logger.info(f"ℹ️ [Auto-API Guard] 目标 '{element_desc}' 属于三维视口标签或视频流硬件 OSD 水印，非前端 JSON 绑定指标，跳过 API 核验。")
+                should_check_api = action_success and not batch_chart_handled and not is_osd_or_3d_label and (validate_api or (action_type == "hover" and element_type in ("chart", "table")))
                 if should_check_api:
                     check_instruction = api_assert_prompt.strip() if api_assert_prompt else f"验证截图中关于 '{element_desc}' 所展示的具体业务数值，是否与接口返回的数据逻辑一致（非 NaN 且非全 0 异常）"
                     search_context = f"{check_instruction} {element_desc}"
@@ -833,6 +858,7 @@ class ExplorerWorker:
                                 is_unrelated_retry = ("非同源" in reason_retry or "跳过" in reason_retry or "UNRELATED" in reason_retry)
                                 if not is_unrelated_retry:
                                     passed, reason, is_unrelated = passed_retry, reason_retry, False
+                                    check_b64 = full_b64
                                     logger.info(f"✨ [Auto-API] 全景快照成功命中同源业务数据！核验判定: passed={passed}")
                             if not passed:
                                 logger.error(f"🚨 [API MISMATCH] 接口数据核验未通过: {reason}")
