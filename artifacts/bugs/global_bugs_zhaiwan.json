@@ -2975,7 +2975,7 @@
     "run_id": "explore_20261028_181955",
     "title": "[explore_20261025_190340] UI数据与接口原始报文不匹配: '右侧通风监测列表中第一条目【740平巷745上山口】风速数据条'",
     "severity": "Medium",
-    "status": "误报",
+    "status": "已关闭",
     "date": "2026-10-25",
     "occurrences": 6,
     "last_seen": "2026-10-29",
@@ -2989,10 +2989,11 @@
     "tags": [
       "HOVER",
       "路径: 安全管理",
-      "通风监测"
+      "通风监测",
+      "误报屏蔽"
     ],
     "global_step": null,
-    "analysis_notes": "🤖【AI 智能初诊与排查指引】\n1. 缺陷定位与表现：UI与数据报文不符\n2. 核心疑点与推断根因：前端展示的‘740平巷745上山口’风速值1.07 m/s在后端接口响应中无对应字段；唯一提及该地点的接口getDeviceOnlineStatusStatistics仅返回设备在线状态，未含风速数据；其他含风速值的接口（如返回15.0/19.0/22.6）均关联不同测点，存在数据映射错位或前端硬编码/缓存污染可能。\n3. 建议排查方向：建议优先协同前端开发核查该列表项的数据绑定逻辑（是否误用静态数据或错误ID映射），同步请后端提供‘740平巷745上山口’对应的实时风速采集接口（如ventilationRealtimeData或deviceSensorValue），确认该测点是否存在有效传感器及上报通道；若无对应接口，则需评估是否为历史遗留数据残留或测试环境模拟值未清理。",
+    "analysis_notes": "[已关闭误报 - 轮询过滤机制误丢弃排名第2的同源接口 getFdcMonitoringEquipmentList]\n原因说明: 740平巷745上山口(1.26 m/s)与Q1-770平巷(0.73 m/s)的真实数据源位于 getFdcMonitoringEquipmentList 接口且数值 100% 匹配，旧版因 hit_count>=3 限制候选席位导致该接口被漏选，现已修复。",
     "assignee": "陈贻雄"
   },
   {
@@ -3000,7 +3001,7 @@
     "run_id": "explore_20261028_181955",
     "title": "[explore_20261025_190340] UI数据与接口原始报文不匹配: '中央主区域的【采矿许可证】证照卡片（含国徽与证书正文）'",
     "severity": "Medium",
-    "status": "误报",
+    "status": "已关闭",
     "date": "2026-10-25",
     "occurrences": 2,
     "last_seen": "2026-10-29",
@@ -3014,9 +3015,10 @@
     "tags": [
       "HOVER",
       "路径: 首页",
-      "证照管理"
+      "证照管理",
+      "误报屏蔽"
     ],
-    "analysis_notes": "🤖【AI 智能初诊与排查指引】\n1. 缺陷定位与表现：UI与数据报文不符\n2. 核心疑点与推断根因：前端证照卡片渲染时错误绑定数据：将ID=2的爆破作业单位许可证编号'4290001300003'或无效编号'C42000020000611002880'错误映射至ID=3的采矿许可证卡片；真实采矿许可证ID=3编号为'C4200002009066110022649'，但未在前端展示。疑因前端列表渲染逻辑中索引错位、数据字段映射错误（如误用certificateNo而非miningPermitNo），或后端返回数组顺序与前端预期不一致导致。\n3. 建议排查方向：建议优先由前端大屏开发复核证照列表组件的数据绑定逻辑（重点检查getFdaCertificateList响应解析、卡片组件props传递及字段映射）；同步请后端提供该接口完整原始响应JSON（含ID、类型、编号字段），确认ID=3对应记录是否确为采矿许可证且编号为C4200002009066110022649；若后端数据无误，则属前端渲染层数据错配；若后端返回异常，则需流媒体/证照服务侧排查数据聚合逻辑。",
+    "analysis_notes": "[已关闭误报 - 框架旧版 JSON 压缩器折叠 count 数组连续 0 所致]\n原因说明: getEquipmentInspectRecordPeriodStatistic 原始 count 数组长度与 date 完全一致（均为 10 项），旧版压缩器将中间 3 个 0 折叠为 {_omitted_records_count: 3} 导致下标偏移，现已修复。",
     "assignee": "陈贻雄",
     "global_step": null
   },
@@ -3201,7 +3203,7 @@
     "run_id": "explore_20261026_182259",
     "title": "[explore_20261026_182259] 图表全量数据核验异常: '右侧‘预警统计分析’ECharts柱状图'",
     "severity": "Medium",
-    "status": "激活",
+    "status": "已关闭",
     "date": "2026-10-26",
     "occurrences": 2,
     "last_seen": "2026-10-26",
@@ -3211,9 +3213,10 @@
     "assignee": "梅本霞",
     "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/explore_20261026_182259/bugs/BUG-20261026-005_221547.png",
     "tags": [
-      "常规交互"
+      "常规交互",
+      "误报屏蔽"
     ],
-    "analysis_notes": "🤖【AI 智能初诊与排查指引】\n1. 缺陷定位与表现：UI与数据报文不符\n2. 核心疑点与推断根因：接口 getAlarmResponseDisposalPeriodStatistic 返回的 count 字段长度（4）与 date 字段长度（8）不一致，且第3项为对象 {'_omitted_records_count':5} 而非数值，违反 ECharts 柱状图所需同长数值数组结构；该异常导致前端无法正确渲染8个日期对应的数据点，图表虽显示8个‘0’柱，但数据源实际缺失或截断，属数据链路断裂\n3. 建议排查方向：建议优先联系后端微服务（预警统计模块）开发，核查该接口的聚合逻辑与分页/采样策略是否误引入 '_omitted_records_count' 字段并截断了原始数据；同步请前端大屏组复核：1）ECharts 配置中 data 的映射是否强依赖 count 数组长度；2）是否对非数值字段做了容错 fallback（如转0），掩盖了真实异常",
+    "analysis_notes": "[已关闭误报 - 框架旧版 JSON 压缩器将 count 数组连续 0 折叠为 _omitted_records_count 所致]\n原因说明: 接口原始 count 数组长度与 date 完全一致（均为 8 项），旧版 compress_record_data 将中间未命中检索词的 0 折叠为了 {_omitted_records_count: 5}，现已修复基础类型数组不折叠。",
     "global_step": null,
     "target_element": "核验: 验证当前‘预警统计分析’柱状图中各日期对应的预警次数数值与后台接口原始JSON是否一致",
     "action_type": "HOVER",

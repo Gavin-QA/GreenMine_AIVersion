@@ -62,7 +62,7 @@ class BugReporter:
                 bug_id = dup_id
 
                 # 核心改进：若命中了已关闭/误报屏蔽的历史已知问题，直接静默阻断，不落盘产生新Bug快照
-                is_closed = bug_record.get("status") == "已关闭"
+                is_closed = bug_record.get("status") in ("已关闭", "误报")
                 is_noise = "误报" in str(bug_record.get("tags", [])) or "误报" in str(bug_record.get("analysis_notes", ""))
                 if is_closed or is_noise:
                     logger.info(f"🛡️ [Silent Suppress] 该异常命中历史已关闭/误报屏蔽条目 [{dup_id}]，已同步复现频次并静默屏蔽，不生成新 Bug 档案。")
@@ -221,11 +221,11 @@ class BugReporter:
             return None
             
         # 1. 筛选近期激活或未解决的 Bug（为了省 token，只传前 25 个未关闭的）
-        active_bugs = [b for b in self.global_bugs if b.get("status") != "已关闭"][-25:]
+        active_bugs = [b for b in self.global_bugs if b.get("status") not in ("已关闭", "误报")][-25:]
         # 2. 筛选已关闭或标记为误报屏蔽的历史已知条目（最多取最近 20 个，用于防范历史误报再次被当作新Bug）
         closed_or_noise_bugs = [
             b for b in self.global_bugs 
-            if b.get("status") == "已关闭" or "误报" in str(b.get("tags", [])) or "误报" in str(b.get("analysis_notes", ""))
+            if b.get("status") in ("已关闭", "误报") or "误报" in str(b.get("tags", [])) or "误报" in str(b.get("analysis_notes", ""))
         ][-20:]
         
         candidate_bugs = active_bugs + [b for b in closed_or_noise_bugs if b not in active_bugs]

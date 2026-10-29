@@ -197,7 +197,8 @@ class NetworkMonitorMixin:
                         is_page_init = elapsed_since_entry <= 15.0
 
                         # 高频轮询识别：若同一个接口在当前作用域被反复调用 3 次以上，标记为轮询 (is_polling)
-                        is_polling = (hit_count >= 3)
+                        # 高频轮询识别：仅当同一接口在全局高频触发 (>= 15 次) 时标记为背景轮询 (is_polling)
+                        is_polling = (hit_count >= 15)
 
                         record = {
                             "url": endpoint_name,
@@ -579,9 +580,12 @@ class NetworkMonitorMixin:
             "人员": ["staff", "person", "staffcount", "personnel"],
             "溜井": ["bin", "pass", "chute", "passbasic"],
             "矿仓": ["bin", "inventory", "binstats"],
-            "通风": ["ventilation", "wind", "fan"],
-            "风速": ["wind", "speed", "windspeed"],
-            "环境": ["environment", "sensor"],
+
+            "通风": ["ventilation", "wind", "fan", "monitoringequipment"],
+            "风速": ["wind", "speed", "windspeed", "monitoringequipment"],
+            "环境": ["environment", "sensor", "monitoringequipment"],
+            "监测": ["monitoring", "monitoringequipment", "sensor"],
+
             "预警": ["alarm", "warn", "warning"],
             "告警": ["alarm"],
             "设备": ["equipment", "device"],
@@ -694,7 +698,7 @@ class NetworkMonitorMixin:
         return round(score, 2), matched
 
     @classmethod
-    def compress_record_data(cls, data: Any, matched_tokens: List[str], max_list_items: int = 6) -> Any:
+    def compress_record_data(cls, data: Any, matched_tokens: List[str], max_list_items: int = 10) -> Any:
         """结构自适应智能脱敏与压缩（保留命中记录、样本记录，折叠海量冗余项，剥离超长 base64/SVG）"""
         import json
         if isinstance(data, dict):
@@ -710,6 +714,8 @@ class NetworkMonitorMixin:
                 compressed[k] = cls.compress_record_data(v, matched_tokens, max_list_items)
             return compressed
         elif isinstance(data, list):
+            if len(data) <= 60 and all(isinstance(x, (int, float, str, bool)) or x is None for x in data):
+                return [cls.compress_record_data(item, matched_tokens, max_list_items) for item in data]
             if len(data) <= max_list_items:
                 return [cls.compress_record_data(item, matched_tokens, max_list_items) for item in data]
 
@@ -851,7 +857,7 @@ class NetworkMonitorMixin:
                 for score, matched, r in tier1_scored:
                     u = r.get("url")
                     is_poll = r.get("is_polling", False)
-                    if is_poll and polling_count >= 1:
+                    if is_poll and (score if 'score' in locals() else 0.0) < 50.0 and polling_count >= 2:
                         continue
                     if score > 0 and u not in seen_urls and len(selected_candidates) < max_records:
                         selected_candidates.append((score, matched, r))
@@ -868,7 +874,7 @@ class NetworkMonitorMixin:
                 for r in sorted_by_time:
                     u = r.get("url")
                     is_poll = r.get("is_polling", False)
-                    if is_poll and polling_count >= 1:
+                    if is_poll and (score if 'score' in locals() else 0.0) < 50.0 and polling_count >= 2:
                         continue
                     if u not in seen_urls and len(selected_candidates) < max_records:
                         selected_candidates.append((0.0, [], r))
