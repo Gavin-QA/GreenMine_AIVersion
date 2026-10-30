@@ -57,6 +57,8 @@ class ExplorerWorker:
         self.active_tab: Optional[str] = None
         # 已完成全景骨架扫描的二级业务页面缓存 (避免单次运行中重复扫描)
         self.scanned_pages: set = set()
+        # 已巡检上报过的物理常识异常指纹缓存 (防止同一页面重复刷屏提单)
+        self.reported_physics_anomalies: set = set()
 
     def _auto_scan_page_skeleton(
         self,
@@ -102,7 +104,7 @@ class ExplorerWorker:
         try:
             dom_elements = []
             try:
-                dom_elements = self.driver.get_interactive_elements() or []
+                dom_elements = self.driver.extract_interactive_elements() or []
             except Exception:
                 pass
 
@@ -250,6 +252,11 @@ class ExplorerWorker:
                     current_l2 = (l1_cand, l2_cand)
                     if last_l2_route is not None and current_l2 != last_l2_route:
                         logger.info(f"🧭 [Navigation] 跨二级页面路由跃迁: {last_l2_route} -> {current_l2}，重置容器栈与状态！")
+                        try:
+                            if hasattr(self.driver, "record_memory_snapshot"):
+                                self.driver.record_memory_snapshot(label=f"route:{l1_cand}->{l2_cand}", set_as_baseline=False, trigger_gc=False)
+                        except Exception:
+                            pass
                         container_stack.clear()
                         is_panel_hidden = False
                         mailing_dialog_open = False
@@ -315,6 +322,160 @@ class ExplorerWorker:
                 if container_stack:
                     container_stack.clear()
                 action_success = True
+            elif action_type == "physics_sanity_check":
+                logger.info(f"🧪 [Worker] 执行主动物理常识与合理性巡检: '{element_desc or '全屏业务指标合理性校验'}'")
+                dom_elements_ps = []
+                try:
+                    dom_elements_ps = self.driver.extract_interactive_elements() or []
+                except Exception:
+                    pass
+                dom_anomalies_ps = ExplorerGuards.scan_text_physics_anomalies(dom_elements_ps)
+                scope_str_ps = " -> ".join([str(p) for p in current_ui_path[:2]]) if current_ui_path and len(current_ui_path) >= 2 else (str(current_ui_path[0]) if current_ui_path else None)
+                api_ctx_ps = ""
+                try:
+                    q_ps = f"{element_desc} {' '.join(dom_anomalies_ps[:3])}".strip() or "业务指标数据"
+                    api_ctx_ps = self.driver.get_focused_api_records_summary(q_ps, page_scope=scope_str_ps)
+                except Exception:
+                    pass
+                passed_ps, reason_ps = self.vision.check_physics_sanity(
+                    instruction=element_desc,
+                    base64_image=base64_img,
+                    dom_anomalies=dom_anomalies_ps,
+                    api_context=api_ctx_ps
+                )
+                if not passed_ps:
+                    action_success = False
+                    path_str = " -> ".join(current_ui_path) if current_ui_path else "未知路径"
+                    self.bug_reporter.report_bug(
+                        run_id=self.run_id,
+                        title=f"[{self.run_id}] 物理常识与数据合理性违背: '{element_desc or path_str}'",
+                        step_prompt=f"[PHYSICS_SANITY_CHECK] {element_desc or '全屏物理常识核验'} (页面路径: {path_str})",
+                        actual_result=f"物理常识断言失败: {reason_ps}",
+                        crash_image_path=str(step_img_path) if step_img_path and Path(step_img_path).exists() else None,
+                        action_type="PHYSICS_SANITY_CHECK",
+                        target_element=element_desc or path_str,
+                        global_step=current_step,
+                        severity="High",
+                        ui_path=path_str
+                    )
+                else:
+                    action_success = True
+            elif action_type == "memory_leak_check":
+                logger.info("📈 [Worker] 执行主动显存/内存与句柄资源泄漏探针 (memory_leak_check)...")
+                if hasattr(self.driver, "check_memory_leak"):
+                    max_heap_val = float(decision.get("max_heap_mb", 1024.0))
+                    max_growth_val = float(decision.get("max_growth_mb", 300.0))
+                    passed_mem, summary_mem, _ = self.driver.check_memory_leak(
+                        label=f"worker_step_{current_step}",
+                        max_heap_mb=max_heap_val,
+                        max_growth_mb=max_growth_val,
+                        trigger_gc=True
+                    )
+                    if not passed_mem:
+                        action_success = False
+                        path_str = " -> ".join(current_ui_path) if current_ui_path else "未知路径"
+                        self.bug_reporter.report_bug(
+                            run_id=self.run_id,
+                            title=f"[{self.run_id}] 前端显存/内存与句柄泄漏告警 ({path_str})",
+                            step_prompt=f"[MEMORY_LEAK_CHECK] {element_desc or '内存水位探针'} (页面路径: {path_str})",
+                            actual_result=summary_mem,
+                            crash_image_path=str(step_img_path) if step_img_path and Path(step_img_path).exists() else None,
+                            action_type="MEMORY_LEAK_CHECK",
+                            target_element=element_desc or path_str,
+                            global_step=current_step,
+                            severity="High",
+                            ui_path=path_str
+                        )
+                    else:
+                        action_success = True
+                else:
+                    action_success = True
+            elif action_type == "canvas_stress_drag":
+                stress_mode = str(decision.get("mode", "hybrid"))
+                rounds_val = int(decision.get("rounds", 3))
+                radius_val = int(decision.get("radius", 300))
+                logger.info(f"🌪️ [3D Stress Drag] Worker 执行中央三维视界暴力抗压晃动: mode={stress_mode}, rounds={rounds_val}, radius={radius_val}px")
+                try:
+                    dpr = info.get("devicePixelRatio", 1.0)
+                    self.driver.draw_cursor_on_image(str(step_img_path), width // 2, height // 2, dpr)
+                except Exception:
+                    pass
+                if hasattr(self.driver, "mark_action_timestamp"):
+                    self.driver.mark_action_timestamp()
+                stress_health = self.driver.canvas_stress_drag(
+                    center_x=width // 2,
+                    center_y=height // 2,
+                    mode=stress_mode,
+                    rounds=rounds_val,
+                    radius=radius_val,
+                    button="right",
+                    delay_after=1.5
+                )
+                after_img_path = self.explore_dir / f"explore_step_{current_step}_after.png"
+                after_b64 = self.driver.capture_screenshot_base64(str(after_img_path))
+                path_str = " -> ".join(current_ui_path) if current_ui_path else "未知路径"
+                if not stress_health.get("healthy", True):
+                    action_success = False
+                    issues_txt = "；".join(stress_health.get("issues", []))
+                    self.bug_reporter.report_bug(
+                        run_id=self.run_id,
+                        title=f"[{self.run_id}] 3D场景暴力晃动诱发像素流/WebGL崩溃 ({path_str})",
+                        step_prompt=f"[CANVAS_STRESS_DRAG] mode={stress_mode}, rounds={rounds_val} (路径: {path_str})",
+                        actual_result=f"【前端/3D渲染崩溃】暴力抗压晃动后推流或WebGL失活: {issues_txt}",
+                        crash_image_path=str(after_img_path),
+                        action_type="CANVAS_STRESS_DRAG",
+                        target_element=element_desc or "中央三维数字孪生视口",
+                        global_step=current_step,
+                        severity="High",
+                        ui_path=path_str
+                    )
+                else:
+                    try:
+                        passed_3d, reason_3d = self.vision.assert_condition(
+                            instruction="检查当前画面在 3D 暴力晃动压力测试后是否依然正常渲染三维矿山场景，没有出现模型破面、全粉色材质丢失、纯黑屏、或像素流断开崩溃报错遮罩",
+                            base64_image=after_b64
+                        )
+                        if not passed_3d:
+                            action_success = False
+                            self.bug_reporter.report_bug(
+                                run_id=self.run_id,
+                                title=f"[{self.run_id}] 3D场景暴力晃动后画面破面/黑屏异常 ({path_str})",
+                                step_prompt=f"[CANVAS_STRESS_DRAG] mode={stress_mode}, rounds={rounds_val} (路径: {path_str})",
+                                actual_result=f"【3D渲染异常】暴力晃动后视觉健康度核验未通过: {reason_3d}",
+                                crash_image_path=str(after_img_path),
+                                action_type="CANVAS_STRESS_DRAG",
+                                target_element=element_desc or "中央三维数字孪生视口",
+                                global_step=current_step,
+                                severity="High",
+                                ui_path=path_str
+                            )
+                        else:
+                            action_success = True
+                            logger.info(f"🛡️ [3D Stress Health] 三维暴力晃动后视觉与流状态双重核验通过: {reason_3d}")
+                    except Exception as e_3d_s:
+                        logger.warning(f"⚠️ 3D 暴力晃动视觉自检异常: {e_3d_s}")
+                        action_success = True
+            elif action_type == "assert_no_console_errors":
+                logger.info("🛡️ [Worker] 执行主动前端无声致命崩溃嗅探 (assert_no_console_errors)...")
+                fatal_list = self.driver.get_fatal_console_errors(clear=True, strict=False) if hasattr(self.driver, "get_fatal_console_errors") else []
+                if fatal_list:
+                    action_success = False
+                    path_str = " -> ".join(current_ui_path) if current_ui_path else "未知路径"
+                    err_lines = [f"[{c.get('type', 'js_crash')}{(' @ ' + c['location']) if c.get('location') else ''}] {c.get('msg', '')}" for c in fatal_list[:8]]
+                    self.bug_reporter.report_bug(
+                        run_id=self.run_id,
+                        title=f"[{self.run_id}] 前端无声致命崩溃/JS运行时异常 ({path_str})",
+                        step_prompt=f"[ASSERT_NO_CONSOLE_ERRORS] {element_desc or '无声崩溃嗅探'} (页面路径: {path_str})",
+                        actual_result="【前端无声致命崩溃】\n" + "\n".join(err_lines),
+                        crash_image_path=str(step_img_path) if step_img_path and Path(step_img_path).exists() else None,
+                        action_type="ASSERT_NO_CONSOLE_ERRORS",
+                        target_element=element_desc or path_str,
+                        global_step=current_step,
+                        severity="High",
+                        ui_path=path_str
+                    )
+                else:
+                    action_success = True
             elif action_type in ("click", "hover", "input", "zoom", "rotate_3d", "scroll", "slide"):
                 desc_lower = (element_desc or "").lower()
                 # 🛡️ 核心物理防线 1：绝对严禁主动点击【一键隐藏/收起面板】，大屏两翼 2D 看板必须永久保持展开！
@@ -363,6 +524,13 @@ class ExplorerWorker:
                 try:
                     logger.info(f"⚡ 开始对目标 '{element_desc}' 进行 DOM 与视觉二次精确定位...")
                     dom_elements = self.driver.extract_interactive_elements()
+                    self._passive_physics_sanity_guard(
+                        dom_elements=dom_elements,
+                        base64_img=base64_img,
+                        step_img_path=step_img_path,
+                        current_ui_path=current_ui_path,
+                        current_step=current_step
+                    )
                     x, y = self.vision.find_element(
                         instruction=element_desc,
                         base64_image=base64_img,
@@ -949,7 +1117,9 @@ class ExplorerWorker:
                         json.dump(bugs, f, ensure_ascii=False, indent=2)
 
                     b_types = [b.get("type", "unknown") for b in bugs]
-                    has_js_crash = "page_error" in b_types
+                    has_js_crash = any(b.get("type") in ("page_error", "renderer_crash", "webgl_crash") or b.get("fatal") for b in bugs)
+                    if hasattr(self.driver, "fatal_js_crashes") and isinstance(self.driver.fatal_js_crashes, list):
+                        self.driver.fatal_js_crashes.clear()
                     has_500 = any(b.get("type") == "network_error" and ("500" in b.get("text", "") or "502" in b.get("text", "")) for b in bugs)
                     sev = "High" if (has_js_crash or has_500) else "Medium"
 
@@ -1005,7 +1175,7 @@ class ExplorerWorker:
                     "current_ui_path": current_ui_path
                 })
                 if action_success:
-                    if not batch_chart_handled:
+                    if not batch_chart_handled and action_type not in ("physics_sanity_check", "assert_no_console_errors", "canvas_stress_drag", "memory_leak_check", "back", "reload", "wait"):
                         self._attach_component_to_topology(
                             page_tree=page_tree,
                             current_ui_path=current_ui_path,
@@ -1027,6 +1197,25 @@ class ExplorerWorker:
                             "prompt": f"[ZOOM_{dir_str}] {element_desc}",
                             "direction": decision.get("direction", "in"),
                             "steps": steps_val,
+                            "thought": thought,
+                            "ui_path": ui_path_copy,
+                            "container": current_container
+                        })
+                    elif action_type == "memory_leak_check":
+                        task_trajectory.append({
+                            "type": "memory_leak_check",
+                            "prompt": element_desc or "检测当前应用内存与渲染句柄水位无异常泄漏",
+                            "thought": thought,
+                            "ui_path": ui_path_copy,
+                            "container": current_container
+                        })
+                    elif action_type == "canvas_stress_drag":
+                        task_trajectory.append({
+                            "type": "canvas_stress_drag",
+                            "prompt": element_desc or "中央三维数字孪生视口暴力抗压晃动检测",
+                            "mode": str(decision.get("mode", "hybrid")),
+                            "rounds": int(decision.get("rounds", 3)),
+                            "radius": int(decision.get("radius", 300)),
                             "thought": thought,
                             "ui_path": ui_path_copy,
                             "container": current_container
@@ -1322,3 +1511,66 @@ class ExplorerWorker:
                 json.dump(page_tree, f, ensure_ascii=False, indent=2)
         except Exception as e:
             logger.warning(f"持久化 page_tree.json 失败: {e}")
+
+    def _passive_physics_sanity_guard(
+        self,
+        dom_elements: List[Dict[str, Any]],
+        base64_img: str,
+        step_img_path: Optional[Path],
+        current_ui_path: List[str],
+        current_step: int
+    ) -> None:
+        """
+        零 Token 静默物理常识护栏：
+        每当提取 DOM 元素时，毫秒级正则预筛是否存在明显泄漏的 NaN / undefined / 负人数 / 越界百分比。
+        仅在捕获到未上报过的新异常线索时，才唤醒多模态大模型执行二次视觉复核并自动归档高优缺陷。
+        """
+        if not dom_elements:
+            return
+        try:
+            anomalies = ExplorerGuards.scan_text_physics_anomalies(dom_elements)
+            if not anomalies:
+                return
+
+            path_str = " -> ".join(current_ui_path) if current_ui_path else "未知路径"
+            fresh_anomalies = []
+            for item in anomalies:
+                sig = f"{path_str}::{item}"
+                if sig not in self.reported_physics_anomalies:
+                    self.reported_physics_anomalies.add(sig)
+                    fresh_anomalies.append(item)
+
+            if not fresh_anomalies:
+                return
+
+            logger.warning(f"🔎 [PassivePhysicsGuard] 页面【{path_str}】捕获到 {len(fresh_anomalies)} 条静态物理/脏值线索，触发视觉复核: {fresh_anomalies}")
+            scope_str = " -> ".join([str(p) for p in current_ui_path[:2]]) if current_ui_path and len(current_ui_path) >= 2 else (str(current_ui_path[0]) if current_ui_path else None)
+            api_ctx = ""
+            try:
+                api_ctx = self.driver.get_focused_api_records_summary(" ".join(fresh_anomalies[:3]), page_scope=scope_str)
+            except Exception:
+                pass
+
+            passed, reason = self.vision.check_physics_sanity(
+                instruction=f"重点核实当前页面（{path_str}）是否存在渲染脏值或违背矿山物理常识的异常指标",
+                base64_image=base64_img,
+                dom_anomalies=fresh_anomalies,
+                api_context=api_ctx
+            )
+            if not passed:
+                logger.error(f"🚨 [PassivePhysicsGuard] 视觉复核确认物理常识/渲染脏值缺陷: {reason}")
+                img_p = str(step_img_path) if step_img_path and Path(step_img_path).exists() else None
+                self.bug_reporter.report_bug(
+                    run_id=self.run_id,
+                    title=f"[{self.run_id}] 页面物理常识违背/渲染脏值裸露 ({path_str})",
+                    step_prompt=f"[PHYSICS_SANITY_CHECK] 静默物理常识哨兵巡检 (路径: {path_str})",
+                    actual_result=f"物理常识与合理性违背: {reason}\n静态预筛命中: {'; '.join(fresh_anomalies)}",
+                    crash_image_path=img_p,
+                    action_type="PHYSICS_SANITY_CHECK",
+                    target_element=fresh_anomalies[0][:60],
+                    global_step=current_step,
+                    severity="High",
+                    ui_path=path_str
+                )
+        except Exception as e_guard:
+            logger.debug(f"[PassivePhysicsGuard] 静默巡检忽略非致命异常: {e_guard}")

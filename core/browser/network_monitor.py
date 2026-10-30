@@ -45,7 +45,21 @@ class NetworkMonitorMixin:
             "httputils_error bo",
             "cannot set properties of undefined (setting 'config')",
             "failed to load resource: the server responded with a status of 401",
-            "failed to load resource: the server responded with a status of 504"
+            "failed to load resource: the server responded with a status of 504",
+            "resizeobserver loop",
+            "[vue warn]",
+            "[elementpluserror]",
+            "dom has already been initialized",
+            "can't get dom width or height",
+            "net::err_aborted",
+            "the play() request was interrupted",
+            "notallowederror: play()",
+            "aborterror",
+            "cancelederror",
+            "navigationduplicated",
+            "avoided redundant navigation",
+            "non-passive event listener",
+            "source map"
         ]
         if any(p in lower_msg for p in noise_err_patterns):
             return True
@@ -56,6 +70,48 @@ class NetworkMonitorMixin:
             return True
 
         return False
+
+    @staticmethod
+    def is_fatal_frontend_crash(msg_text: str = "", bug_type: str = "") -> bool:
+        """
+        高强度无声崩溃嗅探过滤器 (Fatal Silent Crash Classifier)
+        仅放行真正会导致组件渲染中断、交互死锁、3D 画布黑屏或路由白屏的致命前端崩溃，
+        彻底剔除前端日常不修的非阻塞性 console.error 噪音。
+        """
+        if bug_type in ("page_error", "renderer_crash", "webgl_crash"):
+            return True
+
+        lower_msg = (msg_text or "").lower()
+        fatal_signatures = (
+            "uncaught typeerror",
+            "uncaught referenceerror",
+            "uncaught rangeerror",
+            "uncaught syntaxerror",
+            "uncaught urierror",
+            "typeerror: cannot read prop",
+            "typeerror: cannot set prop",
+            "cannot read properties of undefined",
+            "cannot read properties of null",
+            "cannot set properties of null",
+            "cannot destructure property",
+            "is not a function",
+            "is not iterable",
+            "referenceerror:",
+            "unhandled error during execution of render function",
+            "unhandled error during execution of scheduler flush",
+            "unhandled error during execution of setup function",
+            "unhandled error during execution of mounted",
+            "unhandled error during execution of native event handler",
+            "chunkloaderror",
+            "failed to fetch dynamically imported module",
+            "loading chunk ",
+            "maximum call stack size exceeded",
+            "out of memory",
+            "webgl_lose_context",
+            "context_lost_webgl",
+            "webgl context lost"
+        )
+        return any(sig in lower_msg for sig in fatal_signatures)
 
     def _setup_page_listeners(self):
         """挂载控制台日志与异常捕获"""
@@ -87,7 +143,24 @@ class NetworkMonitorMixin:
                     "msg": msg.text,
                     "location": loc_info
                 }
-                self.caught_bugs.append(bug_entry)
+                is_fatal = NetworkMonitorMixin.is_fatal_frontend_crash(msg_text=msg.text, bug_type="console_error")
+                bug_entry["fatal"] = is_fatal
+                bug_entry["page_scope"] = getattr(self, "current_page_scope", "_global_shared")
+                bug_entry["timestamp"] = time.time()
+                if is_fatal:
+                    if not hasattr(self, "fatal_js_crashes") or self.fatal_js_crashes is None:
+                        self.fatal_js_crashes = []
+                    self.fatal_js_crashes.append(dict(bug_entry))
+                    if len(self.fatal_js_crashes) > 100:
+                        self.fatal_js_crashes = self.fatal_js_crashes[-100:]
+                    self.caught_bugs.append(bug_entry)
+                else:
+                    if not hasattr(self, "non_fatal_console_errors") or self.non_fatal_console_errors is None:
+                        self.non_fatal_console_errors = []
+                    self.non_fatal_console_errors.append(dict(bug_entry))
+                    if len(self.non_fatal_console_errors) > 50:
+                        self.non_fatal_console_errors = self.non_fatal_console_errors[-50:]
+                    logger.debug(f"[Electron Non-Fatal Console Ignored in Main Flow] {msg.text}")
             else:
                 logger.debug(f"[Electron Console][{msg.type}] {msg.text}")
 
@@ -97,11 +170,39 @@ class NetworkMonitorMixin:
                 logger.debug(f"[Electron PageError Filtered (Noise)] {err_str}")
                 return
             logger.warning(f"[Electron PageError] {err_str}")
-            self.caught_bugs.append({"type": "page_error", "msg": err_str})
+            crash_entry = {
+                "type": "page_error",
+                "msg": err_str,
+                "fatal": True,
+                "page_scope": getattr(self, "current_page_scope", "_global_shared"),
+                "timestamp": time.time()
+            }
+            if not hasattr(self, "fatal_js_crashes") or self.fatal_js_crashes is None:
+                self.fatal_js_crashes = []
+            self.fatal_js_crashes.append(dict(crash_entry))
+            if len(self.fatal_js_crashes) > 100:
+                self.fatal_js_crashes = self.fatal_js_crashes[-100:]
+            self.caught_bugs.append(crash_entry)
 
         try:
             self.page.on("console", on_console)
+            def on_crash():
+                crash_msg = "Electron 渲染进程发生致命崩溃 (Renderer Process Crashed / OOM)"
+                logger.critical(f"💥 [Electron Renderer Crash] {crash_msg}")
+                entry = {
+                    "type": "renderer_crash",
+                    "msg": crash_msg,
+                    "fatal": True,
+                    "page_scope": getattr(self, "current_page_scope", "_global_shared"),
+                    "timestamp": time.time()
+                }
+                if not hasattr(self, "fatal_js_crashes") or self.fatal_js_crashes is None:
+                    self.fatal_js_crashes = []
+                self.fatal_js_crashes.append(dict(entry))
+                self.caught_bugs.append(entry)
+
             self.page.on("pageerror", on_pageerror)
+            self.page.on("crash", on_crash)
         except Exception:
             pass
 
@@ -609,6 +710,8 @@ class NetworkMonitorMixin:
         "湿度": ["humidity", "temphum"],
         "气体": ["gas"],
         "位移": ["displacement"],
+        "折线图": ["trend"],
+        "趋势": ["trend"],
         "顶底板": ["regionaldisplacement", "displacement", "roofavg", "flooravg"],
         "地压": ["groundpressure", "displacement", "stress"],
         "应力": ["stress"],
@@ -1042,3 +1145,70 @@ class NetworkMonitorMixin:
 
 
 
+    def probe_webgl_context_health(self) -> List[Dict[str, Any]]:
+        """
+        主动嗅探当前页面所有 <canvas> 的 WebGL 上下文是否处于丢失崩溃态 (Context Lost)。
+        注意：绝不对已有 2D context 的 ECharts canvas 强调 getContext('webgl')，仅检测已绑定或只读状态。
+        """
+        if not getattr(self, "page", None) or self.page.is_closed():
+            return []
+        js_probe = """
+        () => {
+            const issues = [];
+            const canvases = document.querySelectorAll('canvas');
+            canvases.forEach((cv, idx) => {
+                const rect = cv.getBoundingClientRect();
+                if (rect.width <= 0 || rect.height <= 0) return;
+                // 若是 ECharts 实例且正常运行，不强行调 getContext('webgl')（2D canvas 调用 webgl 返回 null 属正常现象）
+                if (cv.hasAttribute('_echarts_instance_') || (cv.parentElement && cv.parentElement.hasAttribute('_echarts_instance_'))) {
+                    return;
+                }
+                try {
+                    const gl = cv.getContext('webgl2', { failIfMajorPerformanceCaveat: false })
+                            || cv.getContext('webgl', { failIfMajorPerformanceCaveat: false });
+                    if (gl && typeof gl.isContextLost === 'function' && gl.isContextLost()) {
+                        issues.push({
+                            type: 'webgl_crash',
+                            msg: `Canvas[#${idx}](${Math.round(rect.width)}x${Math.round(rect.height)}) WebGL 渲染上下文已丢失 (CONTEXT_LOST_WEBGL)`,
+                            fatal: true
+                        });
+                    }
+                } catch (e) {}
+            });
+            return issues;
+        }
+        """
+        try:
+            res = self.page.evaluate(js_probe)
+            return res if isinstance(res, list) else []
+        except Exception:
+            return []
+
+    def get_fatal_console_errors(self, clear: bool = True, strict: bool = False) -> List[Dict[str, Any]]:
+        """
+        获取无声致命前端崩溃列表（供 assert_no_console_errors 步骤精准断言）。
+        - 默认 (strict=False)：仅返回 Uncaught TypeError/ReferenceError、Vue 渲染期未捕获崩溃、ChunkLoadError、Renderer Crash 及 WebGL 上下文丢失；
+        - 严格模式 (strict=True)：额外合并过滤掉良性噪音后的其余 console.error。
+        """
+        if not hasattr(self, "fatal_js_crashes") or self.fatal_js_crashes is None:
+            self.fatal_js_crashes = []
+        if not hasattr(self, "non_fatal_console_errors") or self.non_fatal_console_errors is None:
+            self.non_fatal_console_errors = []
+
+        results = list(self.fatal_js_crashes)
+        if strict and self.non_fatal_console_errors:
+            results.extend(self.non_fatal_console_errors)
+
+        # 主动探测 WebGL 画布上下文丢失
+        webgl_issues = self.probe_webgl_context_health()
+        for wi in webgl_issues:
+            wi["page_scope"] = getattr(self, "current_page_scope", "_global_shared")
+            wi["timestamp"] = time.time()
+            results.append(wi)
+
+        if clear:
+            self.fatal_js_crashes = []
+            if strict:
+                self.non_fatal_console_errors = []
+
+        return results

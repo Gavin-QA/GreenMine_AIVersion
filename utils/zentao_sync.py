@@ -262,19 +262,29 @@ def resolve_bug_assignee(bug: Dict[str, Any], override: Optional[str] = None) ->
         backend_score += 5
         backend_reasons.append("SQL/数据库或服务端错误码")
 
-    # 接口缺失字段 / 缺乏后端数据支撑
+    # 接口缺失字段 / 缺乏后端数据支撑 / 后端上游脏数据与ERP量纲异常
     if re.search(r'缺乏后端数据支撑|缺少与.*?相关的字段|API响应数据中缺少|所有候选接口中均无对应字段|缺失关键数据源|接口未提供|未提供.*?字段', full_text):
         backend_score += 3
         backend_reasons.append("接口未提供必要业务字段")
+
+    if re.search(r'后端接口脏数据|ERP量纲异常|接口原始字段中.*?荒谬|后端返回脏值', full_text):
+        backend_score += 5
+        backend_reasons.append("后端上游脏数据或ERP量纲失真")
 
     # 5. 前端核心特征打分
     frontend_score = 0
     frontend_reasons = []
 
-    # JS 语法报错或页面崩溃
-    if re.search(r'page_error|ResizeObserver|Cannot read propert|is not a function|ERR_CONTENT_LENGTH_MISMATCH', full_text, re.I):
-        frontend_score += 4
-        frontend_reasons.append("页面级 JS 崩溃或资源异常")
+    # JS 语法报错、无声致命崩溃、显存/内存泄漏或 WebGL 画布崩溃
+    if re.search(
+        r'page_error|renderer_crash|webgl_crash|前端无声致命崩溃|前端内存/显存资源泄漏|前端渲染计算异常|'
+        r'JSHeap|CONTEXT_LOST_WEBGL|ChunkLoadError|Uncaught TypeError|Uncaught ReferenceError|'
+        r'ResizeObserver|Cannot read propert|is not a function|ERR_CONTENT_LENGTH_MISMATCH',
+        full_text,
+        re.I
+    ):
+        frontend_score += 5
+        frontend_reasons.append("前端无声崩溃/内存泄漏/WebGL渲染异常")
 
     # 前端图表、组件、绑定错误
     if re.search(r'前端图表渲染错误|前端渲染层错误|前端组件在动态绑定时|前端数据映射错误|样式错乱|白屏|未渲染', full_text):

@@ -18,7 +18,8 @@ from .prompts import (
     API_ASSERT_SYSTEM_PROMPT,
     BATCH_CHART_ASSERT_SYSTEM_PROMPT,
     SELF_HEAL_SYSTEM_PROMPT,
-    PAGE_SKELETON_SCAN_SYSTEM_PROMPT
+    PAGE_SKELETON_SCAN_SYSTEM_PROMPT,
+    PHYSICS_SANITY_SYSTEM_PROMPT
 )
 
 logger = logging.getLogger("core.vision_agent")
@@ -537,3 +538,58 @@ class VisionAgent:
             logger.warning(f"全景骨架扫描异常: {e}")
             return {}
 
+
+    # 兼容别名：供 ExplorerWorker 3D 视界健康度自检调用
+    def assert_condition(self, instruction: str, base64_image: str) -> Tuple[bool, str]:
+        return self.check_assertion(instruction=instruction, base64_image=base64_image)
+
+    def check_physics_sanity(
+        self,
+        instruction: str = "",
+        base64_image: str = "",
+        dom_anomalies: Optional[List[str]] = None,
+        api_context: str = ""
+    ) -> Tuple[bool, str]:
+        """
+        矿山物理常识与业务合理性断言（三大铁律之三）
+        融合零 Token 静态 DOM 脏值预筛线索与多模态视觉全局巡检，排查 NaN/undefined、负人数、越界比率、ERP 1000倍量纲灾难。
+        返回 (passed, detailed_reason)
+        """
+        focus_desc = instruction.strip() if instruction and instruction.strip() else "全屏巡检当前页面所有业务看板、图表与指标的物理常识与渲染合理性"
+        logger.info(f"🧪 [PhysicsSanity] 启动物理常识与合理性巡检: '{focus_desc}'")
+
+        user_prompt = f"【巡检任务焦点】: {focus_desc}\n"
+        if dom_anomalies:
+            user_prompt += (
+                "\n【底层 DOM 静态正则预筛发现的疑似异常线索（请结合截图画面重点核实）】:\n"
+                + "\n".join(f"- {item}" for item in dom_anomalies)
+                + "\n"
+            )
+        if api_context and api_context.strip() and api_context.strip() != "[]":
+            user_prompt += f"\n【底层候选接口原始 JSON 报文参考（用于辅助区分后端脏数据还是前端计算异常）】:\n{api_context}\n"
+
+        user_prompt += "\n请严格按照矿山物理常识防线审视附图，输出标准 JSON 判定结果。"
+
+        result = self._call_llm(
+            system_prompt=PHYSICS_SANITY_SYSTEM_PROMPT,
+            user_prompt=user_prompt,
+            base64_image=base64_image
+        )
+
+        thought = result.get("thought", "")
+        passed = bool(result.get("passed", True))
+        anomalies = result.get("anomalies") or []
+        reason = result.get("assert_reason", "")
+
+        if not passed and anomalies and isinstance(anomalies, list):
+            anomaly_joined = "；".join(str(a) for a in anomalies if a)
+            if anomaly_joined and anomaly_joined not in reason:
+                reason = f"{reason} | 异常明细: {anomaly_joined}" if reason else anomaly_joined
+
+        logger.info(f"💡 [PhysicsSanity] AI 思考链: {thought}")
+        if passed:
+            logger.info(f"✅ [PhysicsSanity] 物理常识巡检通过 | 结论: {reason}")
+        else:
+            logger.error(f"🚨 [PhysicsSanity] 物理常识违背警报！原因: {reason}")
+
+        return passed, reason

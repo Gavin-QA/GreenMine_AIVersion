@@ -47,11 +47,15 @@ Playwright 在本框架中仅作为“底座外设”：
 - `input`: 用于在输入框中输入文字（支持 `fuzz: true` 自动注入边界畸形字符、`clear_first`、`press_enter`）。
 - `zoom`: 用于三维场景/地图的滚轮缩放（如 `direction: in/out`, `steps: 3`）。
 - `rotate_3d`: 用于三维孪生视界漫游旋转（如 `direction: left/right/up/down`, `distance: 250`, `button: right`）。
+- `canvas_stress_drag`: 用于 3D 场景暴力晃动抗压测试（安全中央视口围栏内执行高频 8 字螺旋甩动与突发滚轮推拉风暴，如 `mode: hybrid`, `rounds: 3`, `radius: 300`，检验 UE5 像素流断流、模型破面与 WebGL 崩溃）。
 - `scroll`: 用于长列表、告警列表、长表格容器的内部物理滚轮翻页（如 `direction: down/up`, `delta: 300`）。
 - `slide`: 用于时间轴（Timeline Slider）、阈值调节滑块等组件的连续平滑拖拽。
 - `drag`: 用于物理拖拽交互（如拖动视口、元素平移）。
 - `assert`: 纯视觉语义断言（例如“画面是否变成红色”，“弹窗是否显示”）。
 - `api_assert`: UI 渲染与底层 JSON 数据的双向交叉断言。
+- `physics_sanity_check`: 矿山物理常识与合理性断言（零 Token 静态脏值预筛 + 多模态视觉巡检，精准拦截 `NaN`/`undefined`、负人数、越界比率与 ERP 1000倍量纲灾难）。
+- `assert_no_console_errors`: 无声崩溃嗅探断言（高强度过滤无关前端告警噪音，精准拦截 `Uncaught TypeError`、Vue 渲染期崩溃、`ChunkLoadError` 与 WebGL 上下文丢失）。
+- `memory_leak_check`: 显存/内存探针（通过 CDP 强制 Full GC 后采集对比 V8 JSHeap、DOM 节点数、事件监听器与 ECharts/Canvas 实例水位，支持 `mode: baseline/assert`、`max_heap_mb`、`max_growth_mb`）。
 - `wait_for`: 智能视觉轮询等待（例如“等待直到主标题出现”）。
 - `wait`: 物理强制等待（例如 `seconds: 2.0`）。
 - `freeze_check`: 双图时序对比防假死检测。

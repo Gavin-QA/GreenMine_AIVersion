@@ -20,8 +20,8 @@ description: 矿山大屏自然语言 YAML 测试用例智能编写、规范注�
    - 界面上凡是展示关键指标（如带班领导人名、下井人数、瓦斯浓度、风机转速、供电负荷等），**必须使用 `api_assert`** 到底层拦截的 JSON 接口中核对，防范前端渲染张冠李戴。
 2. **动态必须流动 (`freeze_check`)**：
    - 3D 视界、监控画面或动态跑马灯不能假死，必须在关键节点加入 `freeze_check` 进行双图时序对比防假死检测。
-3. **数据不能违背物理常识**：
-   - AI 自带业务防线，对异常数字（如几百万度电的瞬时功率、负下井人数）予以最高级别警报。
+3. **数据不能违背物理常识 (`physics_sanity_check`)**：
+   - AI 自带业务防线，支持通过 `physics_sanity_check` 对全屏指标进行零 Token 静态脏值预筛（`NaN`/`undefined`/`[object Object]`）与多模态矿山物理合理性巡检，对异常数字（如几百万度电的瞬时功率、负下井人数、完好率 `>100%`）予以最高级别警报。
 
 ---
 
@@ -41,9 +41,13 @@ description: 矿山大屏自然语言 YAML 测试用例智能编写、规范注�
 | `input` | `prompt` | `text`, `fuzz: false`, `clear_first: true`, `press_enter: false` | 文本输入框定位与键入（支持 fuzz 模糊测试） |
 | `assert` | `prompt` | - | 纯视觉语义断言（如“确认弹窗是否出现”、“确认播放按钮是否变为暂停”） |
 | `api_assert` | `prompt` | `target_api: "url_keyword"` | UI 渲染与底层 JSON 数据的双向交叉断言 |
+| `physics_sanity_check` | - | `prompt` | 物理常识与合理性断言（排查 `NaN`/`undefined`、负人数、越界比率、ERP 1000倍量纲灾难） |
+| `assert_no_console_errors` | - | `prompt`, `strict: false`, `reset: false` | 无声崩溃嗅探（高强度过滤无关告警，精准拦截 Uncaught TypeError、Vue 渲染崩溃、WebGL 丢失） |
 | `freeze_check` | `prompt` | `wait_seconds: 5.0` | 双图时序对比防假死检测（检查时间变化或三维粒子） |
 | `zoom` | `prompt` | `direction: "in"/"out"`, `steps: 3` | 三维场景/地图滚轮缩放 |
 | `rotate_3d` | `prompt` | `direction: "left"/"right"/"up"/"down"`, `distance: 250`, `button: "right"` | 三维孪生视界漫游旋转 |
+| `canvas_stress_drag` | - | `prompt`, `mode: "hybrid"`, `rounds: 3`, `radius: 300`, `visual_assert: true` | 3D 场景暴力晃动抗压测试（安全围栏内高频 8 字甩动+滚轮推拉风暴，检测像素流断流/破面） |
+| `memory_leak_check` | - | `prompt`, `mode: "assert"/"baseline"`, `max_heap_mb: 1024`, `max_growth_mb: 300` | 显存/内存探针（CDP 强制 GC 后比对 JS 堆内存、DOM 节点树、监听器与 ECharts 实例泄漏） |
 | `scroll` | `prompt` | `direction: "down"/"up"`, `delta: 300` | 告警列表、长表格容器的内部物理滚轮翻页 |
 | `slide` | `prompt` | `start`, `end`, `start_x`, `start_y`, `end_x`, `end_y` | 时间轴（Timeline Slider）、阈值调节滑块拖拽 |
 | `drag` | `from_x, from_y, to_x, to_y` | `button: "left"` | 物理坐标拖拽平移 |

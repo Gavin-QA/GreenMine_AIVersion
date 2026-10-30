@@ -101,3 +101,87 @@ class ExplorerGuards:
             return False, metric_keys_list
 
         return True, metric_keys_list
+
+    # ==========================================================================
+    # 物理常识与前端脏值零 Token 静态预筛器 (Physics & Dirty Value Regex Guard)
+    # ==========================================================================
+    _DIRTY_TOKEN_PATTERNS = [
+        (re.compile(r'(?<![A-Za-z])NaN(?![A-Za-z])'), "前端计算脏值 NaN"),
+        (re.compile(r'(?<![A-Za-z])-?Infinity(?![A-Za-z])'), "前端除零溢出值 Infinity"),
+        (re.compile(r'(?<![A-Za-z])undefined(?![A-Za-z])'), "前端未定义变量泄漏 undefined"),
+        (re.compile(r'\[object\s+Object\]'), "前端对象未序列化泄漏 [object Object]"),
+        (re.compile(r'Invalid\s+Date', re.IGNORECASE), "前端时间解析失败 Invalid Date"),
+        (re.compile(r'1970[-/年]0?1[-/月]0?1'), "Unix零时间戳未初始化异常 (1970-01-01)"),
+    ]
+
+    # 绝对不允许为负数的矿山实体物理量（严格排除日期 2026-10-30 与区间 10-20人）
+    _NEGATIVE_ENTITY_RE = re.compile(
+        r'(?<!\d)(?<!\d\s)(?:^|[:：=]|(?<=\s))(-\d+(?:\.\d+)?)\s*(人|名|辆|台|座|万吨|千吨|m³/s|m3/s)'
+    )
+
+    # 严格有界 [0%, 100%] 的比率指标（不含同比/环比/完成率等可超100%指标）
+    _BOUNDED_RATIO_RE = re.compile(
+        r'(完好率|在线率|出勤率|合格率|稼动率|运转率|开动率|湿度|矿石品位|品位)[^\d\-%]{0,10}(-?\d+(?:\.\d+)?)\s*%'
+    )
+
+    @classmethod
+    def scan_text_physics_anomalies(cls, texts_or_elements: List[Any], max_items: int = 12) -> List[str]:
+        """
+        零 Token 消耗的静态物理常识与渲染脏值扫描器。
+        对 DOM 提取的可见文本列表进行毫秒级正则巡检，捕获明显泄漏的 NaN / undefined / 负人数 / 越界率值线索，
+        供多模态大模型二次视觉复核。
+        """
+        if not texts_or_elements:
+            return []
+
+        anomalies: List[str] = []
+        seen: Set[str] = set()
+
+        for item in texts_or_elements:
+            if isinstance(item, dict):
+                raw_text = str(item.get("text") or "").strip()
+                container = str(item.get("container_name") or "").strip()
+            else:
+                raw_text = str(item or "").strip()
+                container = ""
+
+            if not raw_text:
+                continue
+
+            prefix = f"[{container}] " if container else ""
+            snippet = raw_text[:80].replace("\n", " ")
+
+            # 1. 前端 JS 脏值泄漏检测
+            for pattern, label in cls._DIRTY_TOKEN_PATTERNS:
+                if pattern.search(raw_text):
+                    msg = f"{prefix}{label}: '{snippet}'"
+                    if msg not in seen:
+                        seen.add(msg)
+                        anomalies.append(msg)
+
+            # 2. 矿山非负物理量出现负数检测
+            for m in cls._NEGATIVE_ENTITY_RE.finditer(raw_text):
+                val_str, unit_str = m.group(1), m.group(2)
+                msg = f"{prefix}非负物理量出现负值 ({val_str}{unit_str}): '{snippet}'"
+                if msg not in seen:
+                    seen.add(msg)
+                    anomalies.append(msg)
+
+            # 3. 严格有界百分比 (<0% 或 >100%) 越界检测
+            for m in cls._BOUNDED_RATIO_RE.finditer(raw_text):
+                metric_name, num_str = m.group(1), m.group(2)
+                try:
+                    num_val = float(num_str)
+                    if num_val < 0.0 or num_val > 100.0:
+                        msg = f"{prefix}有界指标越界 ({metric_name}={num_val}% 超出 0~100%): '{snippet}'"
+                        if msg not in seen:
+                            seen.add(msg)
+                            anomalies.append(msg)
+                except ValueError:
+                    pass
+
+            if len(anomalies) >= max_items:
+                break
+
+        return anomalies
+

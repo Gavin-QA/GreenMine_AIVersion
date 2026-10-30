@@ -2,6 +2,8 @@ import base64
 import logging
 import os
 import sys
+import json
+import math
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Generator, Optional, Tuple
@@ -71,6 +73,12 @@ class ElectronDriver(NetworkMonitorMixin, DomExtractorMixin, ScreenshotMixin, Ch
         
         # 后台静默报错捕获池 (Console Errors, Network Errors)
         self.caught_bugs = []
+        # 致命无声前端崩溃专属缓冲池 (Uncaught JS Error / Vue Render Crash / WebGL Lost，供 assert_no_console_errors 精准断言)
+        self.fatal_js_crashes: List[Dict[str, Any]] = []
+        self.non_fatal_console_errors: List[Dict[str, Any]] = []
+        # 显存/内存与 DOM/监听器泄漏探针基线与时序轨迹池 (供 memory_leak_check 追踪)
+        self.memory_baseline: Optional[Dict[str, Any]] = None
+        self.memory_timeline: List[Dict[str, Any]] = []
         
         # 记录最后一次鼠标交互坐标，用于在截图中硬核绘制真实光标
         self.last_mouse_pos = None
@@ -468,6 +476,172 @@ class ElectronDriver(NetworkMonitorMixin, DomExtractorMixin, ScreenshotMixin, Ch
         logger.info(f"🔄 执行 3D 视点轨道旋转: {desc} | 核心原点 ({cx}, {cy})")
         self.drag(from_x, from_y, to_x, to_y, button=button, steps=20, delay_after=delay_after)
 
+    def _probe_3d_stream_health(self) -> Dict[str, Any]:
+        """
+        探测三维像素流 (UE5 WebRTC Video) 与 WebGL 画布在暴力交互后的存活健康度
+        """
+        if not self.page or self.page.is_closed():
+            return {"healthy": False, "issues": ["Electron 页面句柄已关闭或断开"]}
+
+        issues: List[str] = []
+        # 1. 检测 WebGL 上下文是否丢失
+        if hasattr(self, "probe_webgl_context_health"):
+            for wi in self.probe_webgl_context_health():
+                issues.append(str(wi.get("msg") or "WebGL 上下文丢失"))
+
+        # 2. 检测 WebRTC 像素流大尺寸 <video> 状态与断流遮罩文案
+        js_stream_check = """
+        () => {
+            const errs = [];
+            const vw = window.innerWidth || 1920;
+            const vh = window.innerHeight || 1080;
+            // 检查主视口尺寸的像素流 video 标签
+            const videos = document.querySelectorAll('video');
+            videos.forEach((v, idx) => {
+                const r = v.getBoundingClientRect();
+                if (r.width >= vw * 0.45 && r.height >= vh * 0.45) {
+                    if (v.error) {
+                        errs.push(`UE5 像素流 Video[#${idx}] 媒体解码报错 (code=${v.error.code})`);
+                    } else if (v.ended) {
+                        errs.push(`UE5 像素流 Video[#${idx}] 推流已中断 (ended=true)`);
+                    } else if (v.srcObject && (v.readyState === 0 || v.videoWidth === 0)) {
+                        errs.push(`UE5 像素流 Video[#${idx}] 视频帧尺寸归零/断流 (readyState=${v.readyState}, videoWidth=${v.videoWidth})`);
+                    }
+                }
+            });
+            // 检查可见断流报错遮罩
+            const bodyText = (document.body && document.body.innerText) ? document.body.innerText : '';
+            const fatalStreamTexts = ['WebRTC disconnected', 'Pixel Streaming disconnected', '像素流已断开', '推流连接断开', 'renderer process crashed'];
+            for (const kw of fatalStreamTexts) {
+                if (bodyText.toLowerCase().includes(kw.toLowerCase())) {
+                    errs.push(`页面出现三维推流断连告警文案: "${kw}"`);
+                }
+            }
+            return errs;
+        }
+        """
+        try:
+            dom_errs = self.page.evaluate(js_stream_check)
+            if isinstance(dom_errs, list):
+                issues.extend(str(x) for x in dom_errs if x)
+        except Exception as e:
+            issues.append(f"渲染进程无响应或 JS 执行超时: {e}")
+
+        return {"healthy": len(issues) == 0, "issues": issues}
+
+    def canvas_stress_drag(
+        self,
+        center_x: Optional[int] = None,
+        center_y: Optional[int] = None,
+        mode: str = "hybrid",
+        rounds: int = 3,
+        radius: int = 300,
+        button: str = "right",
+        delay_after: float = 1.5
+    ) -> Dict[str, Any]:
+        """
+        3D 场景暴力晃动压力测试 (Canvas / UE5 WebRTC Stress Drag)
+        在严格锁定的中央安全三维视口包围盒 [0.28W~0.72W, 0.20H~0.78H] 内，
+        执行高频 8 字螺旋轨道甩动 + 正反向急停横扫 + 突发滚轮推拉风暴，
+        专门诱发 UE5 像素流花屏断流、LOD 切换破面、WebGL Context Lost 与显存暴涨崩溃。
+        绝对不触碰左右两翼 2D 业务面板、【一键隐藏】折叠条及右上角系统退出按钮！
+        """
+        if not self.page:
+            raise RuntimeError("页面未就绪！")
+
+        vp = self.get_viewport_info()
+        w = int(vp.get("width", self.default_width))
+        h = int(vp.get("height", self.default_height))
+
+        # 物理级安全禁区围栏：严禁越出中央 3D 视口半步
+        min_x, max_x = int(w * 0.28), int(w * 0.72)
+        min_y, max_y = int(h * 0.20), int(h * 0.78)
+
+        def clamp_x(val: float) -> int:
+            return max(min_x, min(max_x, int(round(val))))
+
+        def clamp_y(val: float) -> int:
+            return max(min_y, min(max_y, int(round(val))))
+
+        cx = clamp_x(center_x if center_x is not None else w // 2)
+        cy = clamp_y(center_y if center_y is not None else h // 2)
+        rounds = max(1, min(15, int(rounds)))
+        rx = min(int(abs(radius)), (max_x - min_x) // 2 - 10)
+        ry = min(int(abs(radius) * 0.65), (max_y - min_y) // 2 - 10)
+        rx = max(40, rx)
+        ry = max(30, ry)
+        mode_clean = (mode or "hybrid").strip().lower()
+
+        logger.info(
+            f"🌪️ [3D Stress Drag] 启动三维视界暴力抗压晃动: mode={mode_clean}, rounds={rounds}, "
+            f"radius=({rx},{ry}), button={button}, 安全围栏=[({min_x},{min_y})~({max_x},{max_y})]"
+        )
+
+        self.last_mouse_pos = (cx, cy)
+        waypoints_executed = 0
+
+        # 阶段 1：高频 8 字螺旋轨道旋转 + 正反向急停甩镜头
+        if mode_clean in ("orbit", "whip", "hybrid", "all"):
+            self.page.mouse.move(cx, cy)
+            self.page.mouse.down(button=button)
+            try:
+                for r_idx in range(rounds):
+                    # A. 8字利萨如曲线高速环绕 (12 采样点/圈)
+                    segments = 12
+                    for s in range(1, segments + 1):
+                        theta = (2.0 * math.pi * s) / segments
+                        phase = 1 if (r_idx % 2 == 0) else -1
+                        tx = clamp_x(cx + phase * rx * math.sin(theta))
+                        ty = clamp_y(cy + ry * math.sin(2.0 * theta))
+                        self.page.mouse.move(tx, ty, steps=2)
+                        waypoints_executed += 1
+                    # B. 水平与俯仰正反向极限急甩 (诱发视锥体裁剪与动态贴图突发加载)
+                    whip_pts = [
+                        (clamp_x(cx - rx), cy),
+                        (clamp_x(cx + rx), cy),
+                        (cx, clamp_y(cy - ry)),
+                        (cx, clamp_y(cy + ry)),
+                        (cx, cy),
+                    ]
+                    for wx, wy in whip_pts:
+                        self.page.mouse.move(wx, wy, steps=3)
+                        waypoints_executed += 1
+            finally:
+                # 铁律：无论中间是否发生异常，必须释放鼠标按键防止右键粘连锁死！
+                try:
+                    self.page.mouse.up(button=button)
+                except Exception:
+                    pass
+
+        # 阶段 2：突发 LOD 远近景高频滚轮风暴 (先急速推进再对等拉回原位)
+        if mode_clean in ("zoom", "hybrid", "all"):
+            self.page.mouse.move(cx, cy)
+            burst_cnt = max(2, min(6, rounds + 1))
+            for _ in range(burst_cnt):
+                self.page.mouse.wheel(0, -360)
+                waypoints_executed += 1
+                time.sleep(0.05)
+            time.sleep(0.15)
+            for _ in range(burst_cnt):
+                self.page.mouse.wheel(0, 360)
+                waypoints_executed += 1
+                time.sleep(0.05)
+
+        if delay_after > 0:
+            time.sleep(delay_after)
+
+        health = self._probe_3d_stream_health()
+        health["waypoints_executed"] = waypoints_executed
+        health["center"] = (cx, cy)
+        health["safe_bounds"] = [min_x, min_y, max_x, max_y]
+
+        if health["healthy"]:
+            logger.info(f"✅ [3D Stress Drag] 暴力晃动完成 ({waypoints_executed} 次高频位移/滚轮脉冲)，像素流与 WebGL 上下文健康存活！")
+        else:
+            logger.error(f"💥 [3D Stress Drag] 暴力晃动后检测到三维渲染/推流异常: {health['issues']}")
+
+        return health
+
     def scroll_element(self, x: int = None, y: int = None, direction: str = "down", delta: int = 300, delay_after: float = 1.0):
         """
         在指定组件容器（长表格、滚动卡片、历史报警列表等）内执行物理滚轮翻页
@@ -730,6 +904,220 @@ class ElectronDriver(NetworkMonitorMixin, DomExtractorMixin, ScreenshotMixin, Ch
         self.context = None
         self.page = None
         logger.info("[OK] 驱动底座清理完毕。")
+
+    # =========================================================================
+    # 显存/内存与句柄资源泄漏探针 (Memory / GPU / DOM / Listener Leak Probe)
+    # =========================================================================
+    def collect_garbage_cdp(self) -> bool:
+        """通过底层 CDP 协议强制触发 V8 引擎 Full GC，剥离瞬态未回收垃圾，确保内存泄漏判定零误报"""
+        if not self.page or self.page.is_closed():
+            return False
+        cdp = None
+        try:
+            cdp = self.page.context.new_cdp_session(self.page)
+            cdp.send("HeapProfiler.collectGarbage")
+            time.sleep(0.2)
+            return True
+        except Exception as e:
+            logger.debug(f"[MemoryProbe] CDP 主动 GC 降级跳过: {e}")
+            return False
+        finally:
+            if cdp is not None:
+                try:
+                    cdp.detach()
+                except Exception:
+                    pass
+
+    def get_memory_metrics(self, label: str = "", trigger_gc: bool = False) -> Dict[str, Any]:
+        """
+        采集当前渲染进程的精确内存与渲染资源指标：
+        - JSHeapUsedSize / JSHeapTotalSize (MB)
+        - DOM Nodes 节点总数、JSEventListeners 事件监听器总数
+        - ECharts 实例数、Canvas 画布数、Video 像素流/播放器实例数
+        """
+        if not self.page or self.page.is_closed():
+            return {}
+
+        if trigger_gc:
+            self.collect_garbage_cdp()
+
+        metrics_map: Dict[str, float] = {}
+        cdp = None
+        try:
+            cdp = self.page.context.new_cdp_session(self.page)
+            cdp.send("Performance.enable")
+            raw_res = cdp.send("Performance.getMetrics")
+            for item in raw_res.get("metrics", []):
+                name = item.get("name")
+                val = item.get("value")
+                if name and isinstance(val, (int, float)):
+                    metrics_map[name] = float(val)
+        except Exception as e:
+            logger.debug(f"[MemoryProbe] CDP Performance.getMetrics 降级 JS 采集: {e}")
+        finally:
+            if cdp is not None:
+                try:
+                    cdp.detach()
+                except Exception:
+                    pass
+
+        dom_stats = {}
+        js_stats = """
+        () => {
+            const mem = (window.performance && window.performance.memory) ? {
+                usedJSHeapSize: window.performance.memory.usedJSHeapSize || 0,
+                totalJSHeapSize: window.performance.memory.totalJSHeapSize || 0,
+                jsHeapSizeLimit: window.performance.memory.jsHeapSizeLimit || 0
+            } : {};
+            return {
+                perf_mem: mem,
+                dom_nodes: document.getElementsByTagName('*').length,
+                canvas_count: document.querySelectorAll('canvas').length,
+                video_count: document.querySelectorAll('video').length,
+                iframe_count: document.querySelectorAll('iframe').length,
+                echarts_instances: document.querySelectorAll('[_echarts_instance_]').length
+            };
+        }
+        """
+        try:
+            dom_stats = self.page.evaluate(js_stats) or {}
+        except Exception:
+            dom_stats = {}
+
+        perf_mem = dom_stats.get("perf_mem") or {}
+        heap_used_bytes = metrics_map.get("JSHeapUsedSize") or perf_mem.get("usedJSHeapSize") or 0.0
+        heap_total_bytes = metrics_map.get("JSHeapTotalSize") or perf_mem.get("totalJSHeapSize") or 0.0
+        dom_nodes = int(metrics_map.get("Nodes") or dom_stats.get("dom_nodes") or 0)
+        js_listeners = int(metrics_map.get("JSEventListeners") or 0)
+
+        snapshot = {
+            "label": label or "sample",
+            "page_scope": getattr(self, "current_page_scope", "_global_shared"),
+            "timestamp": round(time.time(), 3),
+            "js_heap_used_mb": round(heap_used_bytes / (1024 * 1024), 2),
+            "js_heap_total_mb": round(heap_total_bytes / (1024 * 1024), 2),
+            "dom_nodes": dom_nodes,
+            "js_event_listeners": js_listeners,
+            "canvas_count": int(dom_stats.get("canvas_count") or 0),
+            "video_count": int(dom_stats.get("video_count") or 0),
+            "iframe_count": int(dom_stats.get("iframe_count") or 0),
+            "echarts_instances": int(dom_stats.get("echarts_instances") or 0),
+        }
+        return snapshot
+
+    def record_memory_snapshot(
+        self,
+        label: str = "snapshot",
+        set_as_baseline: bool = False,
+        trigger_gc: bool = False
+    ) -> Dict[str, Any]:
+        """记录单次内存与渲染资源水位快照，可选设为后续泄漏比对基线"""
+        snap = self.get_memory_metrics(label=label, trigger_gc=trigger_gc)
+        if not snap:
+            return {}
+        if not hasattr(self, "memory_timeline") or self.memory_timeline is None:
+            self.memory_timeline = []
+        self.memory_timeline.append(snap)
+        if len(self.memory_timeline) > 500:
+            self.memory_timeline = self.memory_timeline[-500:]
+        if set_as_baseline or getattr(self, "memory_baseline", None) is None:
+            self.memory_baseline = dict(snap)
+            logger.info(
+                f"📌 [MemoryProbe] 已锚定内存基线 [{label}]: "
+                f"JSHeap={snap['js_heap_used_mb']}MB, DOM={snap['dom_nodes']}, Listeners={snap['js_event_listeners']}, "
+                f"ECharts={snap['echarts_instances']}, Canvas={snap['canvas_count']}"
+            )
+        return snap
+
+    def check_memory_leak(
+        self,
+        label: str = "memory_check",
+        max_heap_mb: float = 1024.0,
+        max_growth_mb: float = 300.0,
+        max_growth_ratio: float = 2.5,
+        max_dom_nodes: int = 50000,
+        max_listener_growth: int = 5000,
+        trigger_gc: bool = True
+    ) -> Tuple[bool, str, Dict[str, Any]]:
+        """
+        执行强制 GC 后的内存/显存句柄与 DOM/监听器泄漏综合判定。
+        返回: (passed: bool, diagnostic_summary: str, current_snapshot: dict)
+        """
+        curr = self.record_memory_snapshot(label=label, set_as_baseline=False, trigger_gc=trigger_gc)
+        if not curr:
+            return True, "页面未就绪，跳过内存采集", {}
+
+        base = getattr(self, "memory_baseline", None) or curr
+        curr_heap = float(curr.get("js_heap_used_mb", 0.0))
+        base_heap = float(base.get("js_heap_used_mb", 0.0))
+        heap_growth_mb = round(curr_heap - base_heap, 2)
+        heap_ratio = round(curr_heap / max(base_heap, 10.0), 2)
+
+        curr_nodes = int(curr.get("dom_nodes", 0))
+        base_nodes = int(base.get("dom_nodes", 0))
+        node_growth = curr_nodes - base_nodes
+
+        curr_listeners = int(curr.get("js_event_listeners", 0))
+        base_listeners = int(base.get("js_event_listeners", 0))
+        listener_growth = curr_listeners - base_listeners
+
+        # 检测最近 4 次采样是否呈严格单调递增不回落趋势
+        recent_heaps = [float(s.get("js_heap_used_mb", 0.0)) for s in (self.memory_timeline or [])[-4:]]
+        is_monotonic_rising = (
+            len(recent_heaps) == 4
+            and recent_heaps[0] < recent_heaps[1] < recent_heaps[2] < recent_heaps[3]
+            and (recent_heaps[-1] - recent_heaps[0]) >= 50.0
+        )
+
+        breaches: List[str] = []
+        if curr_heap > max_heap_mb:
+            breaches.append(f"JS 堆内存绝对值超限 ({curr_heap}MB > 阈值 {max_heap_mb}MB)")
+        if heap_growth_mb > max_growth_mb:
+            breaches.append(f"GC 后 JS 堆内存相对基线净暴涨 +{heap_growth_mb}MB (基线 {base_heap}MB -> 当前 {curr_heap}MB, 超阈值 +{max_growth_mb}MB)")
+        if base_heap >= 30.0 and heap_growth_mb >= 80.0 and heap_ratio > max_growth_ratio:
+            breaches.append(f"GC 后 JS 堆内存膨胀倍率异常 ({heap_ratio}x > 阈值 {max_growth_ratio}x, 基线 {base_heap}MB -> 当前 {curr_heap}MB)")
+        if curr_nodes > max_dom_nodes:
+            breaches.append(f"DOM 节点树未释放堆积超限 ({curr_nodes} 个 > 阈值 {max_dom_nodes} 个, 净增 +{node_growth})")
+        if listener_growth > max_listener_growth:
+            breaches.append(f"全局 JS 事件监听器严重泄漏未解绑 (净增 +{listener_growth} 个 > 阈值 +{max_listener_growth}, 当前 {curr_listeners})")
+
+        webgl_crashes = self.probe_webgl_context_health() if hasattr(self, "probe_webgl_context_health") else []
+        for wc in webgl_crashes:
+            breaches.append(str(wc.get("msg") or "WebGL 显存上下文丢失崩溃"))
+
+        metrics_brief = (
+            f"JSHeap: {base_heap}MB -> {curr_heap}MB (Δ={heap_growth_mb:+.2f}MB, {heap_ratio}x) | "
+            f"DOM: {base_nodes} -> {curr_nodes} (Δ={node_growth:+d}) | "
+            f"Listeners: {base_listeners} -> {curr_listeners} (Δ={listener_growth:+d}) | "
+            f"ECharts={curr.get('echarts_instances', 0)}, Canvas={curr.get('canvas_count', 0)}, Video={curr.get('video_count', 0)}"
+        )
+        if is_monotonic_rising:
+            metrics_brief += f" | ⚠️ 最近4次采样呈单调持续上涨趋势 {recent_heaps}"
+
+        if breaches:
+            summary = f"【前端内存/显存资源泄漏】{'; '.join(breaches)} | 探针详情: {metrics_brief}"
+            logger.error(f"🚨 [MemoryProbe] 内存泄漏探针告警: {summary}")
+            return False, summary, curr
+
+        summary = f"内存与渲染句柄水位健康 | {metrics_brief}"
+        logger.info(f"💚 [MemoryProbe] 探针核验通过 [{label}]: {summary}")
+        return True, summary, curr
+
+    def dump_memory_timeline(self, save_path: str) -> None:
+        """导出完整内存时序轨迹至 JSON 文件，供报告追溯与离线分析"""
+        try:
+            out = Path(save_path)
+            out.parent.mkdir(parents=True, exist_ok=True)
+            payload = {
+                "baseline": getattr(self, "memory_baseline", None),
+                "sample_count": len(getattr(self, "memory_timeline", []) or []),
+                "timeline": getattr(self, "memory_timeline", []) or []
+            }
+            with open(out, "w", encoding="utf-8") as f:
+                json.dump(payload, f, ensure_ascii=False, indent=2)
+            logger.info(f"📈 [MemoryProbe] 内存水位时序曲线已导出: {out}")
+        except Exception as e:
+            logger.warning(f"[MemoryProbe] 导出内存时序文件失败: {e}")
 
     # 上下文管理器支持 (支持 with ElectronDriver() as driver: 语法)
     def __enter__(self):

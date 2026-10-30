@@ -113,6 +113,14 @@ class ExplorerAgent:
         if reexplore_module:
             global_history = self._apply_reexplore_module(reexplore_module, global_history)
 
+        # 探索启动前静默锚定初始内存水位基线 (强制 GC 剥离启动瞬态噪音)
+        memory_leak_reported = False
+        try:
+            if hasattr(self.driver, "record_memory_snapshot"):
+                self.driver.record_memory_snapshot(label="explore_start", set_as_baseline=True, trigger_gc=True)
+        except Exception as e_mem_init:
+            logger.debug(f"[MemoryProbe] 探索初始基线采集跳过: {e_mem_init}")
+
         # =====================================================================
         # 核心主循环：统帅规划 (Planner) -> 单兵执行 (Worker)
         # =====================================================================
@@ -225,6 +233,36 @@ class ExplorerAgent:
             # 定期保存检查点
             self._save_checkpoint(global_history)
 
+            # 每 4 轮战略规划周期执行一次静默显存/内存泄漏哨兵巡检
+            if not memory_leak_reported and planner_steps % 4 == 0 and hasattr(self.driver, "check_memory_leak"):
+                try:
+                    passed_mem, summary_mem, _ = self.driver.check_memory_leak(
+                        label=f"planner_round_{planner_steps}",
+                        trigger_gc=True
+                    )
+                    if not passed_mem:
+                        memory_leak_reported = True
+                        leak_img = self.explore_dir / f"memory_leak_round_{planner_steps}.png"
+                        try:
+                            self.driver.capture_screenshot(str(leak_img))
+                        except Exception:
+                            leak_img = None
+                        curr_scope = " -> ".join(self.last_l2_route) if self.last_l2_route else "全局多页面长航巡检"
+                        self.bug_reporter.report_bug(
+                            run_id=self.run_id,
+                            title=f"[{self.run_id}] 长航探索捕获前端内存/显存资源泄漏 ({curr_scope})",
+                            step_prompt=f"[MEMORY_LEAK_CHECK] 第 {planner_steps} 轮战略巡检内存水位核验",
+                            actual_result=summary_mem,
+                            crash_image_path=str(leak_img) if leak_img and Path(leak_img).exists() else None,
+                            action_type="MEMORY_LEAK_CHECK",
+                            target_element=curr_scope,
+                            global_step=steps_taken,
+                            severity="High",
+                            ui_path=curr_scope
+                        )
+                except Exception as e_mem_chk:
+                    logger.debug(f"[MemoryProbe] 周期内存巡检异常忽略: {e_mem_chk}")
+
         # =====================================================================
         # 收尾：用例固化、产物归档与可视化报告生成
         # =====================================================================
@@ -312,6 +350,34 @@ class ExplorerAgent:
             self.driver.dump_api_registry(str(shots_api_file))
         except Exception as api_err:
             logger.warning(f"导出接口大盘异常: {api_err}")
+
+        # 2.5 收尾执行终态内存泄漏核验并导出完整内存时序曲线
+        try:
+            if hasattr(self.driver, "check_memory_leak"):
+                passed_end_mem, summary_end_mem, _ = self.driver.check_memory_leak(label="explore_finish", trigger_gc=True)
+                if not passed_end_mem:
+                    end_leak_img = self.explore_dir / "memory_leak_finish.png"
+                    try:
+                        self.driver.capture_screenshot(str(end_leak_img))
+                    except Exception:
+                        end_leak_img = None
+                    self.bug_reporter.report_bug(
+                        run_id=self.run_id,
+                        title=f"[{self.run_id}] 探索收尾终态显存/内存泄漏超标",
+                        step_prompt=f"[MEMORY_LEAK_CHECK] 探索全程 ({steps_taken} 步) 终态内存回收核验",
+                        actual_result=summary_end_mem,
+                        crash_image_path=str(end_leak_img) if end_leak_img and Path(end_leak_img).exists() else None,
+                        action_type="MEMORY_LEAK_CHECK",
+                        target_element="全局应用渲染进程",
+                        global_step=steps_taken,
+                        severity="High",
+                        ui_path="全局终态"
+                    )
+            if hasattr(self.driver, "dump_memory_timeline"):
+                mem_file = self.run_dir / "screenshots" / "memory_timeline.json"
+                self.driver.dump_memory_timeline(str(mem_file))
+        except Exception as mem_err:
+            logger.warning(f"导出内存水位时序曲线异常: {mem_err}")
 
         # 3. 统一持久化架构树并更新全局真理源
         try:

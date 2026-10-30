@@ -47,9 +47,9 @@ class DomExtractorMixin:
                 }
                 
                 // 2. 交互性判断：
-                // a. 原生可交互标签 (新增 img 和 svg，因为很多大屏把它们当按钮用但不加 pointer)
+                // a. 原生可交互与多媒体/内嵌标签
                 const tag = el.tagName.toLowerCase();
-                const isNativeInteractive = ['button', 'a', 'input', 'select', 'textarea', 'li', 'img', 'svg'].includes(tag);
+                const isNativeInteractive = ['button', 'a', 'input', 'select', 'textarea', 'li', 'img', 'svg', 'video', 'iframe'].includes(tag);
                 // b. 具有可点击角色或属性
                 const hasClickRole = ['button', 'menuitem', 'tab', 'link', 'option', 'listbox', 'treeitem'].includes(el.getAttribute('role'));
                 const hasOnClick = el.hasAttribute('onclick');
@@ -71,6 +71,13 @@ class DomExtractorMixin:
 
                     if (isModalCloseBtn) {
                         text = '弹窗右上角关闭按钮❌ (class_teleportbox-close)';
+                    } else if (tag === 'video') {
+                        const playStatus = el.paused ? '暂停中' : '播放中';
+                        const cur = Math.floor(el.currentTime || 0);
+                        const dur = Math.floor(el.duration || 0);
+                        text = '视频播放区域 (' + playStatus + (dur > 0 ? ' ' + cur + 's/' + dur + 's' : '') + ')';
+                    } else if (tag === 'iframe') {
+                        text = el.getAttribute('title') || '内嵌文档/图纸查看视窗 (iframe)';
                     } else if (!text && !['input', 'textarea'].includes(tag)) {
                         let clsHint = cls.trim() ? 'class_' + cls.trim().split(/\\s+/).join('_') : 'icon_or_empty';
                         let altText = el.getAttribute('alt');
@@ -97,6 +104,14 @@ class DomExtractorMixin:
                     let componentType = isInteractiveCandidate ? 'clickable' : 'text_display';
                     if (isModalCloseBtn) {
                         componentType = 'button';
+                    } else if (tag === 'video') {
+                        componentType = 'video';
+                    } else if (tag === 'iframe') {
+                        componentType = 'iframe';
+                    } else if (el.closest('.el-pagination')) {
+                        componentType = 'pagination';
+                    } else if (el.closest('.el-carousel')) {
+                        componentType = 'carousel';
                     } else if (tag === 'input') {
                         const inputType = (el.getAttribute('type') || 'text').toLowerCase();
                         if (inputType === 'checkbox') componentType = 'checkbox';
@@ -118,15 +133,21 @@ class DomExtractorMixin:
                     let containerName = null;
                     let containerType = null;
 
-                    const modalEl = el.closest('.el-dialog, .el-drawer, .ant-modal, .ant-drawer, [role="dialog"], .modal, .class_teleportbox, [class*="teleportbox"]');
+                    const modalEl = el.closest('.el-dialog, .el-drawer, .ant-modal, .ant-drawer, [role="dialog"], .modal, .class_teleportbox, [class*="teleportbox"], [class*="teleport"]');
                     if (modalEl) {
                         containerType = 'modal';
                         const titleEl = modalEl.querySelector('.el-dialog__title, .ant-modal-title, .modal-title, [class*="header"] [class*="title"], h3, h4');
                         if (titleEl && titleEl.innerText) {
                             containerName = titleEl.innerText.trim();
-                        } else if (modalEl.className && modalEl.className.includes('teleportbox')) {
+                        } else if (modalEl.className && (modalEl.className.includes('teleportbox') || modalEl.className.includes('teleport'))) {
                             containerName = '模态弹窗预览窗口';
                         }
+                    } else if (el.closest('.el-carousel')) {
+                        containerType = 'carousel';
+                        containerName = '走马灯轮播看板';
+                    } else if (el.closest('.el-pagination')) {
+                        containerType = 'pagination';
+                        containerName = '列表分页翻页器';
                     } else {
                         const tableEl = el.closest('table, .el-table, .ant-table, [role="grid"]');
                         if (tableEl) {

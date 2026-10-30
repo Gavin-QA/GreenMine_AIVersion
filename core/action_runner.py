@@ -45,6 +45,13 @@ class ActionRunner:
         logger.info(f"▶️ 开始执行巡检用例: {case_name}")
         logger.info("=" * 60)
 
+        # 用例启动前静默锚定初始内存水位基线，供后续 memory_leak_check 步骤执行增量对比
+        try:
+            if hasattr(self.driver, "record_memory_snapshot"):
+                self.driver.record_memory_snapshot(label=f"case_start:{case_name}", set_as_baseline=True, trigger_gc=True)
+        except Exception as e_mem:
+            logger.debug(f"[MemoryProbe] 初始化用例内存基线跳过: {e_mem}")
+
         errors = []
         for i, step in enumerate(steps, 1):
             self._step_counter = i
@@ -119,6 +126,28 @@ class ActionRunner:
                 elif step_type == "api_assert":
                     target_api = step.get("target_api")
                     self._do_api_assert(prompt, target_api=target_api)
+                elif step_type in ("physics_sanity_check", "sanity_check"):
+                    self._do_physics_sanity_check(prompt)
+                elif step_type in ("assert_no_console_errors", "console_crash_check"):
+                    strict_mode = bool(step.get("strict", False))
+                    reset_only = bool(step.get("reset", False))
+                    self._do_assert_no_console_errors(prompt=prompt, strict=strict_mode, reset=reset_only)
+                elif step_type in ("memory_leak_check", "memory_probe"):
+                    self._do_memory_leak_check(step)
+                elif step_type in ("canvas_stress_drag", "stress_3d"):
+                    stress_mode = str(step.get("mode", "hybrid"))
+                    rounds = int(step.get("rounds", 3))
+                    radius = int(step.get("radius", 300))
+                    btn = str(step.get("button", "right"))
+                    visual_assert = bool(step.get("visual_assert", True))
+                    self._do_canvas_stress_drag(
+                        prompt=prompt,
+                        mode=stress_mode,
+                        rounds=rounds,
+                        radius=radius,
+                        button=btn,
+                        visual_assert=visual_assert
+                    )
                 elif step_type == "freeze_check":
                     wait_sec = float(step.get("wait_seconds", 5.0))
                     self._do_freeze_check(prompt, wait_sec)
@@ -317,6 +346,12 @@ class ActionRunner:
             action_type = "rotate_3d"
             direction = "up"
             prompt = prompt.strip()[11:].strip()
+        elif prompt_upper.startswith("[CANVAS_STRESS_DRAG]"):
+            action_type = "canvas_stress_drag"
+            prompt = prompt.strip()[20:].strip()
+        elif prompt_upper.startswith("[STRESS_3D]"):
+            action_type = "canvas_stress_drag"
+            prompt = prompt.strip()[11:].strip()
         elif prompt_upper.startswith("[ROTATE_DOWN]"):
             action_type = "rotate_3d"
             direction = "down"
@@ -343,6 +378,9 @@ class ActionRunner:
         # 针对 3D、手势与路由回溯动作分发
         if action_type == "zoom":
             self._do_zoom(prompt=prompt if prompt else None, direction=direction)
+            return
+        elif action_type == "canvas_stress_drag":
+            self._do_canvas_stress_drag(prompt=prompt if prompt else "")
             return
         elif action_type == "rotate_3d":
             self._do_rotate_3d(prompt=prompt if prompt else None, direction=direction if direction != "in" else "left")
@@ -625,3 +663,160 @@ class ActionRunner:
         if not passed:
             raise ActionRunnerException(f"❄️ 防假死检测不通过，大屏涉嫌卡死或数据断流！AI 理由: {reason}")
 
+
+    def _do_physics_sanity_check(self, prompt: str = ""):
+        """
+        物理常识与合理性断言（矿山核心铁律三）。
+        结合零 Token 静态 DOM 脏值预筛与多模态视觉巡检，拦截 NaN/undefined、负人数、越界百分比与 ERP 1000倍量纲灾难。
+        """
+        from core.explorer_agent.guards import ExplorerGuards
+
+        b64_img = self.driver.capture_screenshot_base64()
+        dom_elements = []
+        try:
+            dom_elements = self.driver.extract_interactive_elements() or []
+        except Exception as e_dom:
+            logger.debug(f"[PhysicsSanity] DOM 提取降级纯视觉模式: {e_dom}")
+
+        dom_anomalies = ExplorerGuards.scan_text_physics_anomalies(dom_elements)
+        if dom_anomalies:
+            logger.warning(f"🔎 [PhysicsSanity] 静态 DOM 预筛捕获到 {len(dom_anomalies)} 条疑似脏值/物理异常线索: {dom_anomalies}")
+
+        api_context = ""
+        try:
+            search_q = f"{prompt} {' '.join(dom_anomalies[:3])}".strip()
+            if search_q and hasattr(self.driver, "get_focused_api_records_summary"):
+                api_context = self.driver.get_focused_api_records_summary(search_q)
+        except Exception:
+            api_context = ""
+
+        passed, reason = self.vision.check_physics_sanity(
+            instruction=prompt,
+            base64_image=b64_img,
+            dom_anomalies=dom_anomalies,
+            api_context=api_context
+        )
+
+        if not passed:
+            raise ActionRunnerException(f"🧪 物理常识与合理性断言不通过！原因: {reason}")
+
+    def _do_assert_no_console_errors(self, prompt: str = "", strict: bool = False, reset: bool = False):
+        """
+        无声崩溃嗅探断言 (Silent Frontend Crash Sniffer)。
+        高强度剔除前端日常非阻塞告警噪音，精准拦截 Uncaught TypeError/ReferenceError、
+        Vue 渲染生命周期崩溃、ChunkLoadError、渲染进程 OOM 与 WebGL 上下文丢失。
+        """
+        if not hasattr(self.driver, "get_fatal_console_errors"):
+            logger.warning("当前驱动未挂载 get_fatal_console_errors，跳过无声崩溃检查。")
+            return
+
+        if reset:
+            cleared = self.driver.get_fatal_console_errors(clear=True, strict=strict)
+            logger.info(f"🧹 [SilentCrashSniffer] 已清空历史崩溃基线缓冲 (共清理 {len(cleared)} 条旧记录)。")
+            return
+
+        crashes = self.driver.get_fatal_console_errors(clear=True, strict=strict)
+        if not crashes:
+            logger.info(f"🛡️ [SilentCrashSniffer] 无声崩溃嗅探通过 (strict={strict})：未检测到前端致命异常或 WebGL 崩溃。{(' - ' + prompt) if prompt else ''}")
+            return
+
+        formatted_lines = []
+        for idx, c in enumerate(crashes[:10], 1):
+            c_type = c.get("type", "js_crash")
+            c_loc = f" @ {c['location']}" if c.get("location") else ""
+            c_scope = f" [{c['page_scope']}]" if c.get("page_scope") and c.get("page_scope") != "_global_shared" else ""
+            c_msg = str(c.get("msg") or c.get("text") or "").strip()[:300]
+            formatted_lines.append(f"{idx}. [{c_type}{c_loc}]{c_scope} {c_msg}")
+
+        detail_str = "\n".join(formatted_lines)
+        logger.error(f"💥 [SilentCrashSniffer] 捕获到 {len(crashes)} 条前端无声致命崩溃:\n{detail_str}")
+        raise ActionRunnerException(
+            f"【前端无声致命崩溃】捕获到 {len(crashes)} 个未捕获 JS 运行时异常/WebGL 崩溃"
+            f"{(' (' + prompt + ')') if prompt else ''}:\n{detail_str}"
+        )
+
+    def _do_canvas_stress_drag(
+        self,
+        prompt: str = "",
+        mode: str = "hybrid",
+        rounds: int = 3,
+        radius: int = 300,
+        button: str = "right",
+        visual_assert: bool = True
+    ):
+        """
+        执行 3D 场景暴力晃动抗压测试 (canvas_stress_drag)，并在结束后联合校验：
+        1) WebRTC 像素流与 WebGL 上下文健康度；
+        2) 无声致命前端崩溃池；
+        3) 多模态视觉核验三维场景未出现黑屏、粉红棋盘格丢失材质或崩溃遮罩。
+        """
+        if hasattr(self.driver, "mark_action_timestamp"):
+            self.driver.mark_action_timestamp()
+
+        health = self.driver.canvas_stress_drag(
+            mode=mode,
+            rounds=rounds,
+            radius=radius,
+            button=button,
+            delay_after=1.5
+        )
+
+        if not health.get("healthy", True):
+            issues_str = "；".join(health.get("issues", []))
+            raise ActionRunnerException(f"💥 3D 场景暴力晃动后底层流/WebGL 崩溃！详情: {issues_str}")
+
+        # 联动检查暴力晃动期间是否诱发了前端无声致命 JS 崩溃
+        if hasattr(self.driver, "get_fatal_console_errors"):
+            fatal_errs = self.driver.get_fatal_console_errors(clear=True, strict=False)
+            if fatal_errs:
+                err_summary = "；".join(str(e.get("msg", ""))[:180] for e in fatal_errs[:5])
+                raise ActionRunnerException(f"💥 3D 场景暴力晃动诱发前端致命运行时崩溃: {err_summary}")
+
+        if visual_assert:
+            b64_after = self.driver.capture_screenshot_base64()
+            check_desc = (
+                prompt.strip()
+                if prompt and any(k in prompt for k in ["检查", "断言", "核验", "正常", "黑屏", "破面"])
+                else "检查当前三维数字孪生矿山场景在剧烈旋转缩放压力测试后是否依然正常渲染，未出现纯黑屏、白屏、全粉色材质丢失、模型严重破面或推流断开报错弹窗"
+            )
+            passed, reason = self.vision.check_assertion(instruction=check_desc, base64_image=b64_after)
+            if not passed:
+                raise ActionRunnerException(f"💥 3D 场景暴力晃动后视觉健康度核验未通过！原因: {reason}")
+
+    def _do_memory_leak_check(self, step: Dict[str, Any]):
+        """
+        显存/内存与 DOM/事件监听器泄漏探针步骤 (memory_leak_check)。
+        支持两种模式：
+        - mode: "baseline" -> 强制 GC 后将当前内存水位重设为基线（常用于高频压测循环开始前）；
+        - mode: "assert" (默认) -> 强制 GC 后比对当前水位与基线，超阈值则抛出泄漏异常。
+        """
+        if not hasattr(self.driver, "check_memory_leak"):
+            logger.warning("当前驱动未挂载 check_memory_leak，跳过内存探针检查。")
+            return
+
+        prompt = str(step.get("prompt", "") or "").strip()
+        mode = str(step.get("mode", "assert") or "assert").strip().lower()
+        label = prompt or f"step_{self._step_counter}_{mode}"
+        trigger_gc = bool(step.get("trigger_gc", True))
+
+        if mode in ("baseline", "reset"):
+            self.driver.record_memory_snapshot(label=label, set_as_baseline=True, trigger_gc=trigger_gc)
+            return
+
+        max_heap_mb = float(step.get("max_heap_mb", 1024.0))
+        max_growth_mb = float(step.get("max_growth_mb", 300.0))
+        max_growth_ratio = float(step.get("max_growth_ratio", 2.5))
+        max_dom_nodes = int(step.get("max_dom_nodes", 50000))
+        max_listener_growth = int(step.get("max_listener_growth", 5000))
+
+        passed, summary, _ = self.driver.check_memory_leak(
+            label=label,
+            max_heap_mb=max_heap_mb,
+            max_growth_mb=max_growth_mb,
+            max_growth_ratio=max_growth_ratio,
+            max_dom_nodes=max_dom_nodes,
+            max_listener_growth=max_listener_growth,
+            trigger_gc=trigger_gc
+        )
+        if not passed:
+            raise ActionRunnerException(f"🚨 显存/内存探针断言失败！{summary}")
