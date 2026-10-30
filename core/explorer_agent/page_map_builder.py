@@ -95,7 +95,7 @@ class PageMapBuilder:
                         "📊 井下人员实时总数统计 (115人)": {}
                     },
                     "💎 【资源储量】": {
-                        "📊 最新核实资源量 (证实/可信/推断条形对比与品位)": {},
+                        "📊 最新核实资源量 (证实/可信/探明/控制/推断资源量与品位)": {},
                         "📊 矿石品级 (I/II/III级品环形分布与阈值)": {}
                     }
                 },
@@ -220,44 +220,56 @@ class PageMapBuilder:
         if not clean_name:
             return ""
         # 如果已经带有常见 Emoji，则直接返回
-        if any(clean_name.startswith(em) for em in ["📁", "📄", "📋", "🪟", "🔲", "📝", "🔽", "☑️", "🗺️", "📊", "📦", "⚙️", "📑"]):
+        if any(clean_name.startswith(em) for em in ["📁", "📄", "📋", "🪟", "🔲", "📝", "🔽", "☑️", "🗺️", "📊", "📦", "⚙️", "📑", "🎬", "🎡"]):
             return clean_name
 
         lower = clean_name.lower()
 
-        # 1. 弹窗/抽屉/浮层
-        if any(k in clean_name for k in ["弹窗", "浮窗", "浮层", "抽屉", "对话框"]) or "modal" in lower or "dialog" in lower:
+        # 1. 弹窗/抽屉/浮层/Teleport/内嵌预览 (iframe / teleport / dialog)
+        if any(k in clean_name for k in ["弹窗", "浮窗", "浮层", "抽屉", "对话框", "查看器", "图纸预览", "pdf", "内嵌视窗"]) or any(k in lower for k in ["modal", "dialog", "teleport", "iframe"]):
             return f"🪟 {clean_name}"
 
         # 2. 地图/3D大屏渲染
         if any(k in clean_name for k in ["地图", "定位地图", "采场可视化", "三维", "3D", "数字孪生"]) or "map" in lower:
             return f"🗺️ {clean_name}"
 
-        # 3. 表格/列表/滚动列表
+        # 3. 视频播放器 / AI监控视频流
+        if any(k in clean_name for k in ["视频", "播放", "播放器", "监控", "摄像头", "画面流"]) or "video" in lower:
+            return f"🎬 {clean_name}"
+
+        # 4. 走马灯 / 轮播看板 (el-carousel)
+        if any(k in clean_name for k in ["走马灯", "轮播", "幻灯片"]) or "carousel" in lower:
+            return f"🎡 {clean_name}"
+
+        # 5. 分页器 (el-pagination)
+        if any(k in clean_name for k in ["分页", "翻页", "页码", "条/页"]) or "pagination" in lower:
+            return f"📄 {clean_name}"
+
+        # 6. 表格/列表/滚动列表 (el-table)
         if any(k in clean_name for k in ["列表", "表格", "滚动列表", "台账", "清单", "记录"]) or "table" in lower or "list" in lower:
             return f"📋 {clean_name}"
 
-        # 4. 下拉框/选择器
+        # 7. 下拉框/选择器 (el-select)
         if any(k in clean_name for k in ["下拉", "选择器", "下拉框", "日期范围", "时间范围"]) or "select" in lower:
             return f"🔽 {clean_name}"
 
-        # 5. 勾选框/单选框
+        # 8. 勾选框/单选框/开关 (el-switch / el-checkbox)
         if any(k in clean_name for k in ["勾选", "单选", "复选", "开关", "switch", "checkbox", "radio"]):
             return f"☑️ {clean_name}"
 
-        # 6. 输入框
+        # 9. 输入框/搜索框 (el-input)
         if any(k in clean_name for k in ["输入框", "搜索框", "文本框", "input"]):
             return f"📝 {clean_name}"
 
-        # 7. 按钮/操作/控制/滑块
+        # 10. 按钮/操作/控制/滑块 (el-button / el-slider)
         if any(k in clean_name for k in ["按钮", "查询", "重置", "确定", "取消", "导出", "提交", "刷新", "操作", "滑块", "调节", "控制", "slider", "点击"]) or "btn" in lower or "button" in lower:
             return f"🔲 {clean_name}"
 
-        # 8. 图表/曲线/进度条
+        # 11. 图表/曲线/进度条 (ECharts)
         if any(k in clean_name for k in ["图表", "曲线", "柱状图", "饼图", "进度条", "趋势图", "统计"]) or "chart" in lower:
             return f"📊 {clean_name}"
 
-        # 9. 基于层级默认分配
+        # 12. 基于层级默认分配
         if depth == 0:
             return f"📁 {clean_name}"
         elif depth == 1:
@@ -610,19 +622,20 @@ class PageMapBuilder:
 
     @staticmethod
     def _deep_merge(target: dict, source: dict):
-        """递归深度合并两棵架构树，自动过滤全局导航与过渡等待噪音"""
+        """递归深度合并两棵架构树，自动归一化非字典节点并过滤全局导航与过渡等待噪音"""
         if not isinstance(target, dict) or not isinstance(source, dict):
             return
         noise_keywords = ["顶部导航栏", "导航栏", "下拉菜单", "菜单栏", "等待", "wait", "加载完成", "完全加载", "完全可见", "渲染完成"]
         for k, v in source.items():
-            if any(noise in k for noise in noise_keywords):
+            if any(noise in str(k) for noise in noise_keywords):
                 continue
-            if k in target and isinstance(target[k], dict) and isinstance(v, dict):
-                PageMapBuilder._deep_merge(target[k], v)
-            elif isinstance(v, dict):
-                target[k] = dict(v)
+            norm_v = PageMapBuilder.normalize_tree_nodes(v)
+            if k in target:
+                if not isinstance(target[k], dict):
+                    target[k] = PageMapBuilder.normalize_tree_nodes(target[k])
+                PageMapBuilder._deep_merge(target[k], norm_v)
             else:
-                target[k] = v
+                target[k] = norm_v
 
     @staticmethod
     def get_global_tree_file() -> Path:

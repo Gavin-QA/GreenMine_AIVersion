@@ -3370,5 +3370,54 @@
       "误报屏蔽"
     ],
     "analysis_notes": "[已关闭误报 - AI 误读局部裁剪的系统日期导致倒计时天数算错]\n原因说明: 测试当晚真实日期为 2026-10-28，证书到期日 2026-11-16 减去 2026-10-28 恰好等于 19 天（3+16=19），前端动态计算完全精确；AI 将被裁剪一半的右上角时钟 2026/10/28 误读为 2026/11/07。"
+  },
+  {
+    "id": "BUG-20261029-001",
+    "run_id": "explore_20261029_182538",
+    "title": "[explore_20261029_182538] UI数据与接口原始报文不匹配: '右侧【资源储量】卡片中的‘矿石品级’环形分布图区域（含I/II/III级品占比与阈值）'",
+    "severity": "Medium",
+    "status": "误报",
+    "date": "2026-10-29",
+    "occurrences": 1,
+    "last_seen": "2026-10-29",
+    "step": "[HOVER] 核验: 验证当前悬停环形图中I/II/III级品占比数值（≥30%、24%~30%、15%~24%）与后台接口原始JSON是否一致 (路径: 首页 -> 矿山简介)",
+    "actual": "数据断言失败: 核心数值来源一致（getFdaConfigByKey 中 26.25 / 24.80 / 24.86 与 UI 显示值完全匹配），但前端对品级分类存在严重逻辑错误：① I级品阈值定义为 ≥30%，但实际值 26.25% < 30%，应归属 II级品（24%~30%），UI却标为I级；② III级品阈值为 15%~24%，但实际值 24.86% > 24%，已超出III级上限，不应归为III级；③ 24.80% 与 24.86% 均在 24%~30% 区间，应同属II级品，但UI将其拆分为II级与III级。属于前端渲染时品级映射规则错误，导致业务语义失真，判定为 MISMATCH。",
+    "app": "zhaiwan",
+    "assignee": "陈贻雄",
+    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/explore_20261029_182538/bugs/BUG-20261029-001.png",
+    "action_type": "HOVER",
+    "target_element": "核验: 验证当前悬停环形图中I/II/III级品占比数值（≥30%、24%~30%、15%~24%）与后台接口原始JSON是否一致",
+    "ui_path": "路径: 首页 -> 矿山简介",
+    "tags": [
+      "HOVER",
+      "路径: 首页",
+      "矿山简介"
+    ],
+    "analysis_notes": "【误报归档 2026-10-30】光标停在环形图中心空白处未激发 Tooltip，右侧 I/II/III 级品阈值为静态分级图例；大模型借用上方【最新核实资源量】卡片的品位百分比(26.25%/24.80%/24.86%)跨卡片错配批判图例分类。已在 API_ASSERT 提示词与 explore_rules_zhaiwan.md 第11条加入禁止跨卡片借数规则。"
+  },
+  {
+    "id": "BUG-20261029-002",
+    "run_id": "explore_20261029_182538",
+    "title": "[explore_20261029_182538] UI数据与接口原始报文不匹配: '右侧【资源储量】卡片中的‘最新核实资源量’条形对比图区域（含证实/可信/推断资源量及品位）'",
+    "severity": "Medium",
+    "status": "误报",
+    "date": "2026-10-29",
+    "occurrences": 2,
+    "last_seen": "2026-10-29",
+    "step": "[HOVER] 核验: 验证当前悬停区域展示的证实/可信/推断资源量（kt）及对应品位（%）数值与后台接口原始JSON是否一致 (路径: 首页 -> 矿山简介)",
+    "actual": "数据断言失败: 核心业务键值部分印证但存在关键数值冲突：界面显示‘证实资源量’为28758 kt，而接口 getFdaConfigByKey.data.resourceSituation.resourcesVerify = 39687 kt，二者相差10929 kt（+38.0%）；‘可信资源量’20238 kt与‘推断资源量’36157 kt及对应品位（24.80%、25.40%）均与接口一致。因证实资源量数值不匹配，违反数据流转保真度原则，判定为前端渲染缺陷（MISMATCH）。",
+    "app": "zhaiwan",
+    "assignee": "陈贻雄",
+    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/explore_20261029_182538/bugs/BUG-20261029-002_203746.png",
+    "action_type": "HOVER",
+    "target_element": "核验: 验证当前悬停区域展示的证实/可信/推断资源量（kt）及对应品位（%）数值与后台接口原始JSON是否一致",
+    "ui_path": "路径: 首页 -> 矿山简介",
+    "tags": [
+      "HOVER",
+      "路径: 首页",
+      "矿山简介"
+    ],
+    "analysis_notes": "【误报归档 2026-10-30】UI 实际展示 5 行资源量：证实28758/可信20238/探明39687/控制29318/推断36157，与 getFdaConfigByKey 的 resourcesConfirm/Credible/Verify/Control/Inferred 100% 一致。误报源于基线骨架文案漏写探明/控制且大模型把 resourcesVerify(探明) 错译为证实。已修正 page_map_builder 基线与提示词术语映射。",
+    "global_step": null
   }
 ]

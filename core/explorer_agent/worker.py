@@ -74,6 +74,11 @@ class ExplorerWorker:
         if page_key in self.scanned_pages:
             return
 
+        # 严格校验是否属于权威菜单映射表中的合法二级业务菜单，拒绝扫描捏造/过渡态路由（如“聚合视图”）
+        base_rules = PageMapBuilder.parse_base_rules()
+        if base_rules and (l1 not in base_rules or l2 not in base_rules.get(l1, {})):
+            return
+
         self.scanned_pages.add(page_key)
 
         # 1. 优先检查是否已声明空间基准（如首页已有预置三翼基准），若已有则直接秒级融合基准
@@ -237,22 +242,42 @@ class ExplorerWorker:
 
             # 3. 路由跨页检测与状态隔离
             if current_ui_path and len(current_ui_path) >= 2:
-                current_l2 = (str(current_ui_path[0]), str(current_ui_path[1]))
-                if last_l2_route is not None and current_l2 != last_l2_route:
-                    logger.info(f"🧭 [Navigation] 跨二级页面路由跃迁: {last_l2_route} -> {current_l2}，重置容器栈与状态！")
-                    container_stack.clear()
-                    is_panel_hidden = False
-                    mailing_dialog_open = False
-                    self.active_tab = None
-                last_l2_route = current_l2
-                self.driver.set_page_scope(f"{current_ui_path[0]} -> {current_ui_path[1]}")
-                # 触发全景页面骨架自动扫描与自适应拓扑建模 (零维护通用自适应)
-                self._auto_scan_page_skeleton(
-                    l1=str(current_ui_path[0]),
-                    l2=str(current_ui_path[1]),
-                    base64_image=base64_img,
-                    page_tree=page_tree
-                )
+                l1_cand, l2_cand = str(current_ui_path[0]), str(current_ui_path[1])
+                base_rules = PageMapBuilder.parse_base_rules()
+                is_canonical_l2 = (not base_rules) or (l1_cand in base_rules and l2_cand in base_rules.get(l1_cand, {}))
+
+                if is_canonical_l2:
+                    current_l2 = (l1_cand, l2_cand)
+                    if last_l2_route is not None and current_l2 != last_l2_route:
+                        logger.info(f"🧭 [Navigation] 跨二级页面路由跃迁: {last_l2_route} -> {current_l2}，重置容器栈与状态！")
+                        container_stack.clear()
+                        is_panel_hidden = False
+                        mailing_dialog_open = False
+                        self.active_tab = None
+                    last_l2_route = current_l2
+                    self.driver.set_page_scope(f"{l1_cand} -> {l2_cand}")
+
+                    # 判断当前步是否正在执行顶部导航悬停或点击二级下拉菜单跳转（此时画面仍停留在旧页面！）
+                    valid_l1_set = set(base_rules.keys()) if base_rules else set()
+                    valid_l2_set = {k2 for sub in base_rules.values() if isinstance(sub, dict) for k2 in sub.keys()} if base_rules else set()
+                    clean_el_nav = (element_desc or "").replace("按钮", "").replace("选项", "").replace("菜单项", "").replace("菜单", "").strip("‘’'\"“”【】 ")
+                    is_nav_transition = (
+                        action_type in ("hover", "click", "finish", "back", "reload") and (
+                            any(k in (element_desc or "") for k in ["顶部一级菜单", "一级菜单", "下拉菜单", "二级菜单", "下拉浮层", "顶部导航栏", "导航栏"]) or
+                            any(k in (container_name or "") for k in ["下拉菜单", "二级菜单", "菜单浮层", "顶部导航栏", "导航栏"]) or
+                            (bool(clean_el_nav) and (clean_el_nav in valid_l1_set or clean_el_nav in valid_l2_set))
+                        )
+                    )
+                    # 仅在真正驻留于目标二级页面且无模态弹窗遮挡时，才触发全景页面骨架自动扫描，彻底杜绝拿旧页面截图污染新页面拓扑！
+                    if not is_nav_transition and not container_stack:
+                        self._auto_scan_page_skeleton(
+                            l1=l1_cand,
+                            l2=l2_cand,
+                            base64_image=base64_img,
+                            page_tree=page_tree
+                        )
+                elif l1_cand in (base_rules or {}):
+                    self.driver.set_page_scope(l1_cand)
             elif current_ui_path and len(current_ui_path) == 1:
                 self.driver.set_page_scope(current_ui_path[0])
 
@@ -370,6 +395,17 @@ class ExplorerWorker:
                         y = int(height * 0.08)
                         logger.info(f"🛡️ [Modal Close Fallback] 使用专属右上角 ❌ 物理坐标: ({x}, {y})")
                     else:
+                        if "元素完全未找到" in str(e) and action_type not in ("zoom", "rotate_3d", "scroll"):
+                            logger.warning(f"🛑 [Ghost Target Guard] DOM 与纯视觉双重确认当前画面不存在目标 '{element_desc}'，拒绝盲目点击估算坐标，跳过本步！")
+                            action_history.append({
+                                "action": action_type,
+                                "target": element_desc,
+                                "success": False,
+                                "thought": f"画面中未找到该元素（可能被当前弹窗遮挡或当前页面并无此组件），严禁盲点: {e}",
+                                "current_ui_path": current_ui_path
+                            })
+                            watchdog.end_step()
+                            continue
                         x_pct = decision.get("x_percent")
                         y_pct = decision.get("y_percent")
                         if x_pct is None or y_pct is None:
@@ -1247,15 +1283,22 @@ class ExplorerWorker:
                 target_spatial_key = "📂 🧭 底部视角导航Tab"
 
             if target_spatial_key and target_spatial_key in curr:
+                if not isinstance(curr[target_spatial_key], dict):
+                    curr[target_spatial_key] = PageMapBuilder.normalize_tree_nodes(curr[target_spatial_key])
                 curr = curr[target_spatial_key]
                 if target_sub_key and target_sub_key in curr:
+                    if not isinstance(curr[target_sub_key], dict):
+                        curr[target_sub_key] = PageMapBuilder.normalize_tree_nodes(curr[target_sub_key])
                     curr = curr[target_sub_key]
                 spatial_routed = True
 
         if not spatial_routed and l3_container:
             if l3_container not in curr or not isinstance(curr[l3_container], dict):
-                curr[l3_container] = {}
+                curr[l3_container] = PageMapBuilder.normalize_tree_nodes(curr.get(l3_container)) if l3_container in curr else {}
             curr = curr[l3_container]
+
+        if not isinstance(curr, dict):
+            return
 
         # 5. 挂载 Level 4 叶子节点 (原子业务控件，严禁向下再产生子节点)
         if custom_label:

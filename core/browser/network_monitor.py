@@ -553,65 +553,128 @@ class NetworkMonitorMixin:
                 filtered.append(t)
         return filtered
 
+    # 领域业务词映射：基于 explore_20261028_181955 真实拦截的 139 个接口 URL 与 JSON 字段名构建。
+    # 只收录高区分度业务词（URL 实体名 / 专有字段名），刻意不收录“计划/统计/监测/管理”等几乎所有接口都会携带的宽泛词，
+    # 防止列表类接口凭宽泛词劫持（真实案例：“计划->plan” 让 getKsEquipmentInfoManagementList 抢走“采掘计划与统计”图表）。
+    DOMAIN_KEYWORD_MAP = {
+        "产量": ["productionstatistic", "output"],
+        "采掘": ["productionstatistic"],
+        "出矿": ["oretotal", "outbound", "orepass"],
+        "入仓": ["inbound"],
+        "出仓": ["outbound"],
+        "电耗": ["powerconsumption", "poweryearly", "topenergy"],
+        "用电": ["powerconsumption", "topenergy"],
+        "能耗": ["energyconsumption", "powerconsumption"],
+        "排水": ["waterconsumption", "drainage"],
+        "水耗": ["waterconsumption"],
+        "油耗": ["fuelconsumption"],
+        "火工": ["blaststatistic", "blastyearly", "detonator", "emulsion"],
+        "雷管": ["detonator", "blast"],
+        "炸药": ["emulsion", "blast"],
+        "巡检": ["inspect", "inspectionrobot"],
+        "点检": ["spotcheck"],
+        "保养": ["maintain"],
+        "维修": ["maintenance", "repair"],
+        "报废": ["scrap"],
+        "资源": ["resource"],
+        "储量": ["reserve", "resource"],
+        "品位": ["averagegrade", "grade"],
+        "证照": ["certificate", "issuer"],
+        "许可证": ["certificate"],
+        "发证": ["issuer", "certificate"],
+        "证书": ["certificate", "examination"],
+        "车辆": ["vehicle"],
+        "卡车": ["vehicle", "transport"],
+        "运输": ["transport"],
+        "人员": ["person", "personnel", "staff"],
+        "定位": ["position", "location"],
+        "溜井": ["orepass", "passbasic"],
+        "矿仓": ["bin", "binlist", "inventory"],
+        "库存": ["inventory", "currentcapacity"],
+        "胶带": ["belt"],
+        "皮带": ["belt"],
+        "通风": ["fan", "ventilation", "airvolume"],
+        "风机": ["fan"],
+        "风量": ["airvolume", "airflowrate"],
+        "风速": ["windspeed", "monitoringequipment"],
+        "环境": ["monitoringequipment", "environment"],
+        "预警": ["alarm", "warning"],
+        "告警": ["alarm"],
+        "报警": ["alarm"],
+        "设备": ["equipment"],
+        "采场": ["stope"],
+        "钻孔": ["borehole"],
+        "机器人": ["robot", "inspectionrobot"],
+        "温度": ["temphum", "temperature"],
+        "湿度": ["humidity", "temphum"],
+        "气体": ["gas"],
+        "位移": ["displacement"],
+        "顶底板": ["regionaldisplacement", "displacement", "roofavg", "flooravg"],
+        "地压": ["groundpressure", "displacement", "stress"],
+        "应力": ["stress"],
+        "微震": ["seismic"],
+        "极值": ["extreme"],
+        "边坡": ["slope"],
+        "每日一练": ["dailypractice"],
+        "安全教育": ["safetyeducation"],
+        "三级安全": ["safetyeducation"],
+        "培训": ["training"],
+        "考试": ["exam"],
+        "学习": ["learning"],
+        "摄像": ["camera", "video"],
+        "视频": ["video"],
+        "应急": ["emergency"],
+        "演练": ["emergencydrill"],
+        "预案": ["emergencyplan"],
+        "图纸": ["blueprint"],
+        "资料": ["document"],
+        "公告": ["announcement"],
+        "带班": ["leaderduty"],
+        "考勤": ["attendance"],
+        "矿票": ["mineticket"],
+        "装车": ["weightrecord"],
+        "称重": ["weightrecord"],
+        "积分": ["userscore", "rewardpenalty"],
+        "奖惩": ["rewardpenalty"],
+        "隐患": ["rectifaction", "hidden"],
+        "整改": ["rectifaction"],
+        "风险": ["risk"],
+        "广播": ["broadcast"],
+        "电话": ["phone"],
+        "利用率": ["utilizationrate"],
+        "完好率": ["integrityrate"],
+    }
+
     @staticmethod
     def score_record(record: dict, tokens: List[str]) -> Tuple[float, List[str]]:
         """计算接口报文与特征 Token 的倒排匹配度得分"""
         import json
         import re
         data_str = json.dumps(record.get("data", {}), ensure_ascii=False)
+        data_lower = data_str.lower()
         url_str = record.get("url", "").lower()
         score = 0.0
+        date_score = 0.0
         matched = []
 
         date_years = {"2022", "2023", "2024", "2025", "2026", "2027", "2028", "2029", "2030"}
-
-        DOMAIN_KEYWORD_MAP = {
-            "采掘": ["mining", "extract", "excavate"],
-            "产量": ["yield", "output", "production"],
-            "计划": ["plan", "target"],
-            "统计": ["statistics", "stats"],
-            "电耗": ["power", "electric", "powerconsumption"],
-            "水耗": ["water", "waterconsumption"],
-            "油耗": ["fuel", "fuelconsumption"],
-            "巡检": ["inspect", "inspection", "inspectrecord"],
-            "资源": ["resource", "situation"],
-            "储量": ["reserve", "situation", "reserves"],
-            "车辆": ["vehicle", "truck", "car", "location"],
-            "人员": ["staff", "person", "staffcount", "personnel"],
-            "溜井": ["bin", "pass", "chute", "passbasic"],
-            "矿仓": ["bin", "inventory", "binstats"],
-
-            "通风": ["ventilation", "wind", "fan", "monitoringequipment"],
-            "风速": ["wind", "speed", "windspeed", "monitoringequipment"],
-            "环境": ["environment", "sensor", "monitoringequipment"],
-            "监测": ["monitoring", "monitoringequipment", "sensor"],
-
-            "预警": ["alarm", "warn", "warning"],
-            "告警": ["alarm"],
-            "设备": ["equipment", "device"],
-            "采场": ["stope", "stopebasic"],
-            "钻孔": ["borehole", "hole"],
-            "回采": ["mining", "stoping"],
-            "机器人": ["robot", "inspectionrobot", "patrol"],
-            "巡检": ["inspect", "inspection", "inspectrecord", "inspectionrobot"],
-            "温度": ["temp", "temperature", "temphum"],
-            "湿度": ["humidity", "hum", "temphum"],
-            "气体": ["gas", "o2", "co", "co2", "ch4"],
-            "氧气": ["o2", "gas"],
-            "一氧化碳": ["co", "gas"],
-            "二氧化碳": ["co2", "gas"],
-            "甲烷": ["ch4", "gas"],
-        }
+        date_pattern = re.compile(r'^\d{4}[-/]\d{1,2}(?:[-/]\d{1,2})?$')
+        DOMAIN_KEYWORD_MAP = NetworkMonitorMixin.DOMAIN_KEYWORD_MAP
 
         for token in tokens:
             token_matched = False
+            is_date_token = bool(date_pattern.match(token))
             is_code = bool(re.search(r'[A-Za-z]', token) and re.search(r'\d', token))
             is_metric = bool(re.search(r'\d', token) and not re.search(r'[A-Za-z]', token))
             is_generic_date_part = token in date_years or (token.isdigit() and len(token) <= 2 and int(token) <= 31)
 
             if token in data_str:
                 token_matched = True
-                if is_code:
+                if is_date_token:
+                    # 日期轴属于时间弱特征：任何带时间序列的列表接口都会命中，单次 +5 且整体封顶 20，
+                    # 杜绝 getUserScoresWithLatestRecords 之类的大列表靠 7 个日期刷走 280 分劫持折线图
+                    date_score = min(20.0, date_score + 5.0)
+                elif is_code:
                     score += 60.0
                 elif is_generic_date_part:
                     # 通用年份或月日纯数字，赋予较低基础分，防止冲高霸榜
@@ -633,22 +696,26 @@ class NetworkMonitorMixin:
                 token_matched = True
 
             # 领域业务关键词智能映射与加权 (解决中文图表 vs 英文接口名/字段名脱节痛点)
+            # URL 命中权重最高；JSON 内容命中仅接受长度 >= 5 的专有字段词根，防止 "bin"/"fan" 等短词在海量文本里撞车
             for kw, en_terms in DOMAIN_KEYWORD_MAP.items():
                 if kw in token:
                     for term in en_terms:
+                        hit_tag = f"{kw}->{term}"
+                        if hit_tag in matched:
+                            continue
                         if term in url_str:
                             score += 50.0
                             token_matched = True
-                            if f"{kw}->{term}" not in matched:
-                                matched.append(f"{kw}->{term}")
-                        elif term in data_str.lower():
+                            matched.append(hit_tag)
+                        elif len(term) >= 5 and term in data_lower:
                             score += 30.0
                             token_matched = True
-                            if f"{kw}->{term}" not in matched:
-                                matched.append(f"{kw}->{term}")
+                            matched.append(hit_tag)
 
             if token_matched and token not in matched:
                 matched.append(token)
+
+        score += date_score
 
         # =========================================================================
         # 方案 2 核心：业务实体强约束与防侥幸撞车过滤 (Entity Guard)
@@ -676,7 +743,7 @@ class NetworkMonitorMixin:
                 if len(m) >= 3 and m.lower() in url_str:
                     has_strong_hit = True
                     break
-            
+
             if not has_strong_hit:
                 return 0.0, []
 
@@ -684,8 +751,10 @@ class NetworkMonitorMixin:
         if record.get("is_page_init", False):
             score += 20.0
 
-        # 高频轮询降权 (Poller Demotion)：若被标记为轮询，且未精确命中其专属 URL，得分打折
-        if record.get("is_polling", False):
+        # 高频轮询降权 (Poller Demotion)：仅对业务相关性弱 (< 60 分) 的轮询噪音降权。
+        # 真实业务图表接口往往每分钟定时刷新（如 getFdaCertificateList、getProductionStatistic），
+        # 一旦已凭 URL/字段/数值拿到高相关分，说明它就是被断言组件的数据源，绝不再腰斩。
+        if record.get("is_polling", False) and score < 60.0:
             if not any(m.lower() == url_str for m in matched):
                 score *= 0.35
 
@@ -697,10 +766,33 @@ class NetworkMonitorMixin:
 
         return round(score, 2), matched
 
+    @staticmethod
+    def _effective_match_tokens(matched_tokens: List[str]) -> List[str]:
+        """压缩时用于定位命中记录的有效 Token：剔除领域映射标签与 1~2 位纯数字/年份等弱 Token，防止 '1'/'6' 让整张大表全量保留"""
+        import re
+        date_years = {"2022", "2023", "2024", "2025", "2026", "2027", "2028", "2029", "2030"}
+        eff = []
+        for t in matched_tokens or []:
+            if not t or "->" in t:
+                continue
+            if t in date_years:
+                continue
+            if re.fullmatch(r'\d{1,2}%?', t):
+                continue
+            eff.append(t)
+        return eff
+
     @classmethod
-    def compress_record_data(cls, data: Any, matched_tokens: List[str], max_list_items: int = 10) -> Any:
-        """结构自适应智能脱敏与压缩（保留命中记录、样本记录，折叠海量冗余项，剥离超长 base64/SVG）"""
+    def compress_record_data(cls, data: Any, matched_tokens: List[str], max_list_items: int = 10,
+                             _depth: int = 0, _max_matched_keep: int = 6, _max_depth: int = 8) -> Any:
+        """结构自适应智能脱敏与压缩（保留命中记录、样本记录，折叠海量冗余项，剥离超长 base64/SVG，限制递归深度）"""
         import json
+        if _depth == 0:
+            matched_tokens = cls._effective_match_tokens(matched_tokens)
+        if _depth > _max_depth:
+            if isinstance(data, (dict, list)):
+                return {"_nested_omitted": f"{type(data).__name__}(len={len(data)})"}
+            return data
         if isinstance(data, dict):
             compressed = {}
             for k, v in data.items():
@@ -711,19 +803,22 @@ class NetworkMonitorMixin:
                     if len(v) > 800:
                         compressed[k] = v[:150] + f"... <Omitted {len(v)-150} chars>"
                         continue
-                compressed[k] = cls.compress_record_data(v, matched_tokens, max_list_items)
+                compressed[k] = cls.compress_record_data(v, matched_tokens, max_list_items, _depth + 1, _max_matched_keep, _max_depth)
             return compressed
         elif isinstance(data, list):
             if len(data) <= 60 and all(isinstance(x, (int, float, str, bool)) or x is None for x in data):
-                return [cls.compress_record_data(item, matched_tokens, max_list_items) for item in data]
+                return list(data)
             if len(data) <= max_list_items:
-                return [cls.compress_record_data(item, matched_tokens, max_list_items) for item in data]
+                return [cls.compress_record_data(item, matched_tokens, max_list_items, _depth + 1, _max_matched_keep, _max_depth) for item in data]
 
             matched_indices = []
-            for idx, item in enumerate(data):
-                item_str = json.dumps(item, ensure_ascii=False)
-                if any(t in item_str for t in matched_tokens):
-                    matched_indices.append(idx)
+            if matched_tokens:
+                for idx, item in enumerate(data):
+                    item_str = json.dumps(item, ensure_ascii=False)
+                    if any(t in item_str for t in matched_tokens):
+                        matched_indices.append(idx)
+                        if len(matched_indices) >= _max_matched_keep:
+                            break
 
             keep_indices = set([0, len(data) - 1])
             if len(data) > 1:
@@ -736,13 +831,26 @@ class NetworkMonitorMixin:
             for idx in sorted_keep:
                 if idx > last_idx + 1:
                     result.append({"_omitted_records_count": idx - last_idx - 1})
-                result.append(cls.compress_record_data(data[idx], matched_tokens, max_list_items))
+                result.append(cls.compress_record_data(data[idx], matched_tokens, max_list_items, _depth + 1, _max_matched_keep, _max_depth))
                 last_idx = idx
             if last_idx < len(data) - 1:
                 result.append({"_omitted_records_count": len(data) - 1 - last_idx})
             return result
         else:
             return data
+
+    @classmethod
+    def _shrink_payload(cls, data: Any, keep: int = 2, str_cap: int = 200) -> Any:
+        """深度递归收缩：所有层级列表仅保留前 keep 项，长字符串截断（用于超长报文的二次兜底，保证 JSON 合法）"""
+        if isinstance(data, dict):
+            return {k: cls._shrink_payload(v, keep, str_cap) for k, v in data.items()}
+        if isinstance(data, list):
+            if len(data) > keep:
+                return [cls._shrink_payload(x, keep, str_cap) for x in data[:keep]] + [{"_further_compressed": len(data) - keep}]
+            return [cls._shrink_payload(x, keep, str_cap) for x in data]
+        if isinstance(data, str) and len(data) > str_cap:
+            return data[:str_cap] + "...<truncated>"
+        return data
 
     def get_focused_api_records_summary(self, query_text: str = "", max_records: int = 9, max_total_chars: int = 36000, page_scope: Optional[str] = None) -> str:
         """
@@ -857,7 +965,7 @@ class NetworkMonitorMixin:
                 for score, matched, r in tier1_scored:
                     u = r.get("url")
                     is_poll = r.get("is_polling", False)
-                    if is_poll and (score if 'score' in locals() else 0.0) < 50.0 and polling_count >= 2:
+                    if is_poll and score < 50.0 and polling_count >= 2:
                         continue
                     if score > 0 and u not in seen_urls and len(selected_candidates) < max_records:
                         selected_candidates.append((score, matched, r))
@@ -874,7 +982,7 @@ class NetworkMonitorMixin:
                 for r in sorted_by_time:
                     u = r.get("url")
                     is_poll = r.get("is_polling", False)
-                    if is_poll and (score if 'score' in locals() else 0.0) < 50.0 and polling_count >= 2:
+                    if is_poll and polling_count >= 2:
                         continue
                     if u not in seen_urls and len(selected_candidates) < max_records:
                         selected_candidates.append((0.0, [], r))
@@ -905,12 +1013,20 @@ class NetworkMonitorMixin:
 
         summary = json.dumps(output_struct, ensure_ascii=False, indent=2)
         if len(summary) > max_total_chars:
-            # 安全压缩避免非法截断 JSON
+            # 第一道兜底：深度递归收缩所有层级的列表（旧逻辑只处理顶层 data[k]，遇到 data.data.list / children 树时完全失效）
             for c in output_struct["candidate_apis"]:
-                if isinstance(c.get("data"), dict):
-                    for k in list(c["data"].keys()):
-                        if isinstance(c["data"][k], list) and len(c["data"][k]) > 2:
-                            c["data"][k] = c["data"][k][:2] + [{"_further_compressed": True}]
+                c["data"] = self._shrink_payload(c.get("data"), keep=2, str_cap=200)
+            summary = json.dumps(output_struct, ensure_ascii=False, indent=2)
+        # 第二道兜底：从得分最低的候选开始剔除，直至满足上下文上限（至少保留 1 个最高分候选）
+        while len(summary) > max_total_chars and len(output_struct["candidate_apis"]) > 1:
+            dropped = output_struct["candidate_apis"].pop()
+            output_struct["_retrieval_meta"].setdefault("dropped_for_size", []).append(dropped.get("url"))
+            summary = json.dumps(output_struct, ensure_ascii=False, indent=2)
+        # 第三道兜底：单个候选仍超长时，将其 data 序列化后截断为字符串（保证整体 JSON 合法且绝不撑爆 LLM 上下文）
+        if len(summary) > max_total_chars and output_struct["candidate_apis"]:
+            c0 = output_struct["candidate_apis"][0]
+            raw = json.dumps(c0.get("data"), ensure_ascii=False)
+            c0["data"] = raw[: max(1000, max_total_chars - 4000)] + "...<truncated_for_llm_context>"
             summary = json.dumps(output_struct, ensure_ascii=False, indent=2)
         return summary
 
