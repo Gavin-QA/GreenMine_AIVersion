@@ -97,10 +97,28 @@ def on_startup():
         logger.debug(f"冷启动同步历史缺陷异常 (可忽略): {e}")
 
 
-# 静态文件挂载：直接访问测试产物报告与截图
+# 静态文件挂载：平台前端 UI 静态资源与测试产物报告截图
+STATIC_DIR = CURRENT_DIR / "static" if "CURRENT_DIR" in locals() else PROJECT_ROOT / "server" / "static"
+if STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
 REPORTS_DIR = PROJECT_ROOT / "reports"
 if REPORTS_DIR.exists():
     app.mount("/reports", StaticFiles(directory=str(REPORTS_DIR)), name="reports")
+
+ARTIFACTS_DIR = PROJECT_ROOT / "artifacts"
+if ARTIFACTS_DIR.exists():
+    app.mount("/artifacts", StaticFiles(directory=str(ARTIFACTS_DIR)), name="artifacts")
+
+from fastapi.responses import FileResponse
+
+@app.get("/")
+def serve_index():
+    """Web 控制台首页面"""
+    index_file = STATIC_DIR / "index.html"
+    if index_file.exists():
+        return FileResponse(str(index_file))
+    return {"message": "Vision Platform API Server Running"}
 
 
 # =============================================================================
