@@ -2,6 +2,7 @@ import asyncio
 import datetime
 import logging
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -15,18 +16,29 @@ from .models import TaskRun
 logger = logging.getLogger("server.task_manager")
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
+# 正则表达式识别控制台中的当前步数
+RE_WORKER_STEP = re.compile(r"\(Global:\s*(\d+)/")
+RE_RUNNER_STEP = re.compile(r"\[Step\s*(\d+)/")
+RE_STEP_TAG = re.compile(r"explore_step_(\d+)")
+
 
 class TaskManager:
-    """自动化巡检进程中枢调度器"""
+    """自动化巡检进程中枢调度器 (管理任务生命周期、日志流与当前步数探针)"""
 
     def __init__(self):
         self.active_processes: Dict[str, subprocess.Popen] = {}
         self.log_buffers: Dict[str, List[str]] = {}
+        self.current_steps: Dict[str, int] = {}
         self.websocket_subscribers: Dict[str, Set[asyncio.Queue]] = {}
         self._lock = threading.Lock()
 
+    def get_current_step(self, task_id: str) -> Optional[int]:
+        """获取任务当前正在执行的步数"""
+        with self._lock:
+            return self.current_steps.get(task_id)
+
     def start_task(self, task_id: str) -> bool:
-        """从数据库拉取任务定义并拉起执行子进程"""
+        """从数据库拉取任务定义并拉起执行子进程与伴生性能采样引擎"""
         with self._lock:
             if task_id in self.active_processes:
                 proc = self.active_processes[task_id]
@@ -81,6 +93,7 @@ class TaskManager:
             env = os.environ.copy()
             env["PYTHONUNBUFFERED"] = "1"
             if task.app_name:
+                env["ACTIVE_APP"] = task.app_name
                 env["VISION_ACTIVE_APP"] = task.app_name
 
             process = subprocess.Popen(
@@ -104,6 +117,7 @@ class TaskManager:
             with self._lock:
                 self.active_processes[task_id] = process
                 self.log_buffers[task_id] = []
+                self.current_steps[task_id] = 0
 
             # 启动独立线程异步读取子进程日志流
             t = threading.Thread(
@@ -112,6 +126,14 @@ class TaskManager:
                 daemon=True
             )
             t.start()
+
+            # 自动挂载拉起全景性能监控探针 (UE + Chrome + CDP + GPU)
+            try:
+                from .performance_monitor import performance_monitor
+                performance_monitor.start_monitoring(task_id, app_name=task.app_name, interval_sec=5.0)
+            except Exception as e_perf:
+                logger.warning(f"挂载性能监控探针失败 (不影响任务主干): {e_perf}")
+
             return True
 
         except Exception as e:
@@ -125,7 +147,7 @@ class TaskManager:
             db.close()
 
     def _log_monitor_worker(self, task_id: str, process: subprocess.Popen):
-        """异步消费并存储子进程日志输出"""
+        """异步消费并存储子进程日志输出，实时提取当前执行步骤"""
         logger.info(f"📖 日志监听线程启动 [{task_id}], PID: {process.pid}")
         try:
             for line in iter(process.stdout.readline, ""):
@@ -138,6 +160,17 @@ class TaskManager:
                     if len(buf) > 3000:
                         self.log_buffers[task_id] = buf[-3000:]
 
+                    # 探测日志里的步数标记
+                    m1 = RE_WORKER_STEP.search(line_str)
+                    m2 = RE_RUNNER_STEP.search(line_str)
+                    m3 = RE_STEP_TAG.search(line_str)
+                    if m1:
+                        self.current_steps[task_id] = int(m1.group(1))
+                    elif m2:
+                        self.current_steps[task_id] = int(m2.group(1))
+                    elif m3:
+                        self.current_steps[task_id] = int(m3.group(1))
+
                 # 广播给该任务的 WebSocket 订阅队列
                 self._broadcast_log(task_id, line_str)
 
@@ -147,6 +180,14 @@ class TaskManager:
             process.stdout.close()
             exit_code = process.wait()
             logger.info(f"🏁 任务进程已退出 [{task_id}], Exit Code: {exit_code}")
+            
+            # 停止关联的后台性能采样引擎
+            try:
+                from .performance_monitor import performance_monitor
+                performance_monitor.stop_monitoring(task_id)
+            except Exception:
+                pass
+
             self._finalize_task_run(task_id, exit_code)
 
     def _finalize_task_run(self, task_id: str, exit_code: int):
@@ -201,7 +242,14 @@ class TaskManager:
             logger.debug(f"回填运行产物数据异常: {e}")
 
     def stop_task(self, task_id: str) -> bool:
-        """优雅终止执行中的任务"""
+        """优雅终止执行中的任务并停止性能监控守护进程"""
+        # 1. 率先停止性能采集守护
+        try:
+            from .performance_monitor import performance_monitor
+            performance_monitor.stop_monitoring(task_id)
+        except Exception:
+            pass
+
         proc = None
         with self._lock:
             proc = self.active_processes.get(task_id)
@@ -212,14 +260,14 @@ class TaskManager:
 
         logger.info(f"🛑 正在优雅停止任务 [{task_id}] (PID: {proc.pid})...")
 
-        # 1. 尝试使用 electron_launcher 广播 WM_CLOSE 原生退出信号
+        # 2. 尝试使用 electron_launcher 广播 WM_CLOSE 原生退出信号
         try:
             from utils.electron_launcher import ElectronLauncher
             ElectronLauncher.dismiss_native_dialogs(proc.pid)
         except Exception:
             pass
 
-        # 2. 通过 psutil 优雅终止整个进程树
+        # 3. 通过 psutil 优雅终止整个进程树
         try:
             parent = psutil.Process(proc.pid)
             children = parent.children(recursive=True)

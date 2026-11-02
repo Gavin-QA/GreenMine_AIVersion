@@ -72,11 +72,18 @@ class PerformanceMetricResponse(BaseModel):
     task_id: str
     timestamp: datetime.datetime
     step_number: Optional[int] = None
-    dom_count: int
-    listeners_count: int
-    js_heap_mb: float
-    echarts_instances: int
-    video_instances: int
+    page_scope: Optional[str] = None
+    dom_count: int = 0
+    listeners_count: int = 0
+    js_heap_mb: float = 0.0
+    js_heap_total_mb: float = 0.0
+    echarts_instances: int = 0
+    canvas_count: int = 0
+    video_instances: int = 0
+    webrtc_fps: Optional[float] = None
+    chrome_pid: Optional[int] = None
+    chrome_cpu_percent: Optional[float] = None
+    chrome_memory_mb: Optional[float] = None
     ue_pid: Optional[int] = None
     ue_cpu_percent: Optional[float] = None
     ue_memory_mb: Optional[float] = None
@@ -87,8 +94,57 @@ class PerformanceMetricResponse(BaseModel):
         from_attributes = True
 
 
+class LivePerformanceSnapshotResponse(BaseModel):
+    app_name: str
+    timestamp: datetime.datetime
+    cdp_online: bool = False
+    ue_online: bool = False
+    gpu_online: bool = False
+    page_scope: Optional[str] = None
+    dom_count: int = 0
+    listeners_count: int = 0
+    js_heap_mb: float = 0.0
+    js_heap_total_mb: float = 0.0
+    echarts_instances: int = 0
+    canvas_count: int = 0
+    video_instances: int = 0
+    webrtc_fps: Optional[float] = None
+    chrome_pid: Optional[int] = None
+    chrome_cpu_percent: Optional[float] = None
+    chrome_memory_mb: Optional[float] = None
+    ue_pid: Optional[int] = None
+    ue_cpu_percent: Optional[float] = None
+    ue_memory_mb: Optional[float] = None
+    gpu_usage_percent: Optional[float] = None
+    gpu_memory_mb: Optional[float] = None
+
+
+class PerformanceSummaryResponse(BaseModel):
+    task_id: str
+    sample_count: int = 0
+    peak_dom_count: int = 0
+    avg_dom_count: float = 0.0
+    latest_dom_count: int = 0
+    peak_listeners_count: int = 0
+    latest_listeners_count: int = 0
+    peak_js_heap_mb: float = 0.0
+    avg_js_heap_mb: float = 0.0
+    latest_js_heap_mb: float = 0.0
+    avg_webrtc_fps: Optional[float] = None
+    min_webrtc_fps: Optional[float] = None
+    peak_chrome_cpu_percent: Optional[float] = None
+    peak_chrome_memory_mb: Optional[float] = None
+    peak_ue_cpu_percent: Optional[float] = None
+    avg_ue_cpu_percent: Optional[float] = None
+    peak_ue_memory_mb: Optional[float] = None
+    peak_gpu_usage_percent: Optional[float] = None
+    peak_gpu_memory_mb: Optional[float] = None
+    health_alerts: List[str] = Field(default_factory=list)
+
+
 class ConfigOptionsResponse(BaseModel):
     apps: List[Dict[str, str]]
     modes: List[Dict[str, str]]
     prompt_templates: List[Dict[str, str]]
     zentao_configured: bool
+

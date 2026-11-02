@@ -25,9 +25,12 @@ from .schemas import (
     TaskResponse,
     BugResponse,
     PerformanceMetricResponse,
+    PerformanceSummaryResponse,
+    LivePerformanceSnapshotResponse,
     ConfigOptionsResponse
 )
 from .task_manager import task_manager
+from .performance_monitor import performance_monitor
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -39,8 +42,8 @@ logger = logging.getLogger("server.api")
 
 app = FastAPI(
     title="Electron AI Vision Testing Platform API",
-    description="端到端多模态自动化巡检与性能监控中枢平台",
-    version="1.0.0"
+    description="端到端多模态自动化巡检与 UE/Chrome 全景性能监控中枢平台",
+    version="1.1.0"
 )
 
 # 允许跨域请求 (为前后端分离与大屏仪表盘服务)
@@ -55,7 +58,7 @@ app.add_middleware(
 
 @app.on_event("startup")
 def on_startup():
-    logger.info("⚡ 正在初始化数据库引擎与表结构...")
+    logger.info("⚡ 正在初始化数据库引擎与表结构 (含自动平滑迁移)...")
     init_db()
     
     # 同步已有缺陷库到数据库 (冷启动初始化)
@@ -358,12 +361,132 @@ def sync_bug_to_zentao(bug_id: str, assignee: Optional[str] = None, db: Session 
 
 
 # =============================================================================
-# 4. 性能监控数据 API (Performance Metrics)
+# 4. 性能监控数据 API (Performance Metrics & WebRTC / UE Probes)
 # =============================================================================
 
+@app.get("/api/metrics/live/snapshot", response_model=LivePerformanceSnapshotResponse)
+def get_live_performance_snapshot(app_name: str = Query(default="zhaiwan")):
+    """即时采集目标应用当前实时的全景性能快照 (无需任务运行)"""
+    snapshot = performance_monitor.collect_full_snapshot(app_name=app_name)
+    return LivePerformanceSnapshotResponse(**snapshot)
+
+
 @app.get("/api/metrics/{task_id}", response_model=List[PerformanceMetricResponse])
-def get_task_metrics(task_id: str, db: Session = Depends(get_db)):
-    """获取任务的时序性能指标列表 (供 ECharts 绘制 DOM / JSHeap / UE CPU 曲线)"""
-    return db.query(PerformanceMetric).filter(
+def get_task_metrics(task_id: str, limit: int = 500, db: Session = Depends(get_db)):
+    """获取任务的时序性能指标列表 (供前端 ECharts 绘制 DOM/内存/UE 性能曲线)"""
+    records = db.query(PerformanceMetric).filter(
+        PerformanceMetric.task_id == task_id
+    ).order_by(PerformanceMetric.timestamp.asc()).limit(limit).all()
+
+    # 若尚未入库，尝试从历史 reports/runs/**/memory_timeline.json 中自动回填历史数据
+    if not records:
+        task = db.query(TaskRun).filter(TaskRun.id == task_id).first()
+        if task and task.run_dir:
+            tl_path = PROJECT_ROOT / "reports" / "runs" / task.run_dir / "screenshots" / "memory_timeline.json"
+            if tl_path.exists():
+                try:
+                    with open(tl_path, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    timeline = data.get("timeline", [])
+                    new_records = []
+                    for item in timeline:
+                        ts = datetime.datetime.fromtimestamp(item.get("timestamp", 0))
+                        pm = PerformanceMetric(
+                            task_id=task_id,
+                            timestamp=ts,
+                            step_number=None,
+                            page_scope=item.get("page_scope"),
+                            dom_count=item.get("dom_nodes", 0),
+                            listeners_count=item.get("js_event_listeners", 0),
+                            js_heap_mb=item.get("js_heap_used_mb", 0.0),
+                            js_heap_total_mb=item.get("js_heap_total_mb", 0.0),
+                            echarts_instances=item.get("echarts_instances", 0),
+                            canvas_count=item.get("canvas_count", 0),
+                            video_instances=item.get("video_count", 0)
+                        )
+                        db.add(pm)
+                        new_records.append(pm)
+                    db.commit()
+                    return new_records
+                except Exception as e:
+                    logger.debug(f"回填历史 memory_timeline.json 异常: {e}")
+
+    return records
+
+
+@app.get("/api/metrics/{task_id}/summary", response_model=PerformanceSummaryResponse)
+def get_task_metrics_summary(task_id: str, db: Session = Depends(get_db)):
+    """聚合计算任务运行期间的峰值、均值与异常健康告警 (内存泄漏、DOM爆炸预警)"""
+    records = db.query(PerformanceMetric).filter(
         PerformanceMetric.task_id == task_id
     ).order_by(PerformanceMetric.timestamp.asc()).all()
+
+    if not records:
+        return PerformanceSummaryResponse(task_id=task_id, sample_count=0)
+
+    count = len(records)
+    doms = [r.dom_count for r in records if r.dom_count]
+    listeners = [r.listeners_count for r in records if r.listeners_count]
+    heaps = [r.js_heap_mb for r in records if r.js_heap_mb]
+    fps_list = [r.webrtc_fps for r in records if r.webrtc_fps is not None]
+    ue_cpus = [r.ue_cpu_percent for r in records if r.ue_cpu_percent is not None]
+    ue_mems = [r.ue_memory_mb for r in records if r.ue_memory_mb is not None]
+    chrome_cpus = [r.chrome_cpu_percent for r in records if r.chrome_cpu_percent is not None]
+    chrome_mems = [r.chrome_memory_mb for r in records if r.chrome_memory_mb is not None]
+    gpus = [r.gpu_usage_percent for r in records if r.gpu_usage_percent is not None]
+    gpu_mems = [r.gpu_memory_mb for r in records if r.gpu_memory_mb is not None]
+
+    alerts: List[str] = []
+    peak_dom = max(doms) if doms else 0
+    latest_dom = doms[-1] if doms else 0
+    peak_listeners = max(listeners) if listeners else 0
+    latest_listeners = listeners[-1] if listeners else 0
+    peak_heap = max(heaps) if heaps else 0.0
+    latest_heap = heaps[-1] if heaps else 0.0
+
+    if peak_dom > 50000:
+        alerts.append(f"⚠️ DOM 节点数发生严重泄漏膨胀！峰值达到 {peak_dom} 个节点（健康阈值: <30,000）")
+    if peak_listeners > 10000:
+        alerts.append(f"⚠️ JS 事件监听器累积过多！峰值达到 {peak_listeners} 个，可能未注销事件销毁钩子")
+    if peak_heap > 800.0:
+        alerts.append(f"⚠️ Chromium V8 堆内存超标！峰值达到 {peak_heap} MB")
+    if fps_list and min(fps_list) < 15.0:
+        alerts.append(f"⚠️ WebRTC 像素流出现明显掉帧！最低帧率仅 {min(fps_list)} FPS")
+
+    return PerformanceSummaryResponse(
+        task_id=task_id,
+        sample_count=count,
+        peak_dom_count=peak_dom,
+        avg_dom_count=round(sum(doms) / len(doms), 1) if doms else 0.0,
+        latest_dom_count=latest_dom,
+        peak_listeners_count=peak_listeners,
+        latest_listeners_count=latest_listeners,
+        peak_js_heap_mb=peak_heap,
+        avg_js_heap_mb=round(sum(heaps) / len(heaps), 2) if heaps else 0.0,
+        latest_js_heap_mb=latest_heap,
+        avg_webrtc_fps=round(sum(fps_list) / len(fps_list), 1) if fps_list else None,
+        min_webrtc_fps=min(fps_list) if fps_list else None,
+        peak_chrome_cpu_percent=max(chrome_cpus) if chrome_cpus else None,
+        peak_chrome_memory_mb=max(chrome_mems) if chrome_mems else None,
+        peak_ue_cpu_percent=max(ue_cpus) if ue_cpus else None,
+        avg_ue_cpu_percent=round(sum(ue_cpus) / len(ue_cpus), 1) if ue_cpus else None,
+        peak_ue_memory_mb=max(ue_mems) if ue_mems else None,
+        peak_gpu_usage_percent=max(gpus) if gpus else None,
+        peak_gpu_memory_mb=max(gpu_mems) if gpu_mems else None,
+        health_alerts=alerts
+    )
+
+
+@app.websocket("/ws/tasks/{task_id}/metrics")
+async def websocket_task_metrics(websocket: WebSocket, task_id: str):
+    """WebSocket 实时时序性能推流频道 (专供 ECharts 实时折线图)"""
+    await websocket.accept()
+    queue = performance_monitor.subscribe_metrics(task_id)
+    try:
+        while True:
+            metric_dict = await queue.get()
+            await websocket.send_json(metric_dict)
+    except WebSocketDisconnect:
+        pass
+    finally:
+        performance_monitor.unsubscribe_metrics(task_id, queue)

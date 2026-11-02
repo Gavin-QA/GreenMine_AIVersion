@@ -99,22 +99,31 @@ class BugRecord(Base):
 
 
 class PerformanceMetric(Base):
-    """全景性能时序监控数据表 (Chrome/Electron + UE 伴生双核)"""
+    """全景性能时序监控数据表 (Chrome/Electron + DOM/WebRTC + UE5 伴生双核 + GPU)"""
     __tablename__ = "performance_metrics"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     task_id = Column(String(64), ForeignKey("task_runs.id"), index=True)
     timestamp = Column(DateTime, default=datetime.datetime.utcnow, index=True)
     step_number = Column(Integer, nullable=True)
+    page_scope = Column(String(256), nullable=True)
     
-    # Chrome / Electron 渲染与 DOM 指标
+    # Chrome / Electron 渲染、DOM、事件监听器与 WebRTC 像素流指标
     dom_count = Column(Integer, default=0)
     listeners_count = Column(Integer, default=0)
     js_heap_mb = Column(Float, default=0.0)
+    js_heap_total_mb = Column(Float, default=0.0)
     echarts_instances = Column(Integer, default=0)
+    canvas_count = Column(Integer, default=0)
     video_instances = Column(Integer, default=0)
+    webrtc_fps = Column(Float, nullable=True)
     
-    # 伴生 UE5 进程监控指标
+    # Electron / Chromium 进程树系统资源占用
+    chrome_pid = Column(Integer, nullable=True)
+    chrome_cpu_percent = Column(Float, nullable=True)
+    chrome_memory_mb = Column(Float, nullable=True)
+    
+    # 伴生 UE5 引擎进程树监控指标
     ue_pid = Column(Integer, nullable=True)
     ue_cpu_percent = Column(Float, nullable=True)
     ue_memory_mb = Column(Float, nullable=True)
@@ -124,3 +133,4 @@ class PerformanceMetric(Base):
     gpu_memory_mb = Column(Float, nullable=True)
 
     task = relationship("TaskRun", back_populates="metrics")
+
