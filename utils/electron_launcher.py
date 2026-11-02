@@ -426,6 +426,63 @@ class ElectronLauncher:
             logger.debug(f"投递 WM_CLOSE 异常: {e}")
             return False
 
+    @staticmethod
+    def dismiss_native_dialogs(pid: Optional[int] = None) -> int:
+        """
+        检测并主动关闭由 Electron 或系统弹出的原生 Windows 阻塞对话框 (如另存为、打开文件 #32770)
+        防止其接管 Windows 消息泵并阻塞 CDP 调试通道与 Playwright 截屏
+        返回关闭的弹窗数量
+        """
+        if sys.platform != "win32":
+            return 0
+        try:
+            import ctypes
+            user32 = ctypes.windll.user32
+        except Exception:
+            return 0
+
+        closed_count = 0
+        WM_CLOSE = 0x0010
+        IDCANCEL = 2
+        WM_COMMAND = 0x0111
+
+        def enum_cb(hwnd, lparam):
+            nonlocal closed_count
+            try:
+                if not user32.IsWindowVisible(hwnd):
+                    return True
+                class_buf = ctypes.create_unicode_buffer(256)
+                user32.GetClassNameW(hwnd, class_buf, 256)
+                if class_buf.value == "#32770":
+                    title_buf = ctypes.create_unicode_buffer(512)
+                    user32.GetWindowTextW(hwnd, title_buf, 512)
+                    title = title_buf.value
+
+                    w_pid = ctypes.c_ulong()
+                    user32.GetWindowThreadProcessId(hwnd, ctypes.byref(w_pid))
+
+                    match = False
+                    if pid and w_pid.value == pid:
+                        match = True
+                    elif any(k in title for k in ["另存为", "Save As", "打开", "Open", "下载", "Download", ".mp4", ".pdf", ".zip", "确认", "Confirm"]):
+                        match = True
+
+                    if match:
+                        user32.PostMessageW(hwnd, WM_COMMAND, IDCANCEL, 0)
+                        user32.PostMessageW(hwnd, WM_CLOSE, 0, 0)
+                        closed_count += 1
+                        logger.warning(f"🛡️ [Native Dialog Guard] 已自动关闭阻塞式 Windows 对话框 (HWND: {hwnd}, Title: '{title}', PID: {w_pid.value})")
+            except Exception:
+                pass
+            return True
+
+        try:
+            EnumWindowsProc = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_int, ctypes.c_int)
+            user32.EnumWindows(EnumWindowsProc(enum_cb), 0)
+        except Exception as e:
+            logger.debug(f"遍历 Win32 窗口异常: {e}")
+        return closed_count
+
     def close(self):
         """清理资源，关闭浏览器连接和进程"""
         if hasattr(self, "_session") and self._session:

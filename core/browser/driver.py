@@ -155,6 +155,14 @@ class ElectronDriver(NetworkMonitorMixin, DomExtractorMixin, ScreenshotMixin, Ch
         # 注册控制台日志与页面错误监听
         self._setup_page_listeners()
 
+        # 挂载 CDP 静默下载拦截器 (彻底杜绝 Windows 原生阻塞式另存为弹窗)
+        self._setup_download_interception(self.page)
+        if self.context:
+            try:
+                self.context.on("page", lambda new_p: self._setup_download_interception(new_p))
+            except Exception:
+                pass
+
         # 获取并记录当前页面视口信息
         info = self.get_viewport_info()
         title = ""
@@ -208,6 +216,65 @@ class ElectronDriver(NetworkMonitorMixin, DomExtractorMixin, ScreenshotMixin, Ch
 
 
 
+
+
+    def _setup_download_interception(self, target_page: Optional[Page] = None):
+        """
+        通过 CDP 协议激活静默下载拦截机制：
+        1. 配置 Browser.setDownloadBehavior / Page.setDownloadBehavior 为 'allow' 并指定安全下载隔离区
+        2. 注册 Playwright download 事件监听，自动静默取消或捕获，彻底杜绝调起 Windows 原生阻塞式 '另存为' 弹窗
+        """
+        page = target_page or self.page
+        if not page or page.is_closed():
+            return
+
+        if getattr(page, "_download_interception_enabled", False):
+            return
+
+        download_dir = os.path.join(str(PROJECT_ROOT), "artifacts", "downloads")
+        try:
+            os.makedirs(download_dir, exist_ok=True)
+        except Exception:
+            pass
+
+        cdp = None
+        try:
+            cdp = page.context.new_cdp_session(page)
+            try:
+                cdp.send("Browser.setDownloadBehavior", {
+                    "behavior": "allow",
+                    "downloadPath": download_dir,
+                    "eventsEnabled": True
+                })
+            except Exception:
+                cdp.send("Page.setDownloadBehavior", {
+                    "behavior": "allow",
+                    "downloadPath": download_dir
+                })
+            logger.info(f"🛡️ [Silent Download] CDP 静默下载接管已就绪 -> 隔离路径: {download_dir} (杜绝 Windows 原生阻塞式另存为弹窗)")
+        except Exception as e:
+            logger.debug(f"[Silent Download] 设置 CDP 静默下载失败: {e}")
+        finally:
+            if cdp is not None:
+                try:
+                    cdp.detach()
+                except Exception:
+                    pass
+
+        try:
+            def on_download(download):
+                try:
+                    fn = download.suggested_filename or "downloaded_file"
+                    logger.info(f"📥 [Playwright Download] 捕获到底层文件下载: {fn} (URL: {download.url})")
+                    download.cancel()
+                    logger.info(f"🛡️ [Playwright Download] 已静默取消下载任务以释放带宽与磁盘: {fn}")
+                except Exception as e:
+                    logger.debug(f"[Playwright Download] 处理下载异常: {e}")
+
+            page.on("download", on_download)
+            page._download_interception_enabled = True
+        except Exception as e:
+            logger.debug(f"[Silent Download] 挂载 Playwright 下载监听异常: {e}")
 
 
     def get_viewport_info(self) -> Dict[str, Any]:

@@ -60,10 +60,27 @@ class ScreenshotMixin:
 
         # Electron 桌面应用通常为固定大屏尺寸，抓取当前 viewport
         # 【极致优化】从 type="png" 改为 type="jpeg", quality=60，使体积从 6MB 暴降至 300KB
-        if crop_box:
-            png_bytes = self.page.screenshot(type="jpeg", quality=60, full_page=False, clip=crop_box)
-        else:
-            png_bytes = self.page.screenshot(type="jpeg", quality=60, full_page=False)
+        try:
+            if crop_box:
+                png_bytes = self.page.screenshot(type="jpeg", quality=60, full_page=False, clip=crop_box)
+            else:
+                png_bytes = self.page.screenshot(type="jpeg", quality=60, full_page=False)
+        except Exception as e:
+            # 若因系统原生阻塞式弹窗 (如另存为/打开文件 #32770) 挂起消息泵导致截图超时，主动解开并重试
+            try:
+                from utils.electron_launcher import ElectronLauncher
+                closed = ElectronLauncher.dismiss_native_dialogs()
+                if closed > 0:
+                    logger.warning(f"🛡️ [Screenshot Rescue] 检测并解除了 {closed} 个阻塞式 Windows 原生对话框，正在重试截屏...")
+                    time.sleep(0.5)
+                    if crop_box:
+                        png_bytes = self.page.screenshot(type="jpeg", quality=60, full_page=False, clip=crop_box)
+                    else:
+                        png_bytes = self.page.screenshot(type="jpeg", quality=60, full_page=False)
+                else:
+                    raise
+            except Exception:
+                raise e
 
         if dim_background:
             restore_script = """
