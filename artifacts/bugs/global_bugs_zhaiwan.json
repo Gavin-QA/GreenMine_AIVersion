@@ -3426,7 +3426,7 @@
     "run_id": "explore_20261101_134222",
     "title": "[explore_20261030_181807] 探索操作 '左侧业务面板中【地质勘探报告】分类下的第一条报告条目【寨湾矿段采样点素描图】' 触发底层异常",
     "severity": "High",
-    "status": "激活",
+    "status": "已提单",
     "date": "2026-10-30",
     "occurrences": 111,
     "last_seen": "2026-11-01",
@@ -3445,7 +3445,8 @@
       "勘探报告"
     ],
     "analysis_notes": "🤖【AI 智能初诊与排查指引】\n1. 缺陷定位与表现：前端组件报错\n2. 核心疑点与推断根因：浏览器环境不支持 crypto.randomUUID() API，该方法在较旧版本的 Node.js（<15.0）或部分旧版浏览器（如 IE、Edge Legacy、Safari < 14）中不可用；结合报错发生在点击报告条目后触发 PDF 预览/加载逻辑，推测为前端 PDF 渲染模块（如 pdf.js 或自定义封装）在生成唯一 ID 时调用了此 API，但运行环境兼容性不足。\n3. 建议排查方向：建议联系前端大屏开发人员：1）检查 PDF 预览组件是否使用了 crypto.randomUUID() 生成临时 ID；2）确认目标部署环境的浏览器版本及兼容性要求；3）人工复核时需在低版本浏览器（如 Chrome 80-90、Safari 13）下复现，验证是否必现；若为 Electron 封装应用，还需检查主进程/渲染进程 Node 版本。",
-    "last_recurrence_step": 479
+    "last_recurrence_step": 479,
+    "zentao_id": "1188"
   },
   {
     "id": "BUG-20261030-002",
