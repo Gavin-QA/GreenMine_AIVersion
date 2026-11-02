@@ -112,7 +112,13 @@ class Settings:
         self.zentao_url: str = os.getenv("ZENTAO_URL") or zentao_cfg.get("url", "http://192.140.163.129:8080")
         self.zentao_account: str = os.getenv("ZENTAO_ACCOUNT") or zentao_cfg.get("account", "guoxiaoqi")
         self.zentao_password: str = os.getenv("ZENTAO_PASSWORD") or zentao_cfg.get("password", "")
-        self.zentao_default_product_id: int = int(os.getenv("ZENTAO_DEFAULT_PRODUCT_ID") or zentao_cfg.get("default_product_id", 10))
+        self.zentao_default_product_id: int = int(os.getenv("ZENTAO_DEFAULT_PRODUCT_ID") or zentao_cfg.get("default_product_id", 11))
+        self.zentao_default_project_id: int = int(os.getenv("ZENTAO_DEFAULT_PROJECT_ID") or zentao_cfg.get("default_project_id", 0))
+        self.zentao_default_execution_id: int = int(os.getenv("ZENTAO_DEFAULT_EXECUTION_ID") or zentao_cfg.get("default_execution_id", 0))
+
+    def get_app_config(self, app_key: str) -> dict:
+        """获取指定应用的专有配置字典"""
+        return self._yaml_config.get("apps", {}).get(app_key, {})
 
 
 settings = Settings()

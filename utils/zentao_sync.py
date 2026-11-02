@@ -57,7 +57,9 @@ class ZenTaoClient:
         self.url = (url or settings.zentao_url or "http://192.140.163.129:8080").rstrip("/")
         self.account = account or settings.zentao_account or "guoxiaoqi"
         self.password = password or settings.zentao_password or ""
-        self.default_product_id = settings.zentao_default_product_id or 10
+        self.default_product_id = getattr(settings, "zentao_default_product_id", 11) or 11
+        self.default_project_id = getattr(settings, "zentao_default_project_id", 0) or 0
+        self.default_execution_id = getattr(settings, "zentao_default_execution_id", 0) or 0
         self._token: Optional[str] = None
         self.session = requests.Session()
         self.session.trust_env = False  # 禁用本地系统 HTTP 代理，直连内网禅道服务器
@@ -92,6 +94,25 @@ class ZenTaoClient:
         data = resp.json()
         return data.get("products", [])
 
+    def get_projects(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """列出当前用户有权访问的禅道项目列表"""
+        token = self.get_token()
+        url = f"{self.url}/api.php/v1/projects?limit={limit}"
+        resp = self.session.get(url, headers={"Token": token}, timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
+        return data.get("projects", [])
+
+    def get_executions(self, project_id: int) -> List[Dict[str, Any]]:
+        """列出指定项目关联的执行/迭代列表"""
+        token = self.get_token()
+        url = f"{self.url}/api.php/v1/projects/{int(project_id)}/executions"
+        resp = self.session.get(url, headers={"Token": token}, timeout=15)
+        if resp.status_code != 200:
+            return []
+        data = resp.json()
+        return data.get("executions", [])
+
     def submit_bug(
         self,
         product_id: int,
@@ -101,6 +122,8 @@ class ZenTaoClient:
         pri: int = 3,
         bug_type: str = "codeerror",
         assigned_to: Optional[str] = None,
+        project_id: Optional[int] = None,
+        execution_id: Optional[int] = None,
     ) -> Dict[str, Any]:
         """向禅道提交缺陷"""
         token = self.get_token()
@@ -117,6 +140,10 @@ class ZenTaoClient:
         }
         if assigned_to:
             payload["assignedTo"] = assigned_to
+        if project_id:
+            payload["project"] = int(project_id)
+        if execution_id:
+            payload["execution"] = int(execution_id)
 
         resp = self.session.post(url, json=payload, headers={"Token": token}, timeout=30)
         if resp.status_code not in (200, 201):
@@ -130,6 +157,8 @@ class ZenTaoClient:
         title: Optional[str] = None,
         severity: Optional[int] = None,
         assigned_to: Optional[str] = None,
+        project_id: Optional[int] = None,
+        execution_id: Optional[int] = None,
     ) -> Dict[str, Any]:
         """更新禅道已有的缺陷单据"""
         token = self.get_token()
@@ -144,6 +173,10 @@ class ZenTaoClient:
             payload["pri"] = int(severity)
         if assigned_to:
             payload["assignedTo"] = assigned_to
+        if project_id:
+            payload["project"] = int(project_id)
+        if execution_id:
+            payload["execution"] = int(execution_id)
 
         resp = self.session.put(url, json=payload, headers={"Token": token}, timeout=30)
         if resp.status_code not in (200, 201):
@@ -597,12 +630,15 @@ def update_bug_records(bug_id: str, zentao_id: str, global_file: Optional[Path],
 def main():
     parser = argparse.ArgumentParser(description="禅道缺陷双向绑定与自动提单工具")
     parser.add_argument("--list-products", action="store_true", help="列出当前禅道实例中所有可访问的产品")
+    parser.add_argument("--list-projects", action="store_true", help="列出当前禅道实例中所有可访问的项目及其执行/迭代")
     parser.add_argument("--submit-bug", type=str, help="指定本地 Bug ID 并自动提交到禅道 (如 BUG-20261023-003)")
     parser.add_argument("--update-bug", type=str, help="重新研判并同步更新已在禅道创建的缺陷内容 (如 BUG-20261023-004)")
     parser.add_argument("--bind", type=str, help="指定本地 Bug ID 进行手动绑定")
     parser.add_argument("--zentao-id", type=str, help="与 --bind 搭配使用的禅道 Bug 编号 (如 852)")
     parser.add_argument("--assignee", type=str, help="指定指派人 (如 '陈贻雄' / '梅本霞'，不填则根据AI及报错智能研判)")
-    parser.add_argument("--product-id", type=int, help="禅道产品 ID (默认读取配置)")
+    parser.add_argument("--product-id", type=int, help="禅道产品 ID (默认自动匹配当前应用或读取配置)")
+    parser.add_argument("--project-id", type=int, help="禅道项目 ID (默认自动匹配当前应用或读取配置)")
+    parser.add_argument("--execution-id", type=int, help="禅道执行/迭代 ID (默认自动匹配当前应用或读取配置)")
     parser.add_argument("--app", type=str, help="所属矿山应用 (zhaiwan / liwutong，默认自适应)")
 
     args = parser.parse_args()
@@ -619,6 +655,28 @@ def main():
             print(f"👉 当前配置默认产品 ID: {client.default_product_id}\n")
         except Exception as e:
             print(f"❌ 获取产品列表失败: {e}")
+            sys.exit(1)
+        return
+
+    if args.list_projects:
+        try:
+            projects = client.get_projects()
+            print("\n📋 禅道可用项目与执行列表 (Project & Execution List):")
+            print("-" * 65)
+            for p in projects:
+                p_id = p.get('id')
+                p_name = p.get('name')
+                print(f"  📂 [项目] ID: {p_id:<4} | 名称: {p_name}")
+                try:
+                    executions = client.get_executions(p_id)
+                    for ex in executions:
+                        print(f"      └── 🚀 [执行/迭代] ID: {ex.get('id'):<4} | 名称: {ex.get('name')}")
+                except Exception:
+                    pass
+            print("-" * 65)
+            print(f"👉 当前默认项目 ID: {client.default_project_id} | 默认执行 ID: {client.default_execution_id}\n")
+        except Exception as e:
+            print(f"❌ 获取项目列表失败: {e}")
             sys.exit(1)
         return
 
@@ -665,6 +723,10 @@ def main():
         if not args.app and g_file and "liwutong" in g_file.name:
             app_key = "liwutong"
         app_chinese = APP_NAME_MAP.get(app_key, "寨湾矿山")
+        app_cfg = settings.get_app_config(app_key)
+
+        target_project_id = args.project_id or app_cfg.get("zentao_project_id") or client.default_project_id or None
+        target_execution_id = args.execution_id or app_cfg.get("zentao_execution_id") or client.default_execution_id or None
 
         raw_title = bug.get("title") or "自动化探索发现异常"
         clean_title = raw_title.replace("【AI自动化】", "").strip()
@@ -681,6 +743,8 @@ def main():
         print(f"\n🔄 正在同步更新禅道缺陷 #{zen_id}...")
         print(f"  • 缺陷单号: #{zen_id} ({bug_id})")
         print(f"  • 标题名称: {final_title}")
+        print(f"  • 所属项目: {target_project_id if target_project_id else '未关联'}")
+        print(f"  • 所属执行: {target_execution_id if target_execution_id else '未关联'}")
         print(f"  • 案发凭证: {shot_str}")
         print(f"  • 指派人员: {assignee_name} ({assignee_account})")
         print(f"  • 归因判定: {reason}")
@@ -690,7 +754,9 @@ def main():
                 bug_id=int(zen_id),
                 title=final_title,
                 steps_html=steps_html,
-                assigned_to=assignee_account
+                assigned_to=assignee_account,
+                project_id=target_project_id,
+                execution_id=target_execution_id,
             )
             update_bug_records(bug_id, str(zen_id), g_file, r_files, assignee=assignee_name)
             print(f"✅ 禅道缺陷 #{zen_id} 已成功刷新并同步至最新版本！")
@@ -702,7 +768,6 @@ def main():
 
     if args.submit_bug:
         bug_id = args.submit_bug.strip()
-        target_product_id = args.product_id or client.default_product_id
 
         bug, g_file, r_files = find_bug_in_databases(bug_id, args.app)
         if not bug:
@@ -713,6 +778,11 @@ def main():
         if not args.app and g_file and "liwutong" in g_file.name:
             app_key = "liwutong"
         app_chinese = APP_NAME_MAP.get(app_key, "寨湾矿山")
+        app_cfg = settings.get_app_config(app_key)
+
+        target_product_id = args.product_id or app_cfg.get("zentao_product_id") or client.default_product_id
+        target_project_id = args.project_id or app_cfg.get("zentao_project_id") or client.default_project_id or None
+        target_execution_id = args.execution_id or app_cfg.get("zentao_execution_id") or client.default_execution_id or None
 
         raw_title = bug.get("title") or "自动化探索发现异常"
         clean_title = raw_title.replace("【AI自动化】", "").strip()
@@ -738,6 +808,8 @@ def main():
         print(f"\n🚀 正在向禅道提交缺陷...")
         print(f"  • 禅道地址: {client.url}")
         print(f"  • 产品 ID:  {target_product_id}")
+        print(f"  • 项目 ID:  {target_project_id if target_project_id else '未关联'}")
+        print(f"  • 执行 ID:  {target_execution_id if target_execution_id else '未关联'}")
         print(f"  • 缺陷标题: {final_title}")
         print(f"  • 案发凭证: {shot_str}")
         print(f"  • 严重等级: {sev_int}")
@@ -752,6 +824,8 @@ def main():
                 severity=sev_int,
                 pri=sev_int,
                 assigned_to=assignee_account,
+                project_id=target_project_id,
+                execution_id=target_execution_id,
             )
             zen_id = res.get("id")
             if not zen_id:

@@ -1,7 +1,14 @@
+import os
+import sys
+from pathlib import Path
 import uvicorn
 import logging
+
+# 确保项目根目录加入 sys.path，无论从何处执行脚本都能正确加载 server 模块
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 if __name__ == "__main__":
     logging.info("🚀 启动 Electron AI Vision Testing Platform 服务...")
     uvicorn.run("server.main:app", host="127.0.0.1", port=8000, reload=False)
-
