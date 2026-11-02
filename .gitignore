@@ -72,3 +72,7 @@ scratch/
 
 # 本地大模型权重目录（体积达数 GB，严禁提交到 git）
 models/
+
+# 本地轻量数据库文件
+/data/*.db
+/data/*.sqlite
