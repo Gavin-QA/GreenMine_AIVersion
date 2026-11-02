@@ -11,10 +11,12 @@ from fastapi import (
     Depends,
     HTTPException,
     Query,
+    Path as FastPath,
     WebSocket,
     WebSocketDisconnect
 )
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
@@ -32,7 +34,8 @@ from .schemas import (
 from .task_manager import task_manager
 from .performance_monitor import performance_monitor
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+CURRENT_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = CURRENT_DIR.parent
 
 logging.basicConfig(
     level=logging.INFO,
@@ -40,10 +43,45 @@ logging.basicConfig(
 )
 logger = logging.getLogger("server.api")
 
+# Swagger 规范元数据定义
+tags_metadata = [
+    {
+        "name": "1. 平台基础与选项",
+        "description": "健康心跳检查、前端免敲命令表单所需的应用、模式与预置提示词模板字典",
+    },
+    {
+        "name": "2. 巡检任务生命周期调度",
+        "description": "巡检任务创建、查询列表、一键拉起异步子进程、优雅停机终止、控制台实时日志与 WebSocket 流",
+    },
+    {
+        "name": "3. 缺陷治理与禅道同步",
+        "description": "全局缺陷资产检索、错误现场与 AI 智能初诊排查详情、一键自动提单至公司禅道项目系统",
+    },
+    {
+        "name": "4. 多核全栈性能监控",
+        "description": "UE5 引擎、Chromium 渲染进程树、CDP DOM/堆内存/WebRTC 帧率、独立显卡 GPU 显存的实时探针与时序指标",
+    },
+]
+
 app = FastAPI(
-    title="Electron AI Vision Testing Platform API",
-    description="端到端多模态自动化巡检与 UE/Chrome 全景性能监控中枢平台",
-    version="1.1.0"
+    title="⚡ Electron AI Vision 智能巡检与多核性能中枢平台 API",
+    description="""
+## 平台定位与核心架构
+本平台是专为基于 Chromium 的 **Electron 桌面端大屏** 以及 **UE5 伴生数字孪生视界** 打造的端到端自动化巡检与全景监控中枢。
+
+### 🌟 核心能力支持：
+* **免敲命令任务调度**：参数与模式完全选项化，支持 AI 自主探索、二级菜单全量冒烟、确定性 YAML 回放与全量回归。
+* **双核全栈性能监控探针**：
+  * **Chromium 渲染端**：无侵入直连 CDP（DOM 节点、JS 事件监听器、V8 JS 堆内存、WebRTC 像素流实时 FPS）。
+  * **UE5 伴生进程**：实时采样物理常驻内存（RSS / Working Set）与 CPU 占用率。
+  * **独立 GPU 显卡**：静默追踪 3D 渲染核心负载与专用显存使用。
+* **缺陷资产闭环与去重**：自动捕获案发现场报错、截图，结合大模型查重，支持一键分流推单至公司禅道。
+* **多通道实时通信**：提供 WebSocket 实时日志流推送与实时性能数据流。
+    """,
+    version="1.2.0",
+    openapi_tags=tags_metadata,
+    docs_url="/docs",
+    redoc_url="/redoc"
 )
 
 # 允许跨域请求 (为前后端分离与大屏仪表盘服务)
@@ -58,6 +96,7 @@ app.add_middleware(
 
 @app.on_event("startup")
 def on_startup():
+    """服务冷启动生命周期钩子：初始化数据库结构并自动同步已有全局缺陷库"""
     logger.info("⚡ 正在初始化数据库引擎与表结构 (含自动平滑迁移)...")
     init_db()
     
@@ -98,7 +137,7 @@ def on_startup():
 
 
 # 静态文件挂载：平台前端 UI 静态资源与测试产物报告截图
-STATIC_DIR = CURRENT_DIR / "static" if "CURRENT_DIR" in locals() else PROJECT_ROOT / "server" / "static"
+STATIC_DIR = CURRENT_DIR / "static"
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
@@ -110,11 +149,10 @@ ARTIFACTS_DIR = PROJECT_ROOT / "artifacts"
 if ARTIFACTS_DIR.exists():
     app.mount("/artifacts", StaticFiles(directory=str(ARTIFACTS_DIR)), name="artifacts")
 
-from fastapi.responses import FileResponse
 
-@app.get("/")
+@app.get("/", include_in_schema=False)
 def serve_index():
-    """Web 控制台首页面"""
+    """Web 控制台首页面入口"""
     index_file = STATIC_DIR / "index.html"
     if index_file.exists():
         return FileResponse(str(index_file))
@@ -125,7 +163,12 @@ def serve_index():
 # 1. 基础配置与选项 API (免敲命令，选项化核心)
 # =============================================================================
 
-@app.get("/api/health")
+@app.get(
+    "/api/health",
+    tags=["1. 平台基础与选项"],
+    summary="平台健康心跳检查",
+    description="检测后端平台服务核心服务、数据库会话与运行时间戳是否处于正常就绪状态。"
+)
 def health_check():
     return {
         "status": "healthy",
@@ -134,9 +177,14 @@ def health_check():
     }
 
 
-@app.get("/api/config/options", response_model=ConfigOptionsResponse)
+@app.get(
+    "/api/config/options",
+    response_model=ConfigOptionsResponse,
+    tags=["1. 平台基础与选项"],
+    summary="获取前端表单可选项与提示词模板库",
+    description="为前端工作台提供一键选择的矿山应用、测试模式列表、开箱即用的高阶探索 Prompt 模板库以及禅道鉴权配置状态。"
+)
 def get_config_options():
-    """提供前端一键选择的应用、模式与提示词模板库"""
     apps = [
         {"key": "zhaiwan", "name": "寨湾矿山 (Zhaiwan)", "desc": "包含中央 UE5 像素流三维矿山与两侧 2D 业务看板"},
         {"key": "liwutong", "name": "李屋塘矿山 (Liwutong)", "desc": "数字孪生采矿与智能选矿平台"}
@@ -176,9 +224,14 @@ def get_config_options():
 # 2. 任务调度管理 API (任务创建、启动、终止、日志与状态)
 # =============================================================================
 
-@app.post("/api/tasks", response_model=TaskResponse)
+@app.post(
+    "/api/tasks",
+    response_model=TaskResponse,
+    tags=["2. 巡检任务生命周期调度"],
+    summary="新建巡检任务",
+    description="接收前端选项表单，持久化生成新的巡检任务定义记录并分配唯一 `task_id`，初始状态为 `pending`。"
+)
 def create_task(payload: TaskCreate, db: Session = Depends(get_db)):
-    """根据前端表单选项创建巡检任务"""
     now = datetime.datetime.utcnow()
     task_id = f"task_{now.strftime('%Y%m%d_%H%M%S')}"
 
@@ -203,32 +256,52 @@ def create_task(payload: TaskCreate, db: Session = Depends(get_db)):
     return task
 
 
-@app.get("/api/tasks", response_model=List[TaskResponse])
+@app.get(
+    "/api/tasks",
+    response_model=List[TaskResponse],
+    tags=["2. 巡检任务生命周期调度"],
+    summary="分页查询巡检任务列表",
+    description="支持按状态（`running`、`completed` 等）筛选，返回任务的覆盖率、执行步数与缺陷汇总等 KPI 指标。"
+)
 def list_tasks(
-    status: Optional[str] = None,
-    limit: int = 50,
-    offset: int = 0,
+    status: Optional[str] = Query(default=None, description="任务状态过滤 (pending/running/completed/stopped/failed)"),
+    limit: int = Query(default=50, ge=1, le=200, description="单页最大拉取记录条数"),
+    offset: int = Query(default=0, ge=0, description="分页偏移量"),
     db: Session = Depends(get_db)
 ):
-    """查询任务列表"""
     q = db.query(TaskRun).order_by(TaskRun.start_time.desc())
     if status:
         q = q.filter(TaskRun.status == status)
     return q.offset(offset).limit(limit).all()
 
 
-@app.get("/api/tasks/{task_id}", response_model=TaskResponse)
-def get_task(task_id: str, db: Session = Depends(get_db)):
-    """获取单任务详情与最新 KPI"""
+@app.get(
+    "/api/tasks/{task_id}",
+    response_model=TaskResponse,
+    tags=["2. 巡检任务生命周期调度"],
+    summary="获取指定任务详情",
+    description="获取指定任务当前的运行进展、子进程 PID、结束时间、产物报告链接以及最终 KPI。"
+)
+def get_task(
+    task_id: str = FastPath(..., description="任务唯一标识码，如 task_20261102_153022"),
+    db: Session = Depends(get_db)
+):
     task = db.query(TaskRun).filter(TaskRun.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     return task
 
 
-@app.post("/api/tasks/{task_id}/start")
-def start_task_execution(task_id: str, db: Session = Depends(get_db)):
-    """一键触发启动指定任务"""
+@app.post(
+    "/api/tasks/{task_id}/start",
+    tags=["2. 巡检任务生命周期调度"],
+    summary="一键触发启动指定巡检任务",
+    description="从数据库装载配置，组装参数拉起后台 Python 子进程，并自动挂载启动伴生性能采样守护线程与日志缓冲监听。"
+)
+def start_task_execution(
+    task_id: str = FastPath(..., description="待启动的任务全局识别码"),
+    db: Session = Depends(get_db)
+):
     task = db.query(TaskRun).filter(TaskRun.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -242,34 +315,48 @@ def start_task_execution(task_id: str, db: Session = Depends(get_db)):
     return {"code": 200, "message": "任务启动成功", "task_id": task_id}
 
 
-@app.post("/api/tasks/{task_id}/stop")
-def stop_task_execution(task_id: str):
-    """一键安全终止任务执行"""
+@app.post(
+    "/api/tasks/{task_id}/stop",
+    tags=["2. 巡检任务生命周期调度"],
+    summary="一键优雅终止正在运行的任务",
+    description="向目标 Electron 应用广播原生 WM_CLOSE 退出信号，并递归优雅终止子进程树，同时停止性能采集线程并回填终态产物。"
+)
+def stop_task_execution(
+    task_id: str = FastPath(..., description="待停止的任务全局识别码")
+):
     stopped = task_manager.stop_task(task_id)
     if not stopped:
         return {"code": 200, "message": "任务未在运行或已处于终态", "task_id": task_id}
     return {"code": 200, "message": "任务已安全终止并归档", "task_id": task_id}
 
 
-@app.get("/api/tasks/{task_id}/logs")
-def get_task_logs(task_id: str, tail: int = 150):
-    """获取任务最近的控制台日志"""
+@app.get(
+    "/api/tasks/{task_id}/logs",
+    tags=["2. 巡检任务生命周期调度"],
+    summary="拉取任务控制台日志切片",
+    description="获取指定任务最近在控制台输出的日志文本切片（默认最近 150 行）。"
+)
+def get_task_logs(
+    task_id: str = FastPath(..., description="任务识别码"),
+    tail: int = Query(default=150, ge=10, le=3000, description="读取最近日志行数")
+):
     logs = task_manager.get_logs(task_id, tail=tail)
     return {"task_id": task_id, "count": len(logs), "logs": logs}
 
 
 @app.websocket("/ws/tasks/{task_id}/logs")
 async def websocket_task_logs(websocket: WebSocket, task_id: str):
-    """WebSocket 实时日志推流频道"""
+    """
+    WebSocket 实时终端控制台日志推流频道
+    前端连接后先接收最近 50 行历史日志，随后以长连接极低时延实时推送每一行子进程标准输出。
+    """
     await websocket.accept()
     queue = task_manager.subscribe_logs(task_id)
     try:
-        # 先将已有的最后 50 行日志推过去建立初始态
         recent = task_manager.get_logs(task_id, tail=50)
         for line in recent:
             await websocket.send_text(line)
 
-        # 持续推送实时日志流
         while True:
             line = await queue.get()
             await websocket.send_text(line)
@@ -283,17 +370,22 @@ async def websocket_task_logs(websocket: WebSocket, task_id: str):
 # 3. 缺陷管理与一键推单 API (Bug Management & ZenTao)
 # =============================================================================
 
-@app.get("/api/bugs", response_model=List[BugResponse])
+@app.get(
+    "/api/bugs",
+    response_model=List[BugResponse],
+    tags=["3. 缺陷治理与禅道同步"],
+    summary="多条件检索全局缺陷资产库",
+    description="支持按状态（激活/已提单）、严重度（High/Medium/Low）、责任人（陈贻雄/梅本霞）以及模糊关键词全文检索系统缺陷。"
+)
 def list_bugs(
-    status: Optional[str] = None,
-    assignee: Optional[str] = None,
-    severity: Optional[str] = None,
-    search: Optional[str] = None,
-    limit: int = 100,
-    offset: int = 0,
+    status: Optional[str] = Query(default=None, description="缺陷状态过滤 (激活/已提单/误报/已关闭)"),
+    assignee: Optional[str] = Query(default=None, description="责任人过滤 (如 陈贻雄 / 梅本霞)"),
+    severity: Optional[str] = Query(default=None, description="严重度过滤 (High/Medium/Low)"),
+    search: Optional[str] = Query(default=None, description="标题、报错文本或编号的全局模糊检索"),
+    limit: int = Query(default=100, ge=1, le=500, description="最大返回条数"),
+    offset: int = Query(default=0, ge=0, description="偏移量"),
     db: Session = Depends(get_db)
 ):
-    """多维度检索系统缺陷"""
     q = db.query(BugRecord).order_by(BugRecord.last_seen.desc())
     if status:
         q = q.filter(BugRecord.status == status)
@@ -310,9 +402,17 @@ def list_bugs(
     return q.offset(offset).limit(limit).all()
 
 
-@app.post("/api/bugs/{bug_id}/sync_zentao")
-def sync_bug_to_zentao(bug_id: str, assignee: Optional[str] = None, db: Session = Depends(get_db)):
-    """在 Web 控制台一键将缺陷提交至禅道"""
+@app.post(
+    "/api/bugs/{bug_id}/sync_zentao",
+    tags=["3. 缺陷治理与禅道同步"],
+    summary="在 Web 控制台一键将缺陷提交至禅道",
+    description="自动解析缺陷详情、生成富文本案发排查说明，调用禅道 REST API 自动提交 Bug，并自动分流责任人（前端陈贻雄/后端梅本霞），回填禅道单号。"
+)
+def sync_bug_to_zentao(
+    bug_id: str = FastPath(..., description="待提交的全局缺陷编号，如 BUG-20261030-001"),
+    assignee: Optional[str] = Query(default=None, description="可选手动覆盖指派责任人姓名 (不填则根据 AI 分流自动指派)"),
+    db: Session = Depends(get_db)
+):
     bug = db.query(BugRecord).filter(BugRecord.id == bug_id).first()
     if not bug:
         raise HTTPException(status_code=404, detail="Bug not found")
@@ -322,7 +422,7 @@ def sync_bug_to_zentao(bug_id: str, assignee: Optional[str] = None, db: Session 
         from config.settings import settings
 
         zentao = ZenTaoClient()
-        product_id = getattr(settings, "zentao", {}).get("default_product_id", 10) or 10
+        product_id = getattr(settings, "zentao", {}).get("default_product_id", 11) or 11
 
         target_assignee = assignee or bug.assignee or "陈贻雄"
         assignee_name, assignee_account, _ = resolve_bug_assignee({"assignee": target_assignee}, override=target_assignee)
@@ -382,16 +482,32 @@ def sync_bug_to_zentao(bug_id: str, assignee: Optional[str] = None, db: Session 
 # 4. 性能监控数据 API (Performance Metrics & WebRTC / UE Probes)
 # =============================================================================
 
-@app.get("/api/metrics/live/snapshot", response_model=LivePerformanceSnapshotResponse)
-def get_live_performance_snapshot(app_name: str = Query(default="zhaiwan")):
-    """即时采集目标应用当前实时的全景性能快照 (无需任务运行)"""
+@app.get(
+    "/api/metrics/live/snapshot",
+    response_model=LivePerformanceSnapshotResponse,
+    tags=["4. 多核全栈性能监控"],
+    summary="即时采集当前大屏物理环境性能快照",
+    description="无需启动任何测试任务，即时对本机运行的 UE5 引擎、Chromium CDP 协议端口以及 NVIDIA GPU 进行只读探针采样并返回即时切片。"
+)
+def get_live_performance_snapshot(
+    app_name: str = Query(default="zhaiwan", description="矿山应用系统代号 (zhaiwan / liwutong)")
+):
     snapshot = performance_monitor.collect_full_snapshot(app_name=app_name)
     return LivePerformanceSnapshotResponse(**snapshot)
 
 
-@app.get("/api/metrics/{task_id}", response_model=List[PerformanceMetricResponse])
-def get_task_metrics(task_id: str, limit: int = 500, db: Session = Depends(get_db)):
-    """获取任务的时序性能指标列表 (供前端 ECharts 绘制 DOM/内存/UE 性能曲线)"""
+@app.get(
+    "/api/metrics/{task_id}",
+    response_model=List[PerformanceMetricResponse],
+    tags=["4. 多核全栈性能监控"],
+    summary="获取任务的时序性能指标数据列表",
+    description="返回指定任务运行期间采集的所有性能时序打点，包含 DOM 数量、事件监听器、JSHeap 内存、UE5 内存与 WebRTC 实时帧率，专供 ECharts 折线图渲染。"
+)
+def get_task_metrics(
+    task_id: str = FastPath(..., description="巡检任务全局标识码"),
+    limit: int = Query(default=500, ge=10, le=2000, description="最大返回时序点数量"),
+    db: Session = Depends(get_db)
+):
     records = db.query(PerformanceMetric).filter(
         PerformanceMetric.task_id == task_id
     ).order_by(PerformanceMetric.timestamp.asc()).limit(limit).all()
@@ -432,9 +548,17 @@ def get_task_metrics(task_id: str, limit: int = 500, db: Session = Depends(get_d
     return records
 
 
-@app.get("/api/metrics/{task_id}/summary", response_model=PerformanceSummaryResponse)
-def get_task_metrics_summary(task_id: str, db: Session = Depends(get_db)):
-    """聚合计算任务运行期间的峰值、均值与异常健康告警 (内存泄漏、DOM爆炸预警)"""
+@app.get(
+    "/api/metrics/{task_id}/summary",
+    response_model=PerformanceSummaryResponse,
+    tags=["4. 多核全栈性能监控"],
+    summary="聚合计算任务全生命周期性能峰值与健康预警",
+    description="自动聚合 DOM 峰值、平均值、JSHeap 峰值、UE5 内存峰值与 WebRTC 最低谷底掉帧点，并输出智能性能告警建议（如 DOM 泄漏爆炸预警）。"
+)
+def get_task_metrics_summary(
+    task_id: str = FastPath(..., description="巡检任务识别码"),
+    db: Session = Depends(get_db)
+):
     records = db.query(PerformanceMetric).filter(
         PerformanceMetric.task_id == task_id
     ).order_by(PerformanceMetric.timestamp.asc()).all()
@@ -497,7 +621,10 @@ def get_task_metrics_summary(task_id: str, db: Session = Depends(get_db)):
 
 @app.websocket("/ws/tasks/{task_id}/metrics")
 async def websocket_task_metrics(websocket: WebSocket, task_id: str):
-    """WebSocket 实时时序性能推流频道 (专供 ECharts 实时折线图)"""
+    """
+    WebSocket 实时时序性能推流频道
+    专供前端 ECharts 动态折线大屏实时渲染，任务后台探针每完成一次 5 秒采样便自动向当前频道广播一条最新的指标 JSON。
+    """
     await websocket.accept()
     queue = performance_monitor.subscribe_metrics(task_id)
     try:
