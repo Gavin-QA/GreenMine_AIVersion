@@ -134,3 +134,24 @@ class PerformanceMetric(Base):
 
     task = relationship("TaskRun", back_populates="metrics")
 
+
+class PresetTaskRecord(Base):
+    """预设巡检任务模板持久化表 (支持在前端增删改查并保存用户自定义预设)"""
+    __tablename__ = "preset_task_records"
+
+    id = Column(String(64), primary_key=True, index=True) # 如 preset_zhaiwan_explore_full 或 user_preset_xxx
+    title = Column(String(128), nullable=False)
+    app_name = Column(String(64), default="zhaiwan", index=True)
+    mode = Column(String(32), default="explore", index=True)
+    badge = Column(String(32), default="自定义") # 推荐 / 抗压 / 冒烟 / 回归 / 自定义
+    description = Column(String(256), nullable=True)
+    macro_objective = Column(Text, nullable=False)
+    max_steps = Column(Integer, default=200)
+    max_times = Column(Integer, default=60)
+    reset_memory = Column(Boolean, default=False)
+    ignore_errors = Column(Boolean, default=True)
+    case_path = Column(String(256), nullable=True)
+    is_system = Column(Boolean, default=False) # 系统默认预设 vs 用户自定义预设
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+

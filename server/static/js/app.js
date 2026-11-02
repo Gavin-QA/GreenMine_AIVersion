@@ -39,6 +39,7 @@ const app = createApp({
     const activeTask = ref(null);
 
     const taskForm = reactive({
+      preset_id: null, // 记录当前是否绑定某个预设 (用于回写保存)
       name: '',
       app_name: 'zhaiwan',
       mode: 'explore',
@@ -158,7 +159,8 @@ const app = createApp({
     }
 
     function loadPresetToForm(preset) {
-      taskForm.name = `${preset.title} (自定义微调)`;
+      taskForm.preset_id = preset.is_system ? null : preset.id; // 系统预设载入默认另存，自定义预设保留id可直接回写
+      taskForm.name = preset.title;
       taskForm.app_name = preset.app_name;
       taskForm.mode = preset.mode;
       taskForm.macro_objective = preset.macro_objective;
@@ -171,6 +173,66 @@ const app = createApp({
       const formCard = document.getElementById('taskFormCard');
       if (formCard) {
         formCard.scrollIntoView({ behavior: 'smooth' });
+      }
+    }
+
+    async function saveCurrentFormAsPreset(overwriteExisting = false) {
+      const title = prompt('请输入要保存的预设任务名称:', taskForm.name || '我的定制巡检预设');
+      if (!title) return;
+
+      const payload = {
+        id: (overwriteExisting && taskForm.preset_id) ? taskForm.preset_id : null,
+        title: title,
+        app_name: taskForm.app_name,
+        mode: taskForm.mode,
+        badge: '自定义',
+        macro_objective: taskForm.macro_objective,
+        max_steps: taskForm.max_steps,
+        max_times: taskForm.max_times,
+        reset_memory: taskForm.reset_memory,
+        ignore_errors: taskForm.ignore_errors,
+        case_path: taskForm.case_path || null,
+        description: `用户自定义预设: ${taskForm.app_name} / ${taskForm.mode} / ${taskForm.max_steps}步`
+      };
+
+      try {
+        const res = await fetch(`${apiBase}/api/tasks/presets`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+          const saved = await res.json();
+          taskForm.preset_id = saved.id;
+          alert(`✅ 预设【${saved.title}】保存成功！已加入常用预设任务库！`);
+          await fetchPresetTasks();
+        } else {
+          alert('保存预设失败: ' + (await res.text()));
+        }
+      } catch (e) {
+        alert('保存预设异常: ' + e);
+      }
+    }
+
+    async function deletePreset(preset) {
+      if (preset.is_system) {
+        alert('系统内置预设不可删除！');
+        return;
+      }
+      if (!confirm(`确定要删除自定义预设【${preset.title}】吗？`)) return;
+      try {
+        const res = await fetch(`${apiBase}/api/tasks/presets/${preset.id}`, { method: 'DELETE' });
+        if (res.ok) {
+          alert('预设删除成功！');
+          if (taskForm.preset_id === preset.id) {
+            taskForm.preset_id = null;
+          }
+          await fetchPresetTasks();
+        } else {
+          alert('删除失败: ' + (await res.text()));
+        }
+      } catch (e) {
+        alert('删除异常: ' + e);
       }
     }
 
@@ -507,6 +569,8 @@ const app = createApp({
       selectedBug,
       launchPreset,
       loadPresetToForm,
+      saveCurrentFormAsPreset,
+      deletePreset,
       applyTemplate,
       submitCreateTask,
       startTask,

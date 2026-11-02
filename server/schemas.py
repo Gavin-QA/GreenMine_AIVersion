@@ -200,6 +200,22 @@ class PerformanceSummaryResponse(BaseModel):
     )
 
 
+class PresetTaskCreate(BaseModel):
+    """保存/更新预设巡检任务请求模型"""
+    id: Optional[str] = Field(default=None, description="预设 ID (空则系统自动生成)")
+    title: str = Field(description="预设任务标题", examples=["【我的定制】首页重点回归"])
+    app_name: str = Field(default="zhaiwan", description="矿山应用: zhaiwan / liwutong")
+    mode: str = Field(default="explore", description="模式: explore / smoke / case / all")
+    macro_objective: str = Field(description="预设探索目标提示词")
+    max_steps: int = Field(default=200, ge=5, le=5000, description="最大步数")
+    max_times: int = Field(default=60, ge=1, le=1440, description="最大时间 (分钟)")
+    reset_memory: bool = Field(default=False, description="是否重置长期记忆")
+    ignore_errors: bool = Field(default=True, description="是否容错继续")
+    case_path: Optional[str] = Field(default=None, description="用例路径 (case模式生效)")
+    badge: Optional[str] = Field(default="自定义", description="标签 (推荐/抗压/冒烟/回归/自定义)")
+    description: Optional[str] = Field(default=None, description="简要描述说明")
+
+
 class PresetTaskResponse(BaseModel):
     """预设巡检任务模板定义"""
     id: str = Field(description="预设任务唯一标识 (如 preset_zhaiwan_explore_full)")
@@ -212,8 +228,12 @@ class PresetTaskResponse(BaseModel):
     reset_memory: bool = Field(default=False, description="是否重置记忆")
     ignore_errors: bool = Field(default=True, description="是否忽略软错误继续")
     case_path: Optional[str] = Field(default=None, description="用例文件相对路径")
-    badge: str = Field(default="推荐", description="标签 (推荐/高优/抗压/冒烟)")
-    description: str = Field(description="业务场景与测试目标简要说明")
+    badge: str = Field(default="推荐", description="标签 (推荐/高优/抗压/冒烟/自定义)")
+    description: Optional[str] = Field(default=None, description="业务场景与测试目标简要说明")
+    is_system: bool = Field(default=False, description="是否为系统只读预设")
+
+    class Config:
+        from_attributes = True
 
 
 class ConfigOptionsResponse(BaseModel):

@@ -133,8 +133,11 @@
                   <button class="btn btn-primary" style="flex: 1; padding: 6px 10px; font-size: 12px; justify-content: center;" @click="launchPreset(p)">
                     🚀 一键拉起
                   </button>
-                  <button class="btn btn-secondary" style="padding: 6px 10px; font-size: 12px;" @click="loadPresetToForm(p)">
+                  <button class="btn btn-secondary" style="padding: 6px 10px; font-size: 12px;" @click="loadPresetToForm(p)" title="载入到下方表单修改并可另存">
                     ✏️ 载入微调
+                  </button>
+                  <button v-if="!p.is_system" class="btn btn-danger" style="padding: 6px 8px; font-size: 12px;" @click="deletePreset(p)" title="删除此自定义预设">
+                    🗑️
                   </button>
                 </div>
               </div>
@@ -218,7 +221,13 @@
                   ></textarea>
                 </div>
 
-                <div style="margin-top: 24px; display: flex; justify-content: flex-end; gap: 12px;">
+                <div style="margin-top: 24px; display: flex; justify-content: flex-end; gap: 12px; align-items: center;">
+                  <button class="btn btn-secondary" style="border-color: #00d2ff; color: #00d2ff;" @click="saveCurrentFormAsPreset(false)" title="将当前填写的全部配置持久化保存为常用预设">
+                    💾 保存为新预设
+                  </button>
+                  <button v-if="taskForm.preset_id" class="btn btn-secondary" style="border-color: #ffb300; color: #ffb300;" @click="saveCurrentFormAsPreset(true)" title="直接回写覆盖当前载入的原预设">
+                    🔄 覆盖当前预设
+                  </button>
                   <button class="btn btn-primary" style="padding: 10px 24px; font-size: 14px;" @click="submitCreateTask">
                     🚀 立即创建并启动巡检
                   </button>

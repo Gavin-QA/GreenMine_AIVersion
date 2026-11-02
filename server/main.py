@@ -21,7 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
 from .database import get_db, init_db
-from .models import TaskRun, BugRecord, PerformanceMetric
+from .models import TaskRun, BugRecord, PerformanceMetric, PresetTaskRecord
 from .schemas import (
     TaskCreate,
     TaskResponse,
@@ -30,7 +30,8 @@ from .schemas import (
     PerformanceSummaryResponse,
     LivePerformanceSnapshotResponse,
     ConfigOptionsResponse,
-    PresetTaskResponse
+    PresetTaskResponse,
+    PresetTaskCreate
 )
 from .task_manager import task_manager
 from .performance_monitor import performance_monitor
@@ -314,11 +315,115 @@ DEFAULT_PRESET_TASKS = [
     "/api/tasks/presets",
     response_model=List[PresetTaskResponse],
     tags=["1. 平台基础与选项"],
-    summary="获取预置的标准巡检任务库",
-    description="提供经过工程验证的常用巡检任务模板（如地毯式扫荡、3D抗压攻坚、二级菜单冒烟等），支持一键直接拉起或一键克隆到表单微调。"
+    summary="获取预置的标准巡检任务库 (系统预设 + 用户自定义预设)",
+    description="提供系统默认验证的常用巡检任务模板，以及用户在界面中自行保存/编辑的个性化预设方案。"
 )
-def get_preset_tasks():
-    return DEFAULT_PRESET_TASKS
+def get_preset_tasks(db: Session = Depends(get_db)):
+    # 1. 确保系统预设已装载到数据库中 (初次启动种子数据注入)
+    for p in DEFAULT_PRESET_TASKS:
+        exist = db.query(PresetTaskRecord).filter(PresetTaskRecord.id == p["id"]).first()
+        if not exist:
+            rec = PresetTaskRecord(
+                id=p["id"],
+                title=p["title"],
+                app_name=p["app_name"],
+                mode=p["mode"],
+                badge=p["badge"],
+                description=p.get("description"),
+                macro_objective=p["macro_objective"],
+                max_steps=p["max_steps"],
+                max_times=p["max_times"],
+                reset_memory=p.get("reset_memory", False),
+                ignore_errors=p.get("ignore_errors", True),
+                case_path=p.get("case_path"),
+                is_system=True
+            )
+            db.add(rec)
+    db.commit()
+
+    # 2. 查询全部预设（系统预设优先，用户自定义按更新时间倒序）
+    return db.query(PresetTaskRecord).order_by(
+        PresetTaskRecord.is_system.desc(),
+        PresetTaskRecord.updated_at.desc()
+    ).all()
+
+
+@app.post(
+    "/api/tasks/presets",
+    response_model=PresetTaskResponse,
+    tags=["1. 平台基础与选项"],
+    summary="保存或更新预设巡检任务模板",
+    description="支持将前端表单微调后的配置持久化保存为预设，方便日后一键拉起或再次微调；若传入已有 id 则覆盖更新。"
+)
+def save_or_update_preset_task(
+    payload: PresetTaskCreate,
+    db: Session = Depends(get_db)
+):
+    now = datetime.datetime.utcnow()
+    preset_id = payload.id
+    if not preset_id:
+        preset_id = f"preset_user_{now.strftime('%Y%m%d_%H%M%S')}"
+
+    existing = db.query(PresetTaskRecord).filter(PresetTaskRecord.id == preset_id).first()
+    if existing:
+        existing.title = payload.title
+        existing.app_name = payload.app_name
+        existing.mode = payload.mode
+        existing.badge = payload.badge or "自定义"
+        existing.description = payload.description or f"用户自定义任务: {payload.mode}模式 / {payload.max_steps}步"
+        existing.macro_objective = payload.macro_objective
+        existing.max_steps = payload.max_steps
+        existing.max_times = payload.max_times
+        existing.reset_memory = payload.reset_memory
+        existing.ignore_errors = payload.ignore_errors
+        existing.case_path = payload.case_path
+        existing.updated_at = now
+        db.commit()
+        db.refresh(existing)
+        return existing
+    else:
+        new_preset = PresetTaskRecord(
+            id=preset_id,
+            title=payload.title,
+            app_name=payload.app_name,
+            mode=payload.mode,
+            badge=payload.badge or "自定义",
+            description=payload.description or f"用户自定义任务: {payload.mode}模式 / {payload.max_steps}步",
+            macro_objective=payload.macro_objective,
+            max_steps=payload.max_steps,
+            max_times=payload.max_times,
+            reset_memory=payload.reset_memory,
+            ignore_errors=payload.ignore_errors,
+            case_path=payload.case_path,
+            is_system=False,
+            created_at=now,
+            updated_at=now
+        )
+        db.add(new_preset)
+        db.commit()
+        db.refresh(new_preset)
+        return new_preset
+
+
+@app.delete(
+    "/api/tasks/presets/{preset_id}",
+    tags=["1. 平台基础与选项"],
+    summary="删除自定义预设任务模板",
+    description="删除用户创建的个性化预设模板 (系统内置预设禁止删除)。"
+)
+def delete_preset_task(
+    preset_id: str = FastPath(..., description="预设模板 ID"),
+    db: Session = Depends(get_db)
+):
+    existing = db.query(PresetTaskRecord).filter(PresetTaskRecord.id == preset_id).first()
+    if not existing:
+        raise HTTPException(status_code=404, detail="预设未找到")
+    if existing.is_system:
+        raise HTTPException(status_code=403, detail="系统内置预设禁止删除，可载入后另存为新预设")
+
+    db.delete(existing)
+    db.commit()
+    return {"code": 200, "message": "预设删除成功", "preset_id": preset_id}
 
 
 @app.post(
@@ -332,26 +437,48 @@ def launch_preset_task(
     preset_id: str = FastPath(..., description="预设任务模板 ID"),
     db: Session = Depends(get_db)
 ):
-    target_preset = next((p for p in DEFAULT_PRESET_TASKS if p["id"] == preset_id), None)
+    target_preset = db.query(PresetTaskRecord).filter(PresetTaskRecord.id == preset_id).first()
     if not target_preset:
-        raise HTTPException(status_code=404, detail="Preset not found")
+        target_preset = next((p for p in DEFAULT_PRESET_TASKS if p["id"] == preset_id), None)
+        if not target_preset:
+            raise HTTPException(status_code=404, detail="Preset not found")
+        # 兼容 dict 访问
+        p_title = target_preset["title"]
+        p_app = target_preset["app_name"]
+        p_mode = target_preset["mode"]
+        p_obj = target_preset["macro_objective"]
+        p_steps = target_preset["max_steps"]
+        p_times = target_preset["max_times"]
+        p_reset = target_preset["reset_memory"]
+        p_ignore = target_preset["ignore_errors"]
+        p_case = target_preset["case_path"]
+    else:
+        p_title = target_preset.title
+        p_app = target_preset.app_name
+        p_mode = target_preset.mode
+        p_obj = target_preset.macro_objective
+        p_steps = target_preset.max_steps
+        p_times = target_preset.max_times
+        p_reset = target_preset.reset_memory
+        p_ignore = target_preset.ignore_errors
+        p_case = target_preset.case_path
 
     now = datetime.datetime.utcnow()
     task_id = f"task_{now.strftime('%Y%m%d_%H%M%S')}"
 
     task = TaskRun(
         id=task_id,
-        name=f"{target_preset['title']} ({now.strftime('%H:%M:%S')})",
-        app_name=target_preset["app_name"],
-        mode=target_preset["mode"],
+        name=f"{p_title} ({now.strftime('%H:%M:%S')})",
+        app_name=p_app,
+        mode=p_mode,
         status="pending",
-        macro_objective=target_preset["macro_objective"],
-        max_steps=target_preset["max_steps"],
-        max_times=target_preset["max_times"],
-        reset_memory=target_preset["reset_memory"],
-        ignore_errors=target_preset["ignore_errors"],
-        case_path=target_preset["case_path"],
-        explore_context=f"docs/explore_rules_{target_preset['app_name']}.md",
+        macro_objective=p_obj,
+        max_steps=p_steps,
+        max_times=p_times,
+        reset_memory=p_reset,
+        ignore_errors=p_ignore,
+        case_path=p_case,
+        explore_context=f"docs/explore_rules_{p_app}.md",
         start_time=now
     )
     db.add(task)
