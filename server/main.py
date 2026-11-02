@@ -635,3 +635,53 @@ async def websocket_task_metrics(websocket: WebSocket, task_id: str):
         pass
     finally:
         performance_monitor.unsubscribe_metrics(task_id, queue)
+
+
+# =============================================================================
+# 5. 产物与已测接口目录 API (Task Artifacts & API Registry)
+# =============================================================================
+
+@app.get(
+    "/api/tasks/{task_id}/apis",
+    tags=["2. 巡检任务生命周期调度"],
+    summary="获取巡检任务捕获解析的业务 API 接口清单",
+    description="自动解析底层网络监听池与单次报告中的 `api_registry.json`，将前端交互触发的全部后端接口分类呈现为 OpenAPI / Postman 风格契约清单。"
+)
+def get_task_apis(
+    task_id: str = FastPath(..., description="巡检任务标识码"),
+    db: Session = Depends(get_db)
+):
+    task = db.query(TaskRun).filter(TaskRun.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    run_dir = task.run_dir
+    if not run_dir:
+        # 尝试查找最新的 run 目录
+        from utils.paths import get_all_run_folders
+        runs = get_all_run_folders(app_name=task.app_name)
+        if runs:
+            run_dir = f"{task.app_name}/{runs[0].name}"
+
+    if not run_dir:
+        return {"task_id": task_id, "summary": {}, "page_scopes": {}, "global_flat_apis": []}
+
+    api_path = PROJECT_ROOT / "reports" / "runs" / run_dir / "screenshots" / "api_registry.json"
+    if not api_path.exists():
+        api_path = PROJECT_ROOT / "reports" / "runs" / run_dir / "api_registry.json"
+
+    if not api_path.exists():
+        return {"task_id": task_id, "summary": {}, "page_scopes": {}, "global_flat_apis": []}
+
+    try:
+        with open(api_path, "r", encoding="utf-8") as f:
+            api_data = json.load(f)
+        return {
+            "task_id": task_id,
+            "run_dir": run_dir,
+            "summary": api_data.get("summary", {}),
+            "page_scopes": api_data.get("page_scopes", {}),
+            "global_flat_apis": api_data.get("global_flat_apis", api_data.get("summary", {}).get("endpoints", []))
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"解析已测接口清单失败: {e}")
