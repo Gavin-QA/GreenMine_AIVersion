@@ -10,8 +10,12 @@ const app = createApp({
       apps: [],
       modes: [],
       prompt_templates: [],
-      zentao_configured: false
+      zentao_configured: false,
+      report_hub_url: '/report-hub'
     });
+
+    // 预设任务库
+    const presetTasks = ref([]);
 
     // 实时物理环境探针
     const liveSnapshot = reactive({
@@ -72,12 +76,24 @@ const app = createApp({
         options.modes = data.modes || [];
         options.prompt_templates = data.prompt_templates || [];
         options.zentao_configured = data.zentao_configured;
+        if (data.report_hub_url) {
+          options.report_hub_url = data.report_hub_url;
+        }
 
         if (options.prompt_templates.length > 0 && !taskForm.macro_objective) {
           taskForm.macro_objective = options.prompt_templates[0].prompt;
         }
       } catch (e) {
         console.error('获取配置选项失败:', e);
+      }
+    }
+
+    async function fetchPresetTasks() {
+      try {
+        const res = await fetch(`${apiBase}/api/tasks/presets`);
+        presetTasks.value = await res.json();
+      } catch (e) {
+        console.error('获取预设任务列表失败:', e);
       }
     }
 
@@ -115,6 +131,46 @@ const app = createApp({
         bugs.value = await res.json();
       } catch (e) {
         console.error('获取缺陷列表失败:', e);
+      }
+    }
+
+    // =========================================================================
+    // 预设任务一键执行与载入
+    // =========================================================================
+
+    async function launchPreset(preset) {
+      if (!confirm(`确定要立即拉起预设巡检任务【${preset.title}】吗？`)) return;
+      try {
+        const res = await fetch(`${apiBase}/api/tasks/presets/${preset.id}/launch`, { method: 'POST' });
+        if (res.ok) {
+          const newTask = await res.json();
+          await fetchTasks();
+          activeTaskId.value = newTask.id;
+          activeTask.value = newTask;
+          currentTab.value = 'monitor';
+          connectTaskChannels(newTask.id);
+        } else {
+          alert('拉起预设任务失败: ' + (await res.text()));
+        }
+      } catch (e) {
+        alert('启动异常: ' + e);
+      }
+    }
+
+    function loadPresetToForm(preset) {
+      taskForm.name = `${preset.title} (自定义微调)`;
+      taskForm.app_name = preset.app_name;
+      taskForm.mode = preset.mode;
+      taskForm.macro_objective = preset.macro_objective;
+      taskForm.max_steps = preset.max_steps;
+      taskForm.max_times = preset.max_times;
+      taskForm.reset_memory = preset.reset_memory;
+      taskForm.ignore_errors = preset.ignore_errors;
+      taskForm.case_path = preset.case_path || '';
+      // 平滑滚动到底部表单
+      const formCard = document.getElementById('taskFormCard');
+      if (formCard) {
+        formCard.scrollIntoView({ behavior: 'smooth' });
       }
     }
 
@@ -413,6 +469,7 @@ const app = createApp({
 
     onMounted(() => {
       fetchOptions();
+      fetchPresetTasks();
       fetchTasks();
       fetchLiveSnapshot();
       fetchBugs();
@@ -437,6 +494,7 @@ const app = createApp({
     return {
       currentTab,
       options,
+      presetTasks,
       liveSnapshot,
       tasks,
       activeTaskId,
@@ -447,6 +505,8 @@ const app = createApp({
       bugSearch,
       bugSeverityFilter,
       selectedBug,
+      launchPreset,
+      loadPresetToForm,
       applyTemplate,
       submitCreateTask,
       startTask,

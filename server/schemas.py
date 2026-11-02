@@ -200,9 +200,26 @@ class PerformanceSummaryResponse(BaseModel):
     )
 
 
+class PresetTaskResponse(BaseModel):
+    """预设巡检任务模板定义"""
+    id: str = Field(description="预设任务唯一标识 (如 preset_zhaiwan_explore_full)")
+    title: str = Field(description="预设任务标题")
+    app_name: str = Field(description="目标矿山系统代号")
+    mode: str = Field(description="运行模式 (explore/smoke/case/all)")
+    macro_objective: str = Field(description="预设宏观意图提示词")
+    max_steps: int = Field(description="推荐最大执行步数")
+    max_times: int = Field(description="推荐超时时间 (分钟)")
+    reset_memory: bool = Field(default=False, description="是否重置记忆")
+    ignore_errors: bool = Field(default=True, description="是否忽略软错误继续")
+    case_path: Optional[str] = Field(default=None, description="用例文件相对路径")
+    badge: str = Field(default="推荐", description="标签 (推荐/高优/抗压/冒烟)")
+    description: str = Field(description="业务场景与测试目标简要说明")
+
+
 class ConfigOptionsResponse(BaseModel):
     """前端表单初始化选项字典响应模型"""
     apps: List[Dict[str, str]] = Field(description="可选矿山大屏应用清单 (key, name, desc)")
     modes: List[Dict[str, str]] = Field(description="可选运行模式清单 (key, name, desc)")
     prompt_templates: List[Dict[str, str]] = Field(description="高质量预置探索提示词模板清单 (title, prompt)")
     zentao_configured: bool = Field(description="当前后端是否已正确配置公司禅道系统免密提单鉴权")
+    report_hub_url: Optional[str] = Field(default=None, description="产物总门户统一访问地址")

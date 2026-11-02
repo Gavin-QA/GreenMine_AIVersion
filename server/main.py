@@ -16,7 +16,7 @@ from fastapi import (
     WebSocketDisconnect
 )
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
@@ -29,7 +29,8 @@ from .schemas import (
     PerformanceMetricResponse,
     PerformanceSummaryResponse,
     LivePerformanceSnapshotResponse,
-    ConfigOptionsResponse
+    ConfigOptionsResponse,
+    PresetTaskResponse
 )
 from .task_manager import task_manager
 from .performance_monitor import performance_monitor
@@ -150,6 +151,16 @@ if ARTIFACTS_DIR.exists():
     app.mount("/artifacts", StaticFiles(directory=str(ARTIFACTS_DIR)), name="artifacts")
 
 
+@app.get("/report-hub", include_in_schema=False)
+@app.get("/reports-hub", include_in_schema=False)
+def redirect_to_report_hub():
+    """统一重定向至产物总盘首页，彻底解决 8080/8000 多端口与目录黑白列表痛点"""
+    index_file = REPORTS_DIR / "runs" / "index.html"
+    if index_file.exists():
+        return FileResponse(str(index_file))
+    return RedirectResponse(url="/reports/runs/index.html")
+
+
 @app.get("/", include_in_schema=False)
 def serve_index():
     """Web 控制台首页面入口"""
@@ -216,12 +227,148 @@ def get_config_options():
         apps=apps,
         modes=modes,
         prompt_templates=templates,
-        zentao_configured=zentao_ok
+        zentao_configured=zentao_ok,
+        report_hub_url="/report-hub"
     )
 
 
 # =============================================================================
-# 2. 任务调度管理 API (任务创建、启动、终止、日志与状态)
+# 2. 预设巡检任务库 API (Preset Tasks)
+# =============================================================================
+
+DEFAULT_PRESET_TASKS = [
+    {
+        "id": "preset_zhaiwan_explore_full",
+        "title": "【寨湾】全栈地毯式扫荡巡检",
+        "app_name": "zhaiwan",
+        "mode": "explore",
+        "badge": "推荐",
+        "max_steps": 200,
+        "max_times": 60,
+        "reset_memory": False,
+        "ignore_errors": True,
+        "case_path": None,
+        "macro_objective": "开启全栈地毯式扫荡：不局限于任何单一模块，请依次悬停并点击顶部导航栏，深度遍历所有的顶级菜单与二级业务菜单。在每个页面内，务必全量探测核心业务组件（包含所有的数据指标卡片、Echarts图表时间维度切换、表格翻页与明细操作、以及各类深层弹窗和抽屉）。遇到折叠面板必须全部展开，遇到Tab必须逐一切换。请像QA黑客一样发散思维，重点寻找白屏、数据不一致、或者深层状态丢失的隐蔽 Bug。不要在单一页面陷入死循环死磕，确保整个应用 100% 页面全覆盖度！",
+        "description": "全量覆盖 33 个业务二级菜单，深度遍历 2D 业务面板组件、Tab、弹窗抽屉与图表维度切换。"
+    },
+    {
+        "id": "preset_zhaiwan_3d_stress",
+        "title": "【寨湾】中央 3D 视界与像素流抗压专项",
+        "app_name": "zhaiwan",
+        "mode": "explore",
+        "badge": "抗压",
+        "max_steps": 100,
+        "max_times": 30,
+        "reset_memory": False,
+        "ignore_errors": True,
+        "case_path": None,
+        "macro_objective": "全面探测中央 3D 矿山数字孪生模型健康度：重点进入三维视口页面，执行轨道视角全向旋转 (rotate_3d) 与镜头深度推进拉远 (zoom)，并发起三维视口晃动抗压测试 (canvas_stress_drag)，深度排查 UE5 像素流是否有花屏、断流、模型破面或 WebGL 上下文丢失！",
+        "description": "重点进入中央三维视口执行轨道旋转、镜头推拉与高频甩动，深度压测 UE5 伴生进程与 WebRTC 掉帧风险。"
+    },
+    {
+        "id": "preset_zhaiwan_smoke_tour",
+        "title": "【寨湾】二级菜单极速全量冒烟体检",
+        "app_name": "zhaiwan",
+        "mode": "smoke",
+        "badge": "冒烟",
+        "max_steps": 40,
+        "max_times": 15,
+        "reset_memory": False,
+        "ignore_errors": True,
+        "case_path": None,
+        "macro_objective": "二级菜单全量冒烟体检：极速单次遍历全部 33 个业务二级菜单，验证两级跳转与基础展示健康度",
+        "description": "轻量级高频冒烟，单次快速校验全部 33 个菜单路由跳转、页面框架是否白屏以及核心接口健康度。"
+    },
+    {
+        "id": "preset_zhaiwan_home_yaml",
+        "title": "【寨湾】首页业务深度确定性回归 (YAML)",
+        "app_name": "zhaiwan",
+        "mode": "case",
+        "badge": "回归",
+        "max_steps": 50,
+        "max_times": 20,
+        "reset_memory": False,
+        "ignore_errors": True,
+        "case_path": "test_cases/test_home_mine_intro.yaml",
+        "macro_objective": "精确重现已通过静态合规检验的 YAML 业务流程：首页矿山简介深度巡检",
+        "description": "精确执行已固化的标准自动化回归脚本，100% 确定性复现关键业务链路并核对 API。"
+    },
+    {
+        "id": "preset_liwutong_explore",
+        "title": "【李屋塘】数字孪生采矿与选矿自主探索",
+        "app_name": "liwutong",
+        "mode": "explore",
+        "badge": "探索",
+        "max_steps": 150,
+        "max_times": 45,
+        "reset_memory": False,
+        "ignore_errors": True,
+        "case_path": None,
+        "macro_objective": "全面扫荡李屋塘矿山各业务模块：深入探测选矿看板、采场可视化与设备一张图，挖掘未覆盖盲区中的数据不一致与前端崩溃 Bug！",
+        "description": "李屋塘矿山全业务板块探测，深入验证选矿流程、指标卡片与报警处置流程。"
+    }
+]
+
+
+@app.get(
+    "/api/tasks/presets",
+    response_model=List[PresetTaskResponse],
+    tags=["1. 平台基础与选项"],
+    summary="获取预置的标准巡检任务库",
+    description="提供经过工程验证的常用巡检任务模板（如地毯式扫荡、3D抗压攻坚、二级菜单冒烟等），支持一键直接拉起或一键克隆到表单微调。"
+)
+def get_preset_tasks():
+    return DEFAULT_PRESET_TASKS
+
+
+@app.post(
+    "/api/tasks/presets/{preset_id}/launch",
+    response_model=TaskResponse,
+    tags=["2. 巡检任务生命周期调度"],
+    summary="按预设模板一键快速拉起巡检任务",
+    description="根据预设模板 ID 直接创建巡检任务并在后台立即异步拉起，无需手动填写表单。"
+)
+def launch_preset_task(
+    preset_id: str = FastPath(..., description="预设任务模板 ID"),
+    db: Session = Depends(get_db)
+):
+    target_preset = next((p for p in DEFAULT_PRESET_TASKS if p["id"] == preset_id), None)
+    if not target_preset:
+        raise HTTPException(status_code=404, detail="Preset not found")
+
+    now = datetime.datetime.utcnow()
+    task_id = f"task_{now.strftime('%Y%m%d_%H%M%S')}"
+
+    task = TaskRun(
+        id=task_id,
+        name=f"{target_preset['title']} ({now.strftime('%H:%M:%S')})",
+        app_name=target_preset["app_name"],
+        mode=target_preset["mode"],
+        status="pending",
+        macro_objective=target_preset["macro_objective"],
+        max_steps=target_preset["max_steps"],
+        max_times=target_preset["max_times"],
+        reset_memory=target_preset["reset_memory"],
+        ignore_errors=target_preset["ignore_errors"],
+        case_path=target_preset["case_path"],
+        explore_context=f"docs/explore_rules_{target_preset['app_name']}.md",
+        start_time=now
+    )
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+
+    # 立即触发启动
+    success = task_manager.start_task(task_id)
+    if not success:
+        raise HTTPException(status_code=500, detail="拉起预设任务失败，请检查运行环境")
+
+    db.refresh(task)
+    return task
+
+
+# =============================================================================
+# 3. 任务调度管理 API (任务创建、启动、终止、日志与状态)
 # =============================================================================
 
 @app.post(

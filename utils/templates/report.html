@@ -1255,7 +1255,7 @@
   <!-- Left Sidebar -->
   <div class="sidebar">
     <div class="sidebar-header">
-      <a href="http://127.0.0.1:8000" target="_blank" class="back-btn" style="background: linear-gradient(135deg, rgba(0, 210, 255, 0.2), rgba(58, 123, 213, 0.2)); border: 1px solid #00d2ff; color: #00d2ff; font-weight: 700; margin-bottom: 8px;">
+      <a href="/?from_report=1" id="visionPlatformJumpBtn" target="_blank" class="back-btn" style="background: linear-gradient(135deg, rgba(0, 210, 255, 0.2), rgba(58, 123, 213, 0.2)); border: 1px solid #00d2ff; color: #00d2ff; font-weight: 700; margin-bottom: 8px;">
         <span style="font-size: 16px;">⚡</span> 进入 Vision 平台中枢
       </a>
       <a href="{{ hub_root_rel }}index.html" class="back-btn">
@@ -2726,5 +2726,21 @@
   </div> <!-- end container -->
   </div> <!-- end main-content -->
 </div> <!-- end layout-wrapper -->
+
+    <script>
+      (function() {
+        const btn = document.getElementById('visionPlatformJumpBtn');
+        if (btn) {
+          // 如果当前是 8080 端口 (旧 Hub 服务)，则平台中枢优先指向 8000 端口
+          if (window.location.port === '8080') {
+            btn.href = `${window.location.protocol}//${window.location.hostname}:8000`;
+          } else {
+            // 如果已经在 8000 (统一中枢平台) 或其他反代端口下，直接根路径访问平台中枢
+            btn.href = `${window.location.protocol}//${window.location.host}/`;
+          }
+        }
+      })();
+    </script>
+    
 </body>
 </html>
