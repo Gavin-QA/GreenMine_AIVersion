@@ -147,6 +147,14 @@ REPORTS_DIR = PROJECT_ROOT / "reports"
 if REPORTS_DIR.exists():
     app.mount("/reports", StaticFiles(directory=str(REPORTS_DIR)), name="reports")
 
+# 关键兼容挂载：大盘与报告中大量采用 `./zhaiwan/...` 或相对根路径请求图片与页面
+# 将 /zhaiwan 和 /liwutong 等各应用目录直接挂载映射至 reports/runs/<app_name>
+RUNS_DIR = REPORTS_DIR / "runs"
+if RUNS_DIR.exists():
+    for app_dir in RUNS_DIR.iterdir():
+        if app_dir.is_dir() and not app_dir.name.startswith("."):
+            app.mount(f"/{app_dir.name}", StaticFiles(directory=str(app_dir)), name=f"run_app_{app_dir.name}")
+
 ARTIFACTS_DIR = PROJECT_ROOT / "artifacts"
 if ARTIFACTS_DIR.exists():
     app.mount("/artifacts", StaticFiles(directory=str(ARTIFACTS_DIR)), name="artifacts")
@@ -160,19 +168,6 @@ def redirect_to_report_hub():
     if index_file.exists():
         return FileResponse(str(index_file))
     return RedirectResponse(url="/reports/runs/index.html")
-
-
-@app.get("/{app_name}/{run_id}/report.html", include_in_schema=False)
-def serve_run_report_direct(app_name: str, run_id: str):
-    """
-    智能兼容重定向与直读：
-    当从历史记录或外部跳转 `/{app_name}/{run_id}/report.html` 时，
-    直接映射至 `/reports/runs/{app_name}/{run_id}/report.html`，彻底消灭 404！
-    """
-    report_file = REPORTS_DIR / "runs" / app_name / run_id / "report.html"
-    if report_file.exists():
-        return FileResponse(str(report_file))
-    raise HTTPException(status_code=404, detail=f"未找到运行报告: {app_name}/{run_id}/report.html")
 
 
 @app.get("/", include_in_schema=False)
