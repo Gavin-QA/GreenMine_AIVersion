@@ -26,6 +26,7 @@ from .schemas import (
     TaskCreate,
     TaskResponse,
     BugResponse,
+    BugUpdate,
     PerformanceMetricResponse,
     PerformanceSummaryResponse,
     LivePerformanceSnapshotResponse,
@@ -258,13 +259,19 @@ def get_config_options():
         }
     ]
     
-    # 检查禅道是否具备配置
-    zentao_ok = bool(os.getenv("ZENTAO_PASSWORD"))
+    # 检查禅道是否具备配置与动态基地址
+    from config.settings import settings
+    zentao_ok = bool(os.getenv("ZENTAO_PASSWORD") or getattr(settings, "zentao_password", None))
+    zentao_url = getattr(settings, "zentao_url", "http://192.140.163.129:8080")
+    if zentao_url:
+        zentao_url = zentao_url.rstrip("/")
+
     return ConfigOptionsResponse(
         apps=apps,
         modes=modes,
         prompt_templates=templates,
         zentao_configured=zentao_ok,
+        zentao_base_url=zentao_url,
         report_hub_url="/report-hub"
     )
 
@@ -725,6 +732,54 @@ def list_bugs(
             (BugRecord.id.like(f"%{search}%"))
         )
     return q.offset(offset).limit(limit).all()
+
+
+@app.put(
+    "/api/bugs/{bug_id}",
+    response_model=BugResponse,
+    tags=["3. 缺陷治理与禅道同步"],
+    summary="编辑更新缺陷属性 (多端一致性同步写回)",
+    description="支持在线修改缺陷标题、责任人、严重度、状态、关联禅道单号以及 AI 初诊排查指引，并自动同步到全局 JSON、单次运行报告 JSON 及数据库。"
+)
+def update_bug(
+    bug_id: str = FastPath(..., description="待修改的缺陷编号，如 BUG-20261101-002"),
+    payload: BugUpdate = ...,
+    db: Session = Depends(get_db)
+):
+    bug = db.query(BugRecord).filter(BugRecord.id == bug_id).first()
+    if not bug:
+        raise HTTPException(status_code=404, detail=f"未找到编号为 '{bug_id}' 的缺陷记录")
+
+    from utils.bug_updater import update_bug_record
+
+    update_dict = {"bug_id": bug_id}
+    if payload.title is not None:
+        bug.title = payload.title
+        update_dict["title"] = payload.title
+    if payload.severity is not None:
+        bug.severity = payload.severity
+        update_dict["severity"] = payload.severity
+    if payload.status is not None:
+        bug.status = payload.status
+        update_dict["status"] = payload.status
+    if payload.assignee is not None:
+        bug.assignee = payload.assignee
+        update_dict["assignee"] = payload.assignee
+    if payload.zentao_id is not None:
+        bug.zentao_id = payload.zentao_id.strip() if payload.zentao_id else None
+        update_dict["zentao_id"] = bug.zentao_id
+    if payload.analysis_notes is not None:
+        bug.analysis_notes = payload.analysis_notes
+        update_dict["analysis_notes"] = payload.analysis_notes
+    if payload.ui_path is not None:
+        bug.ui_path = payload.ui_path
+        update_dict["ui_path"] = payload.ui_path
+
+    # 调用统一底座写回 JSON 库
+    update_bug_record(update_dict)
+    db.commit()
+    db.refresh(bug)
+    return bug
 
 
 @app.post(

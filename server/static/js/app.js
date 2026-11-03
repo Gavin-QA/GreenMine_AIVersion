@@ -66,6 +66,17 @@ const app = createApp({
     const bugSearch = ref('');
     const bugSeverityFilter = ref('');
     const selectedBug = ref(null);
+    const editingBug = ref(null);
+    const editForm = reactive({
+      id: '',
+      title: '',
+      severity: 'Medium',
+      status: '激活',
+      assignee: '陈贻雄',
+      zentao_id: '',
+      ui_path: '',
+      analysis_notes: ''
+    });
 
     // =========================================================================
     // API 请求封装
@@ -562,6 +573,82 @@ const app = createApp({
       selectedBug.value = b;
     }
 
+    function openEditBugModal(b) {
+      editingBug.value = b;
+      editForm.id = b.id;
+      editForm.title = b.title || '';
+      editForm.severity = b.severity || 'Medium';
+      editForm.status = b.status || '激活';
+      editForm.assignee = b.assignee || '陈贻雄';
+      editForm.zentao_id = b.zentao_id || '';
+      editForm.ui_path = b.ui_path || '';
+      editForm.analysis_notes = b.analysis_notes || '';
+    }
+
+    async function submitBugEdit() {
+      if (!editingBug.value) return;
+      try {
+        const payload = {
+          title: editForm.title,
+          severity: editForm.severity,
+          status: editForm.status,
+          assignee: editForm.assignee,
+          zentao_id: editForm.zentao_id,
+          ui_path: editForm.ui_path,
+          analysis_notes: editForm.analysis_notes
+        };
+        const res = await fetch(`${apiBase}/api/bugs/${editingBug.value.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+          const updated = await res.json();
+          alert(`✅ 缺陷 [${updated.id}] 修改成功！已实时多端同步入库！`);
+          // 更新前端内存列表
+          const idx = bugs.value.findIndex(item => item.id === updated.id);
+          if (idx !== -1) {
+            bugs.value[idx] = Object.assign(bugs.value[idx], updated);
+          }
+          if (selectedBug.value && selectedBug.value.id === updated.id) {
+            Object.assign(selectedBug.value, updated);
+          }
+          editingBug.value = null;
+        } else {
+          alert('保存失败: ' + (await res.text()));
+        }
+      } catch (e) {
+        alert('修改缺陷异常: ' + e);
+      }
+    }
+
+    function formatZenTaoUrl(zentaoId) {
+      if (!zentaoId) return '';
+      const base = (options.zentao_base_url || 'http://192.140.163.129:8080').replace(/\/+$/, '');
+      return `${base}/index.php?m=bug&f=view&bugID=${encodeURIComponent(zentaoId)}`;
+    }
+
+    function formatScreenshotUrl(path) {
+      if (!path) return '';
+      if (path.startsWith('http://') || path.startsWith('https://')) return path;
+      const normalized = path.replace(/\\/g, '/');
+      const idxReports = normalized.indexOf('/reports/');
+      if (idxReports !== -1) {
+        return normalized.slice(idxReports);
+      }
+      const idxArtifacts = normalized.indexOf('/artifacts/');
+      if (idxArtifacts !== -1) {
+        return normalized.slice(idxArtifacts);
+      }
+      if (normalized.startsWith('reports/')) {
+        return '/' + normalized;
+      }
+      if (normalized.startsWith('artifacts/')) {
+        return '/' + normalized;
+      }
+      return normalized;
+    }
+
     function formatReportUrl(url) {
       if (!url) return '';
       if (url.startsWith('http://') || url.startsWith('https://')) return url;
@@ -655,6 +742,12 @@ const app = createApp({
       bugSearch,
       bugSeverityFilter,
       selectedBug,
+      editingBug,
+      editForm,
+      openEditBugModal,
+      submitBugEdit,
+      formatZenTaoUrl,
+      formatScreenshotUrl,
       launchPreset,
       loadPresetToForm,
       saveCurrentFormAsPreset,

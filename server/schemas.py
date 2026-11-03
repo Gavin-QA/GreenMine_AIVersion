@@ -89,6 +89,17 @@ class TaskResponse(BaseModel):
         from_attributes = True
 
 
+class BugUpdate(BaseModel):
+    """缺陷信息在线编辑请求模型"""
+    title: Optional[str] = Field(default=None, description="缺陷标题与摘要")
+    severity: Optional[str] = Field(default=None, description="严重程度: High / Medium / Low")
+    status: Optional[str] = Field(default=None, description="状态: 激活 / 已提单 / 误报 / 已解决 / 已关闭")
+    assignee: Optional[str] = Field(default=None, description="责任人: 陈贻雄 / 梅本霞 等")
+    zentao_id: Optional[str] = Field(default=None, description="禅道系统关联单号")
+    analysis_notes: Optional[str] = Field(default=None, description="AI 智能初诊分析与排查指引说明")
+    ui_path: Optional[str] = Field(default=None, description="页面层级路径")
+
+
 class BugResponse(BaseModel):
     """缺陷资产记录响应模型"""
     id: str = Field(description="全局统一缺陷编号 (格式如 BUG-20261030-001)")
@@ -244,4 +255,5 @@ class ConfigOptionsResponse(BaseModel):
     modes: List[Dict[str, str]] = Field(description="可选运行模式清单 (key, name, desc)")
     prompt_templates: List[Dict[str, str]] = Field(description="高质量预置探索提示词模板清单 (title, prompt)")
     zentao_configured: bool = Field(description="当前后端是否已正确配置公司禅道系统免密提单鉴权")
+    zentao_base_url: Optional[str] = Field(default=None, description="公司禅道系统 Web 根地址 (用于单号超链接动态拼接)")
     report_hub_url: Optional[str] = Field(default=None, description="产物总门户统一访问地址")
