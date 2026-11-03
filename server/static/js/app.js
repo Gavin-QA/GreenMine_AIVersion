@@ -43,14 +43,14 @@ const app = createApp({
     const taskForm = reactive({
       preset_id: null, // 记录当前是否绑定某个预设 (用于回写保存)
       name: '',
-      app_name: 'zhaiwan',
+      app_name: 'tianrui',
       mode: 'explore',
       macro_objective: '',
       max_steps: 200,
       max_times: 60,
       reset_memory: false,
       ignore_errors: true,
-      explore_context: 'docs/explore_rules_zhaiwan.md',
+      explore_context: 'docs/explore_rules_tianrui.md',
       case_path: ''
     });
 
