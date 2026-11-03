@@ -137,6 +137,14 @@ def on_startup():
     except Exception as e:
         logger.debug(f"冷启动同步历史缺陷异常 (可忽略): {e}")
 
+    # 4. 自动滚动清理过期历史性能数据 (默认保留 7 天，防止 SQLite 数据库膨胀)
+    try:
+        deleted = performance_monitor.cleanup_expired_metrics(retention_days=7)
+        if deleted > 0:
+            logger.info(f"🧹 冷启动数据治理：自动清理了 {deleted} 条超过 7 天的历史性能打点")
+    except Exception as e:
+        logger.debug(f"滚动清理性能时序异常 (可忽略): {e}")
+
 
 # 静态文件挂载：平台前端 UI 静态资源与测试产物报告截图
 STATIC_DIR = CURRENT_DIR / "static"
@@ -972,6 +980,24 @@ async def websocket_task_metrics(websocket: WebSocket, task_id: str):
         logger.debug(f"[WS-Metrics] 任务 [{task_id}] 性能推流通道安全关闭: {e}")
     finally:
         performance_monitor.unsubscribe_metrics(task_id, queue)
+
+
+@app.post(
+    "/api/metrics/cleanup",
+    tags=["4. 多核全栈性能监控"],
+    summary="手动触发滚动清理历史过期性能打点数据",
+    description="支持指定保留天数（默认 7 天），滚动清理超期性能打点，释放存储空间保障极速读写。"
+)
+def trigger_metrics_cleanup(
+    retention_days: int = Query(default=7, ge=1, le=90, description="性能时序数据保留天数")
+):
+    deleted = performance_monitor.cleanup_expired_metrics(retention_days=retention_days)
+    return {
+        "code": 200,
+        "message": f"成功清理 {deleted} 条超过 {retention_days} 天的历史性能时序数据",
+        "deleted_count": deleted,
+        "retention_days": retention_days
+    }
 
 
 # =============================================================================

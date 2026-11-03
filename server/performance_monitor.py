@@ -485,6 +485,27 @@ class PerformanceMonitor:
 
             stop_event.wait(timeout=interval)
 
+    def cleanup_expired_metrics(self, retention_days: int = 7) -> int:
+        """
+        滚动清理超过指定保留期限 (默认 7 天) 的历史性能打点数据，
+        防止 SQLite 数据库无限膨胀，保障海量巡检下的极致读写性能。
+        """
+        db = SessionLocal()
+        deleted_count = 0
+        try:
+            cutoff = datetime.datetime.now() - datetime.timedelta(days=retention_days)
+            deleted_count = db.query(PerformanceMetric).filter(PerformanceMetric.timestamp < cutoff).delete(synchronize_session=False)
+            db.commit()
+            if deleted_count > 0:
+                logger.info(f"🧹 [PerformanceMonitor] 滚动清理完成：已删除 {deleted_count} 条超过 {retention_days} 天的历史性能时序打点")
+            return deleted_count
+        except Exception as e:
+            db.rollback()
+            logger.error(f"❌ [PerformanceMonitor] 清理过期性能数据异常: {e}")
+            return 0
+        finally:
+            db.close()
+
     def subscribe_metrics(self, task_id: str) -> asyncio.Queue:
         """创建针对特定任务的实时性能推流通道"""
         queue = asyncio.Queue()

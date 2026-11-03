@@ -309,7 +309,7 @@ const app = createApp({
     }
 
     function onMonitorTargetChange() {
-      if (activeTaskId.value === '__live__') {
+      if (activeTaskId.value === '__live__' || !activeTaskId.value) {
         switchToLiveMonitor();
       } else {
         const t = tasks.value.find(item => item.id === activeTaskId.value);
@@ -330,7 +330,8 @@ const app = createApp({
         `[${new Date().toLocaleTimeString()}] 📡 无需启动任何测试任务，只读探针正在每 4 秒采集一次 UE5、Chromium、CDP 与 NVIDIA GPU 即时切片并绘制实时动态曲线...`
       ];
 
-      initCharts();
+      // 切换到 Live 模式若之前已有 live 采样点保留滑动窗口，否则初始化
+      initCharts(false);
     }
 
     function switchActiveTask(t) {
@@ -352,7 +353,7 @@ const app = createApp({
       if (metricWs) { metricWs.close(); metricWs = null; }
 
       terminalLogs.value = [];
-      initCharts();
+      initCharts(true); // 切换不同任务时清空旧任务的数据
 
       // 2. 建立日志流 WS
       const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -417,11 +418,18 @@ const app = createApp({
     let ueMemData = [];
     let webrtcFpsData = [];
 
-    function initCharts() {
+    function initCharts(forceClear = false) {
       nextTick(() => {
         const domEl = document.getElementById('domChart');
         const ueEl = document.getElementById('ueChart');
         if (!domEl || !ueEl || !window.echarts) return;
+
+        // 如果图表已存在且不需要强制清空重建，仅自适应容器尺寸并保持已有数据
+        if (domChart && ueChart && !forceClear) {
+          domChart.resize();
+          ueChart.resize();
+          return;
+        }
 
         if (domChart) domChart.dispose();
         if (ueChart) ueChart.dispose();
@@ -513,7 +521,7 @@ const app = createApp({
       });
     }
 
-    function appendMetricToCharts(m) {
+    function appendMetricToCharts(m, maxPoints = 225) {
       if (!domChart || !ueChart) return;
       const t = new Date(m.timestamp).toLocaleTimeString();
       chartTimes.push(t);
@@ -524,7 +532,8 @@ const app = createApp({
       ueMemData.push(m.ue_memory_mb || 0);
       webrtcFpsData.push(m.webrtc_fps || 0);
 
-      if (chartTimes.length > 60) {
+      // 默认维持最多 225 个采样点 (4秒一个点即 15 分钟连续滑动窗口)
+      if (chartTimes.length > maxPoints) {
         chartTimes.shift();
         domData.shift();
         listenersData.shift();
@@ -588,11 +597,17 @@ const app = createApp({
     // 监听标签页切换
     watch(currentTab, (val) => {
       if (val === 'monitor') {
-        if (activeTaskId.value === '__live__') {
-          switchToLiveMonitor();
-        } else if (activeTaskId.value) {
-          initCharts();
-          loadHistoricalMetrics(activeTaskId.value);
+        // 切回大屏标签页时：图表 DOM 重新恢复显示，只调用 resize 自适应容器，不销毁历史数据！
+        nextTick(() => {
+          if (domChart) domChart.resize();
+          if (ueChart) ueChart.resize();
+          scrollTerminalToBottom();
+        });
+        if (!domChart || !ueChart) {
+          initCharts(false);
+          if (activeTaskId.value && activeTaskId.value !== '__live__') {
+            loadHistoricalMetrics(activeTaskId.value);
+          }
         }
       } else if (val === 'bugs') {
         fetchBugs();
