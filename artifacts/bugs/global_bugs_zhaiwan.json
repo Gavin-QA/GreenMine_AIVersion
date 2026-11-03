@@ -3680,7 +3680,7 @@
     "run_id": "explore_20261102_182417",
     "title": "[explore_20261031_151626] UI数据与接口原始报文不匹配: '中央环形动态能耗图（位于页面中央，含多层同心环与发光节点）'",
     "severity": "Medium",
-    "status": "激活",
+    "status": "误报",
     "date": "2026-11-01",
     "occurrences": 3,
     "last_seen": "2026-11-02",
@@ -3698,7 +3698,8 @@
       "能耗监测"
     ],
     "analysis_notes": "🤖【AI 智能初诊与排查指引】\n1. 缺陷定位与表现：UI与数据报文不符\n2. 核心疑点与推断根因：前端展示逻辑错误：1) 日均耗电量未按当月天数动态折算（552090 kWh / 31 ≈ 17809.35 kWh/天，但显示6455.86），疑似误用全年天数365或固定系数；2) 年度累计耗电量接口值（2299060）与前端卡片值（2356390）偏差2.43%，可能因前端叠加了未同步的补录数据或缓存旧值；3) 耗油量无后端接口字段支撑（如getFuelConsumptionYearlyStatistic缺失），前端仅渲染占位符，属数据源断层。\n3. 建议排查方向：建议优先联系前端大屏开发复核能耗图组件的数据映射逻辑（重点检查日均值计算公式与时间范围过滤）；同步协调后端能耗微服务（power-statistics模块）确认getPowerYearlyStatistic接口返回字段完整性与时效性；若涉及多源聚合，需核查ETL任务是否遗漏燃料类指标。人工复核时应比对数据库原始表（如t_power_yearly_stat）与接口响应快照，定位数值漂移节点。",
-    "global_step": null
+    "global_step": null,
+    "remark": "经人工抓包 DevTools 核验，接口 getPowerYearlyStatistic 字段定义清晰，totalPowerConsumption(2411410)、avgDailyPowerConsumption(6606.6)、maxMonthPowerConsumption(609420)、minMonthPowerConsumption(55020)、avgMonthlyPowerConsumption(401901.67) 与前端电耗卡片指标数值 100% 一致。原断言系 AI 误拿当月总量除以31天推算日均值导致的过度计算误报，确认前端展示正确，判定为误报并关闭。"
   },
   {
     "id": "BUG-20261101-002",
