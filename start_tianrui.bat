@@ -10,3 +10,4 @@ echo [Launching] Starting Tianrui client with remote debugging port 9223...
 start "" "se-launcher-tianrui.exe" --remote-debugging-port=9223
 
 echo [Ready] 客户端已成功拉起！请打开平台监控大盘查看实时心电图: http://127.0.0.1:8000
+
