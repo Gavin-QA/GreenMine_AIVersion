@@ -91,6 +91,3 @@ reports:
 zentao:
   url: "http://192.140.163.129:8080" # 禅道系统根地址
   account: "guoxiaoqi"               # 提单账号
-  default_product_id: 11             # 默认关联产品 ID (11: 数字孪生系统)
-  default_project_id: 26             # 默认关联项目 ID (26: 神农架寨湾二期)
-  default_execution_id: 30           # 默认关联执行/迭代 ID (30: 测试)

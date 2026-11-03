@@ -1,3 +1,4 @@
+from typing import Optional, Dict, Any
 """
 settings.py — 读取环境变量及 .env 配置文件
 
@@ -107,18 +108,31 @@ class Settings:
         self.log_file_path: str = os.getenv("LOG_FILE_PATH", "reports/runs/pytest_execution.log")
         self.screenshot_on_failure: bool = os.getenv("SCREENSHOT_ON_FAILURE", "true").lower() == "true"
 
-        # 9. 禅道缺陷管理系统配置
+        # 9. 禅道缺陷管理系统配置 (全局服务器连接与账号)
         zentao_cfg = self._yaml_config.get("zentao", {})
         self.zentao_url: str = os.getenv("ZENTAO_URL") or zentao_cfg.get("url", "http://192.140.163.129:8080")
         self.zentao_account: str = os.getenv("ZENTAO_ACCOUNT") or zentao_cfg.get("account", "guoxiaoqi")
         self.zentao_password: str = os.getenv("ZENTAO_PASSWORD") or zentao_cfg.get("password", "")
-        self.zentao_default_product_id: int = int(os.getenv("ZENTAO_DEFAULT_PRODUCT_ID") or zentao_cfg.get("default_product_id", 11))
-        self.zentao_default_project_id: int = int(os.getenv("ZENTAO_DEFAULT_PROJECT_ID") or zentao_cfg.get("default_project_id", 0))
-        self.zentao_default_execution_id: int = int(os.getenv("ZENTAO_DEFAULT_EXECUTION_ID") or zentao_cfg.get("default_execution_id", 0))
+
+        # 默认归属优先回退到当前活跃应用专有配置中定义的三元组
+        active_app_cfg = self.get_app_config(self.active_app)
+        self.zentao_default_product_id: int = int(os.getenv("ZENTAO_DEFAULT_PRODUCT_ID") or zentao_cfg.get("default_product_id") or active_app_cfg.get("zentao_product_id", 11))
+        self.zentao_default_project_id: int = int(os.getenv("ZENTAO_DEFAULT_PROJECT_ID") or zentao_cfg.get("default_project_id") or active_app_cfg.get("zentao_project_id", 26))
+        self.zentao_default_execution_id: int = int(os.getenv("ZENTAO_DEFAULT_EXECUTION_ID") or zentao_cfg.get("default_execution_id") or active_app_cfg.get("zentao_execution_id", 30))
 
     def get_app_config(self, app_key: str) -> dict:
         """获取指定应用的专有配置字典"""
         return self._yaml_config.get("apps", {}).get(app_key, {})
+
+    def get_zentao_app_mapping(self, app_key: Optional[str] = None) -> dict:
+        """根据应用代号 (zhaiwan / liwutong) 获取其绑定的禅道产品/项目/迭代三元组"""
+        target_app = app_key or self.active_app or "zhaiwan"
+        app_cfg = self.get_app_config(target_app)
+        return {
+            "product_id": int(app_cfg.get("zentao_product_id", 11)),
+            "project_id": int(app_cfg.get("zentao_project_id", 0)),
+            "execution_id": int(app_cfg.get("zentao_execution_id", 0))
+        }
 
 
 settings = Settings()

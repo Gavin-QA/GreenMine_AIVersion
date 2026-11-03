@@ -874,7 +874,22 @@ def sync_bug_to_zentao(
         from config.settings import settings
 
         zentao = ZenTaoClient()
-        product_id = getattr(settings, "zentao", {}).get("default_product_id", 11) or 11
+
+        # 1. 动态智能判定该 Bug 所属矿山应用
+        app_key = "zhaiwan"
+        if bug.task and bug.task.app_name:
+            app_key = bug.task.app_name
+        elif bug.screenshot_path and "liwutong" in bug.screenshot_path.lower():
+            app_key = "liwutong"
+        elif bug.ui_path and ("里伍" in bug.ui_path or "liwutong" in bug.ui_path.lower()):
+            app_key = "liwutong"
+
+        # 2. 读取对应矿山应用专属的禅道产品/项目/迭代归属三元组
+        app_mapping = settings.get_zentao_app_mapping(app_key)
+        product_id = app_mapping["product_id"]
+        project_id = app_mapping["project_id"]
+        execution_id = app_mapping["execution_id"]
+        app_chinese = "里伍铜矿" if app_key == "liwutong" else "寨湾矿山"
 
         target_assignee = assignee or bug.assignee or "陈贻雄"
         assignee_name, assignee_account, _ = resolve_bug_assignee({"assignee": target_assignee}, override=target_assignee)
@@ -892,17 +907,19 @@ def sync_bug_to_zentao(
 
         steps_html, _ = format_bug_details_html(
             bug=raw_bug_dict,
-            app_key="zhaiwan",
+            app_key=app_key,
             assignee_name=assignee_name,
             assignee_account=assignee_account
         )
 
         res = zentao.submit_bug(
             product_id=product_id,
-            title=f"【AI自动化·寨湾矿山】[{bug.id}] {bug.title}",
+            title=f"【AI自动化·{app_chinese}】[{bug.id}] {bug.title}",
             steps_html=steps_html,
             severity=3 if bug.severity == "High" else 2,
-            assigned_to=assignee_account
+            assigned_to=assignee_account,
+            project_id=project_id,
+            execution_id=execution_id
         )
         z_id = str(res.get("id"))
 
