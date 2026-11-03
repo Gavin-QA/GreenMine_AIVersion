@@ -1129,6 +1129,24 @@ async def websocket_task_metrics(websocket: WebSocket, task_id: str):
         performance_monitor.unsubscribe_metrics(task_id, queue)
 
 
+platform_subscribers: set = set()
+
+@app.websocket("/ws/platform")
+async def websocket_platform(websocket: WebSocket):
+    """全平台全局多端实时数据同步 WebSocket 通道"""
+    await websocket.accept()
+    platform_subscribers.add(websocket)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            if data == "ping":
+                await websocket.send_text("pong")
+    except (WebSocketDisconnect, asyncio.CancelledError):
+        pass
+    finally:
+        platform_subscribers.discard(websocket)
+
+
 @app.post(
     "/api/metrics/cleanup",
     tags=["4. 多核全栈性能监控"],
