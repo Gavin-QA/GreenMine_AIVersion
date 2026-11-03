@@ -281,12 +281,3 @@ class ConfigOptionsResponse(BaseModel):
     zentao_base_url: Optional[str] = Field(default=None, description="公司禅道系统 Web 根地址 (用于单号超链接动态拼接)")
     report_hub_url: Optional[str] = Field(default=None, description="产物总门户统一访问地址")
 
-
-class AppControlResponse(BaseModel):
-    """客户端生命周期控制响应模型"""
-    status: str = Field(description="执行状态 (success / error)")
-    message: str = Field(description="提示消息")
-    app_name: str = Field(description="目标矿山应用代号")
-    debug_port: Optional[int] = Field(default=None, description="绑定的 CDP 调试端口")
-    pid: Optional[int] = Field(default=None, description="拉起的主进程 PID")
-

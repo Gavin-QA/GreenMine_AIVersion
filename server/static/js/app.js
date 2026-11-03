@@ -54,10 +54,6 @@ const app = createApp({
       case_path: ''
     });
 
-    // 纯手工测试客户端生命周期
-    const isLaunchingClient = ref(false);
-    const isClosingClient = ref(false);
-
     // 监控页面与 ECharts
     const terminalLogs = ref([]);
     let logWs = null;
@@ -329,48 +325,6 @@ const app = createApp({
         await fetchTasks();
       } catch (e) {
         alert('终止任务异常: ' + e);
-      }
-    }
-
-    async function launchClientApp(appName) {
-      const targetApp = appName || taskForm.app_name || 'zhaiwan';
-      isLaunchingClient.value = true;
-      try {
-        const res = await fetch(`${apiBase}/api/apps/${targetApp}/launch`, { method: 'POST' });
-        const data = await res.json();
-        if (res.ok && data.status === 'success') {
-          alert(`🎉 ${data.message}`);
-          fetchLiveSnapshot();
-          setTimeout(fetchLiveSnapshot, 2000);
-          setTimeout(fetchLiveSnapshot, 4000);
-        } else {
-          alert(`❌ 拉起客户端失败: ${data.detail || data.message || '未知错误'}`);
-        }
-      } catch (e) {
-        alert(`❌ 通信异常: ${e.message}`);
-      } finally {
-        isLaunchingClient.value = false;
-      }
-    }
-
-    async function closeClientApp(appName) {
-      const targetApp = appName || taskForm.app_name || 'zhaiwan';
-      if (!confirm(`确定要关闭【${targetApp}】客户端及其伴生 UE5 进程吗？`)) return;
-      isClosingClient.value = true;
-      try {
-        const res = await fetch(`${apiBase}/api/apps/${targetApp}/close`, { method: 'POST' });
-        const data = await res.json();
-        if (res.ok) {
-          alert(`🛑 ${data.message}`);
-          fetchLiveSnapshot();
-          setTimeout(fetchLiveSnapshot, 1500);
-        } else {
-          alert(`❌ 关闭失败: ${data.detail || data.message || '未知错误'}`);
-        }
-      } catch (e) {
-        alert(`❌ 通信异常: ${e.message}`);
-      } finally {
-        isClosingClient.value = false;
       }
     }
 
@@ -911,11 +865,7 @@ const app = createApp({
       switchToLiveMonitor,
       viewBugDetail,
       formatReportUrl,
-      syncZenTao,
-      isLaunchingClient,
-      isClosingClient,
-      launchClientApp,
-      closeClientApp
+      syncZenTao
     };
   }
 });
