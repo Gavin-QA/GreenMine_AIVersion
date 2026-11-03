@@ -258,7 +258,7 @@
               <button v-else-if="activeTask.status === 'pending' || activeTask.status === 'stopped'" class="btn btn-primary" @click="startTask(activeTask.id)">
                 ▶️ 继续启动
               </button>
-              <a v-if="activeTask.report_url" :href="activeTask.report_url" target="_blank" class="btn btn-secondary" style="margin-left: 8px;">
+              <a v-if="activeTask.report_url" :href="formatReportUrl(activeTask.report_url)" target="_blank" class="btn btn-secondary" style="margin-left: 8px;">
                 📑 查看专属报告
               </a>
             </div>
@@ -339,7 +339,7 @@
                       <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 12px;" @click="switchActiveTask(t); currentTab = 'monitor'">
                         监控
                       </button>
-                      <a v-if="t.report_url" :href="t.report_url" target="_blank" class="btn btn-secondary" style="padding: 4px 10px; font-size: 12px; margin-left: 6px;">
+                      <a v-if="t.report_url" :href="formatReportUrl(t.report_url)" target="_blank" class="btn btn-secondary" style="padding: 4px 10px; font-size: 12px; margin-left: 6px;">
                         报告
                       </a>
                     </td>

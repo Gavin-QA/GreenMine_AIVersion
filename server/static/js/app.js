@@ -494,6 +494,18 @@ const app = createApp({
       selectedBug.value = b;
     }
 
+    function formatReportUrl(url) {
+      if (!url) return '';
+      if (url.startsWith('http://') || url.startsWith('https://')) return url;
+      let clean = url.replace(/^\.\//, '').replace(/^\//, '');
+      if (clean.startsWith('reports/runs/')) {
+        return '/' + clean;
+      } else if (clean.startsWith('reports/')) {
+        return '/' + clean;
+      }
+      return '/reports/runs/' + clean;
+    }
+
     async function syncZenTao(bug) {
       if (!confirm(`确定要将缺陷 [${bug.id}] 提交到禅道吗？`)) return;
       try {
@@ -577,6 +589,7 @@ const app = createApp({
       stopTask,
       switchActiveTask,
       viewBugDetail,
+      formatReportUrl,
       syncZenTao
     };
   }

@@ -162,6 +162,19 @@ def redirect_to_report_hub():
     return RedirectResponse(url="/reports/runs/index.html")
 
 
+@app.get("/{app_name}/{run_id}/report.html", include_in_schema=False)
+def serve_run_report_direct(app_name: str, run_id: str):
+    """
+    智能兼容重定向与直读：
+    当从历史记录或外部跳转 `/{app_name}/{run_id}/report.html` 时，
+    直接映射至 `/reports/runs/{app_name}/{run_id}/report.html`，彻底消灭 404！
+    """
+    report_file = REPORTS_DIR / "runs" / app_name / run_id / "report.html"
+    if report_file.exists():
+        return FileResponse(str(report_file))
+    raise HTTPException(status_code=404, detail=f"未找到运行报告: {app_name}/{run_id}/report.html")
+
+
 @app.get("/", include_in_schema=False)
 def serve_index():
     """Web 控制台首页面入口"""

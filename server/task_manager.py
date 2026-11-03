@@ -236,7 +236,11 @@ class TaskManager:
                         task.bugs_count = kpi.get("bugs_count", 0)
                         task.apis_count = kpi.get("apis_count", 0)
                         task.yaml_steps_count = kpi.get("yaml_steps_count", 0)
-                        task.report_url = latest.get("report_url")
+                        raw_report_url = latest.get("report_url", "")
+                        # 规范化转换为以 /reports/runs/ 开头的绝对路径，防止相对路径在不同路由层级解析错位
+                        if raw_report_url:
+                            cleaned = raw_report_url.lstrip(".").lstrip("/")
+                            task.report_url = f"/reports/runs/{cleaned}" if not cleaned.startswith("reports/") else f"/{cleaned}"
                         task.run_dir = latest.get("rel_path")
         except Exception as e:
             logger.debug(f"回填运行产物数据异常: {e}")
