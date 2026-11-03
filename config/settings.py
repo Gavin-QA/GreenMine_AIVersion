@@ -129,9 +129,9 @@ class Settings:
         target_app = app_key or self.active_app or "zhaiwan"
         app_cfg = self.get_app_config(target_app)
         return {
-            "product_id": int(app_cfg.get("zentao_product_id", 11)),
-            "project_id": int(app_cfg.get("zentao_project_id", 0)),
-            "execution_id": int(app_cfg.get("zentao_execution_id", 0))
+            "product_id": int(app_cfg.get("zentao_product_id") or 11),
+            "project_id": int(app_cfg.get("zentao_project_id") or 0),
+            "execution_id": int(app_cfg.get("zentao_execution_id") or 0)
         }
 
 

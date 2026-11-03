@@ -45,7 +45,8 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] [%(n
 
 APP_NAME_MAP = {
     "zhaiwan": "寨湾矿山",
-    "liwutong": "里伍铜矿山"
+    "liwutong": "里伍铜矿山",
+    "tianrui": "四川天瑞"
 }
 
 

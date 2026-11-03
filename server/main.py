@@ -305,7 +305,8 @@ def health_check():
 def get_config_options():
     apps = [
         {"key": "zhaiwan", "name": "寨湾矿山 (Zhaiwan)", "desc": "包含中央 UE5 像素流三维矿山与两侧 2D 业务看板"},
-        {"key": "liwutong", "name": "里伍铜矿山 (Liwutong)", "desc": "数字孪生采矿与智能选矿平台"}
+        {"key": "liwutong", "name": "里伍铜矿山 (Liwutong)", "desc": "数字孪生采矿与智能选矿平台"},
+        {"key": "tianrui", "name": "四川天瑞矿山 (Tianrui)", "desc": "四川天瑞大屏数字孪生系统"}
     ]
     modes = [
         {"key": "explore", "name": "自主探索模式 (Explorer)", "desc": "Planner-Worker 双核黑客模式，自主规划链路挖掘深层 Crash"},

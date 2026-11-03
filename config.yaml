@@ -66,6 +66,36 @@ apps:
       environments:
         prod: "http://10.126.126.2:8809"
 
+  # ----------------------------------------------------------------------------
+  # 方案三：四川天瑞大屏项目 (Tianrui)
+  # ----------------------------------------------------------------------------
+  tianrui:
+    exe_path: "D:\\LargeScreen\\tianrui\\se-launcher-tianrui\\se-launcher-tianrui.exe"
+    rules_file: "docs/explore_rules_tianrui.md"  # 👈 天瑞矿山大屏专属探索规矩与菜单基准
+    debug_port: 9223
+    ue_process_name: "tianrui.exe"       # 伴生 UE 进程镜像名 (若不设或为空则不检测)
+    expected_page_url: "main.html"       # 目标大屏主页面 URL 关键字
+    expected_page_title: "主界面"         # 目标大屏主页面标题关键字
+    startup_timeout: 40.0                # UE 启动与页面跳转最大容忍时间(秒)
+    start_delay: 15.0                    # 页面就绪后的 UI 稳定缓冲时间(秒)
+    no_proxy: "127.0.0.1,localhost,192.168.1.97,221.234.48.197,::1" # 代理白名单
+    viewport:
+      width: 2560
+      height: 1440
+      device_pixel_ratio: 1.5
+    # 禅道缺陷归属映射 (尚未正式立项，暂不关联禅道)
+    # zentao_product_id: null
+    # zentao_project_id: null
+    # zentao_execution_id: null
+    # 前置环境准入巡检 (防止在旧测试环境或过期前端包跑通宵)
+    env_check:
+      enabled: true
+      expected_env: "prod"     # 期望环境: "prod" 或 "test"
+      strict: true             # true: 环境不匹配时直接阻断退出；false: 仅打印告警
+      # expected_frontend: ""  # 可选: 校验前端包目录是否包含指定关键字 (例如 "dist(9-21)")
+      environments:
+        prod: "http://218.89.4.39:9808"
+
 explorer:
   max_planner_failures: 8    # Planner 连续规划失败安全熔断上限 (防止死锁)
   max_tokens: 1024           # 视觉规划单次输出 Token 上限
