@@ -44,12 +44,15 @@ class PerformanceMonitor:
 
     def get_app_config(self, app_name: str = "zhaiwan") -> Dict[str, Any]:
         """获取指定应用的配置 (端口、UE进程名、可执行文件等)"""
+        cfg = settings.get_app_config(app_name)
+        if cfg:
+            return cfg
         apps_cfg = getattr(settings, "apps", {}) or {}
         if app_name in apps_cfg:
             return apps_cfg[app_name]
         return {
             "debug_port": getattr(settings, "debug_port", 9223),
-            "ue_process_name": "zhaiwan.exe",
+            "ue_process_name": f"{app_name}.exe" if app_name else "zhaiwan.exe",
             "exe_path": ""
         }
 
@@ -77,6 +80,24 @@ class PerformanceMonitor:
                     candidates.append(p)
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
+
+        if not candidates:
+            # 智能嗅探：若当前指定应用未运行，自动扫描其他已配置应用的伴生 UE 进程 (如天瑞/寨湾/里伍铜)
+            for other_app, other_cfg in (getattr(settings, "apps", {}) or {}).items():
+                if other_app == app_name:
+                    continue
+                other_target = (other_cfg.get("ue_process_name") or "").lower()
+                if not other_target:
+                    continue
+                for p in psutil.process_iter(['pid', 'name', 'exe']):
+                    try:
+                        pname = (p.info.get('name') or "").lower()
+                        if other_target in pname or (other_target.replace(".exe", "") in pname):
+                            candidates.append(p)
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        continue
+                if candidates:
+                    break
 
         if not candidates:
             return {"ue_pid": None, "ue_cpu_percent": None, "ue_memory_mb": None}

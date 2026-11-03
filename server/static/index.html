@@ -64,6 +64,26 @@
           <span v-if="currentTab === 'bugs'">🐛 缺陷知识库与禅道协同</span>
         </div>
         <div class="top-actions">
+          <button 
+            class="btn" 
+            style="background: linear-gradient(135deg, #00b4d8, #0077b6); color: #fff; border: none; font-weight: 600; display: inline-flex; align-items: center; gap: 6px;" 
+            :disabled="isLaunchingClient" 
+            @click="launchClientApp(taskForm.app_name)"
+            :title="`拉起 ${taskForm.app_name} 客户端 (自动挂载调试端口，纯人工测试，AI不干预)`"
+          >
+            <span v-if="isLaunchingClient">⏳ 启动中...</span>
+            <span v-else>🚀 仅拉起客户端 (纯手工测试)</span>
+          </button>
+          <button 
+            class="btn btn-secondary" 
+            style="color: #ff5252; border-color: rgba(255, 82, 82, 0.4); display: inline-flex; align-items: center; gap: 6px;" 
+            :disabled="isClosingClient" 
+            @click="closeClientApp(taskForm.app_name)"
+            title="一键关闭当前客户端与伴生 UE5 进程"
+          >
+            <span v-if="isClosingClient">⏳ 关闭中...</span>
+            <span v-else>🛑 关闭客户端</span>
+          </button>
           <button class="btn btn-secondary" @click="currentTab = 'dashboard'">+ 新建任务</button>
           <a :href="options.report_hub_url || '/report-hub'" target="_blank" class="btn btn-secondary" style="border-color: #00d2ff; color: #00d2ff;">
             🌐 产物总门户 (Report Hub)
@@ -178,6 +198,28 @@
                       {{ app.name }} ({{ app.desc }})
                     </option>
                   </select>
+                  <div style="display: flex; gap: 8px; margin-top: 8px;">
+                    <button 
+                      type="button" 
+                      class="btn" 
+                      style="flex: 1; background: rgba(0, 210, 255, 0.12); color: #00d2ff; border: 1px solid rgba(0, 210, 255, 0.3); font-size: 12px; padding: 6px 10px;" 
+                      :disabled="isLaunchingClient" 
+                      @click="launchClientApp(taskForm.app_name)"
+                    >
+                      <span v-if="isLaunchingClient">⏳ 正在拉起客户端...</span>
+                      <span v-else>🚀 仅拉起客户端 (纯手工测试 / 开启探针)</span>
+                    </button>
+                    <button 
+                      type="button" 
+                      class="btn btn-secondary" 
+                      style="color: #ff5252; border-color: rgba(255, 82, 82, 0.3); font-size: 12px; padding: 6px 10px;" 
+                      :disabled="isClosingClient" 
+                      @click="closeClientApp(taskForm.app_name)"
+                    >
+                      <span v-if="isClosingClient">⏳ 关闭中...</span>
+                      <span v-else>🛑 关闭客户端及伴生进程</span>
+                    </button>
+                  </div>
                 </div>
 
                 <div class="form-group">

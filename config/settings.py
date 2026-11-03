@@ -44,6 +44,7 @@ class Settings:
             app_cfg = {}
 
         self.active_app: str = active_app_key or "default"
+        self.apps: dict = apps_dict
         llm_cfg = self._yaml_config.get("llm", {})
 
         # 核心应用与调试配置（优先 .env，其次 yaml）

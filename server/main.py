@@ -32,7 +32,8 @@ from .schemas import (
     LivePerformanceSnapshotResponse,
     ConfigOptionsResponse,
     PresetTaskResponse,
-    PresetTaskCreate
+    PresetTaskCreate,
+    AppControlResponse
 )
 from .task_manager import task_manager
 from .performance_monitor import performance_monitor
@@ -1193,3 +1194,132 @@ def get_task_apis(
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"解析已测接口清单失败: {e}")
+
+
+# ==============================================================================
+# 5. 客户端生命周期与纯手工测试模式 (Manual Test & Client Control)
+# ==============================================================================
+
+@app.post(
+    "/api/apps/{app_name}/launch",
+    response_model=AppControlResponse,
+    tags=["5. 客户端生命周期与手工测试"],
+    summary="一键拉起客户端 (纯手工测试模式)",
+    description="以指定应用的 CDP 调试端口拉起 Electron 客户端与伴生 UE5 进程。不启动任何自动化测试脚本，供人工自由交互，大盘实时采集性能。"
+)
+def launch_app_client(app_name: str):
+    from config.settings import settings
+    from utils.electron_launcher import ElectronLauncher
+    cfg = settings.get_app_config(app_name)
+    if not cfg:
+        raise HTTPException(status_code=404, detail=f"未找到应用配置: {app_name}")
+    
+    exe_path = cfg.get("exe_path", "")
+    port = int(cfg.get("debug_port", 9223))
+    if not exe_path or not os.path.exists(exe_path):
+        raise HTTPException(status_code=400, detail=f"客户端可执行文件不存在: '{exe_path}'")
+    
+    try:
+        launcher = ElectronLauncher(exe_path=exe_path, port=port)
+        if launcher.is_cdp_alive():
+            pid = launcher.get_electron_pid()
+            return AppControlResponse(
+                status="success",
+                message=f"客户端已在运行中 (CDP端口: {port})，当前可直接纯手工交互！",
+                app_name=app_name,
+                debug_port=port,
+                pid=pid
+            )
+        
+        # 异步线程拉起，避免阻塞 HTTP 响应
+        def _launch_worker():
+            try:
+                launcher.start_app()
+            except Exception as err:
+                logger.error(f"拉起客户端异常: {err}")
+
+        th = threading.Thread(target=_launch_worker, daemon=True)
+        th.start()
+        # 缓冲 1.5 秒给进程创建时间
+        time.sleep(1.5)
+        pid = launcher.get_electron_pid()
+
+        return AppControlResponse(
+            status="success",
+            message=f"正在以调试模式拉起 {app_name} 客户端 (CDP端口: {port})，大盘已开启实时监控，请直接纯手工操作！",
+            app_name=app_name,
+            debug_port=port,
+            pid=pid
+        )
+    except Exception as e:
+        logger.error(f"拉起客户端失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"拉起客户端失败: {e}")
+
+
+@app.post(
+    "/api/apps/{app_name}/close",
+    response_model=AppControlResponse,
+    tags=["5. 客户端生命周期与手工测试"],
+    summary="一键关闭客户端及其伴生进程",
+    description="安全关闭指定应用的 Electron 客户端及其伴生 UE 进程，释放显存与端口资源。"
+)
+def close_app_client(app_name: str):
+    import subprocess
+    from config.settings import settings
+    cfg = settings.get_app_config(app_name)
+    exe_path = cfg.get("exe_path", "") if cfg else ""
+    ue_process_name = cfg.get("ue_process_name", "") if cfg else ""
+    
+    closed_list = []
+    if exe_path:
+        exe_name = os.path.basename(exe_path)
+        subprocess.run(["taskkill", "/F", "/IM", exe_name, "/T"], capture_output=True)
+        closed_list.append(exe_name)
+    if ue_process_name:
+        subprocess.run(["taskkill", "/F", "/IM", ue_process_name, "/T"], capture_output=True)
+        closed_list.append(ue_process_name)
+        
+    return AppControlResponse(
+        status="success",
+        message=f"已安全关闭 {app_name} 客户端及相关伴生进程 ({', '.join(closed_list) if closed_list else '无'})",
+        app_name=app_name
+    )
+
+
+@app.get(
+    "/api/apps/{app_name}/status",
+    tags=["5. 客户端生命周期与手工测试"],
+    summary="获取客户端当前运行与探针在线状态"
+)
+def get_app_status(app_name: str):
+    import psutil
+    from config.settings import settings
+    from utils.electron_launcher import ElectronLauncher
+    cfg = settings.get_app_config(app_name)
+    port = int(cfg.get("debug_port", 9223)) if cfg else 9223
+    exe_path = cfg.get("exe_path", "") if cfg else ""
+    ue_process_name = cfg.get("ue_process_name", "") if cfg else ""
+    
+    launcher = ElectronLauncher(exe_path=exe_path, port=port)
+    cdp_alive = launcher.is_cdp_alive()
+    launcher_running = bool(launcher.get_electron_pid()) if exe_path else False
+    
+    ue_running = False
+    if ue_process_name:
+        target = ue_process_name.lower().replace(".exe", "")
+        for p in psutil.process_iter(['name']):
+            try:
+                pname = (p.info.get('name') or "").lower()
+                if target in pname:
+                    ue_running = True
+                    break
+            except Exception:
+                pass
+                
+    return {
+        "app_name": app_name,
+        "debug_port": port,
+        "cdp_alive": cdp_alive,
+        "launcher_running": launcher_running,
+        "ue_running": ue_running
+    }
