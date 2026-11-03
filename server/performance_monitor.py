@@ -454,7 +454,7 @@ class PerformanceMonitor:
                     metric_dict = {
                         "id": metric.id,
                         "task_id": task_id,
-                        "timestamp": metric.timestamp.isoformat(),
+                        "timestamp": (metric.timestamp.isoformat() + "Z") if not metric.timestamp.isoformat().endswith("Z") else metric.timestamp.isoformat(),
                         "step_number": metric.step_number,
                         "page_scope": metric.page_scope,
                         "dom_count": metric.dom_count,

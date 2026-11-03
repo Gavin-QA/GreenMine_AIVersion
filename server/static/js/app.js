@@ -526,9 +526,22 @@ const app = createApp({
       });
     }
 
+    function parseMetricDate(ts) {
+      if (!ts) return new Date();
+      if (typeof ts === 'string') {
+        let clean = ts.trim();
+        // 如果后端传回的 ISO 字符串未标注时区 (如 2026-11-02T10:24:16)，显式附加 'Z' 表示 UTC 零时区
+        if (!clean.endsWith('Z') && !clean.includes('+') && clean.includes('T')) {
+          clean += 'Z';
+        }
+        return new Date(clean);
+      }
+      return new Date(ts);
+    }
+
     function resetChartsData(list) {
       if (!domChart || !ueChart) return;
-      chartTimes = list.map(m => new Date(m.timestamp).toLocaleTimeString());
+      chartTimes = list.map(m => parseMetricDate(m.timestamp).toLocaleTimeString());
       domData = list.map(m => m.dom_count);
       listenersData = list.map(m => m.listeners_count);
       jsHeapData = list.map(m => m.js_heap_mb);
@@ -549,7 +562,7 @@ const app = createApp({
 
     function appendMetricToCharts(m, maxPoints = 225) {
       if (!domChart || !ueChart) return;
-      const t = new Date(m.timestamp).toLocaleTimeString();
+      const t = parseMetricDate(m.timestamp).toLocaleTimeString();
       chartTimes.push(t);
       domData.push(m.dom_count);
       listenersData.push(m.listeners_count);

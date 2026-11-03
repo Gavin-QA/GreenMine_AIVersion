@@ -1,6 +1,15 @@
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer
 import datetime
+
+
+def _serialize_datetime_utc(v: Optional[datetime.datetime]) -> Optional[str]:
+    """统一将无时区 UTC 时间序列化为标准带有 'Z' 后缀的 ISO 8601 字符串"""
+    if v is None:
+        return None
+    if v.tzinfo is None:
+        return v.strftime('%Y-%m-%dT%H:%M:%S.%f') + 'Z'
+    return v.isoformat()
 
 
 class TaskCreate(BaseModel):
@@ -85,6 +94,10 @@ class TaskResponse(BaseModel):
     exit_code: Optional[int] = Field(default=None, description="子进程物理退出码 (0 为正常退出)")
     error_message: Optional[str] = Field(default=None, description="异常失败退出时的具体错误信息")
 
+    @field_serializer('start_time', 'end_time', when_used='json')
+    def serialize_task_times(self, v: Optional[datetime.datetime]):
+        return _serialize_datetime_utc(v)
+
     class Config:
         from_attributes = True
 
@@ -154,6 +167,10 @@ class PerformanceMetricResponse(BaseModel):
     gpu_usage_percent: Optional[float] = Field(default=None, description="独立显卡 GPU 3D 渲染核心负载占用百分比")
     gpu_memory_mb: Optional[float] = Field(default=None, description="独立显卡 VRAM 专用显存已用大小 (单位: MB)")
 
+    @field_serializer('timestamp', when_used='json')
+    def serialize_metric_timestamp(self, v: datetime.datetime):
+        return _serialize_datetime_utc(v)
+
     class Config:
         from_attributes = True
 
@@ -184,6 +201,10 @@ class LivePerformanceSnapshotResponse(BaseModel):
     cpu_cores: int = Field(default=12, description="本机系统逻辑处理器核心总数")
     gpu_usage_percent: Optional[float] = Field(default=None, description="GPU 3D 核心占用率 (%)")
     gpu_memory_mb: Optional[float] = Field(default=None, description="GPU 显存占用 (MB)")
+
+    @field_serializer('timestamp', when_used='json')
+    def serialize_snapshot_timestamp(self, v: datetime.datetime):
+        return _serialize_datetime_utc(v)
 
 
 class PerformanceSummaryResponse(BaseModel):
