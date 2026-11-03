@@ -147,14 +147,6 @@ REPORTS_DIR = PROJECT_ROOT / "reports"
 if REPORTS_DIR.exists():
     app.mount("/reports", StaticFiles(directory=str(REPORTS_DIR)), name="reports")
 
-# 关键兼容挂载：大盘与报告中大量采用 `./zhaiwan/...` 或相对根路径请求图片与页面
-# 将 /zhaiwan 和 /liwutong 等各应用目录直接挂载映射至 reports/runs/<app_name>
-RUNS_DIR = REPORTS_DIR / "runs"
-if RUNS_DIR.exists():
-    for app_dir in RUNS_DIR.iterdir():
-        if app_dir.is_dir() and not app_dir.name.startswith("."):
-            app.mount(f"/{app_dir.name}", StaticFiles(directory=str(app_dir)), name=f"run_app_{app_dir.name}")
-
 ARTIFACTS_DIR = PROJECT_ROOT / "artifacts"
 if ARTIFACTS_DIR.exists():
     app.mount("/artifacts", StaticFiles(directory=str(ARTIFACTS_DIR)), name="artifacts")
@@ -163,11 +155,15 @@ if ARTIFACTS_DIR.exists():
 @app.get("/report-hub", include_in_schema=False)
 @app.get("/reports-hub", include_in_schema=False)
 def redirect_to_report_hub():
-    """统一重定向至产物总盘首页，彻底解决 8080/8000 多端口与目录黑白列表痛点"""
+    """统一重定向至自动化巡检全量大盘门户首页"""
     index_file = REPORTS_DIR / "runs" / "index.html"
-    if index_file.exists():
-        return FileResponse(str(index_file))
-    return RedirectResponse(url="/reports/runs/index.html")
+    if not index_file.exists():
+        try:
+            from utils.report_hub import ReportHub
+            ReportHub().build_index_html()
+        except Exception as e:
+            logger.warning(f"自动构建大盘首页警告: {e}")
+    return RedirectResponse(url="/reports/runs/index.html", status_code=302)
 
 
 @app.get("/", include_in_schema=False)
@@ -177,6 +173,30 @@ def serve_index():
     if index_file.exists():
         return FileResponse(str(index_file))
     return {"message": "Vision Platform API Server Running"}
+
+
+# =============================================================================
+# 0. 缺陷统一治理与同步 API (单点真理源：同步全局库、运行目录与持久化数据库)
+# =============================================================================
+
+@app.post(
+    "/api/update_bug_status",
+    tags=["3. 缺陷治理与禅道同步"],
+    summary="大盘门户统一接口：更新缺陷生命周期状态",
+    description="统一更新缺陷状态，同步更新全局缺陷库、运行目录与平台数据库。"
+)
+@app.post(
+    "/api/update_bug_detail",
+    tags=["3. 缺陷治理与禅道同步"],
+    summary="大盘门户统一接口：更新缺陷详细字段与排查说明",
+    description="统一更新责任人、严重度、排查批注或回填禅道单号，同步更新全局缺陷库、运行目录与平台数据库。"
+)
+async def update_bug_compatible_api(data: dict):
+    from utils.bug_updater import update_bug_record
+    result = update_bug_record(data)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "更新缺陷记录失败"))
+    return result
 
 
 # =============================================================================

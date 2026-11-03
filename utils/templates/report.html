@@ -2427,12 +2427,7 @@
       const newAnalysis = document.getElementById('editBugAnalysis').value.trim();
       const newZentaoId = document.getElementById('editBugZentaoId') ? document.getElementById('editBugZentaoId').value.trim() : (b.zentao_id || '');
 
-      let apiBase = '';
-      if (location.protocol === 'file:') {
-          apiBase = 'http://localhost:8080';
-      } else if (location.port !== '8080') {
-          apiBase = `${location.protocol}//${location.hostname}:8080`;
-      }
+      const apiBase = location.protocol === 'file:' ? 'http://localhost:8000' : '';
       const apiUrl = `${apiBase}/api/update_bug_detail`;
 
       fetch(apiUrl, {
@@ -2483,7 +2478,7 @@
             saveBtn.style.opacity = '1';
             saveBtn.style.cursor = 'pointer';
           }
-          showToast('❌ 接口请求异常', `${err.message || err} (请确认 8080 服务已启动)`, 'error', 6000);
+          showToast('❌ 接口请求异常', `${err.message || err} (请确认控制台中枢服务已启动)`, 'error', 6000);
       });
     }
 
@@ -2731,13 +2726,7 @@
       (function() {
         const btn = document.getElementById('visionPlatformJumpBtn');
         if (btn) {
-          // 如果当前是 8080 端口 (旧 Hub 服务)，则平台中枢优先指向 8000 端口
-          if (window.location.port === '8080') {
-            btn.href = `${window.location.protocol}//${window.location.hostname}:8000`;
-          } else {
-            // 如果已经在 8000 (统一中枢平台) 或其他反代端口下，直接根路径访问平台中枢
-            btn.href = `${window.location.protocol}//${window.location.host}/`;
-          }
+          btn.href = window.location.protocol === 'file:' ? 'http://localhost:8000/' : '/';
         }
       })();
     </script>

@@ -768,6 +768,11 @@
             <div class="pulse-dot"></div>
             <span>服务常驻就绪 · 实时归档中</span>
           </div>
+
+          <a href="/" id="btnToConsole" target="_blank" style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.25), rgba(139, 92, 246, 0.25)); border: 1px solid rgba(99, 102, 241, 0.45); color: #c7d2fe; padding: 6px 14px; border-radius: 999px; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; text-decoration: none; transition: all 0.2s;" title="直达任务调度与实时性能监控控制台">
+            <span style="color:#818cf8;">⚡</span>
+            <span>进入调度控制台中枢</span>
+          </a>
         </div>
       </div>
 
@@ -1649,12 +1654,7 @@
       const newAnalysis = document.getElementById('editBugAnalysis').value.trim();
       const newZentaoId = document.getElementById('editBugZentaoId') ? document.getElementById('editBugZentaoId').value.trim() : (b.zentao_id || '');
 
-      let apiBase = '';
-      if (location.protocol === 'file:') {
-          apiBase = 'http://localhost:8080';
-      } else if (location.port !== '8080') {
-          apiBase = `${location.protocol}//${location.hostname}:8080`;
-      }
+      const apiBase = location.protocol === 'file:' ? 'http://localhost:8000' : '';
       const apiUrl = `${apiBase}/api/update_bug_detail`;
 
       fetch(apiUrl, {
@@ -1705,7 +1705,7 @@
             saveBtn.style.opacity = '1';
             saveBtn.style.cursor = 'pointer';
           }
-          showToast('❌ 接口请求异常', `${err.message || err} (请确认 8080 服务已启动)`, 'error', 6000);
+          showToast('❌ 接口请求异常', `${err.message || err} (请确认控制台中枢服务已启动)`, 'error', 6000);
       });
     }
 
@@ -1782,13 +1782,7 @@
 
     function changeBugStatus(bugId, selectEl) {
         const newStatus = selectEl.value;
-        let apiBase = '';
-        if (location.protocol === 'file:') {
-            apiBase = 'http://localhost:8080';
-        } else if (location.port !== '8080') {
-            // 兼容 IIS (80端口) 或其他反向代理：自动定向到同台主机的 8080 Python 服务
-            apiBase = `${location.protocol}//${location.hostname}:8080`;
-        }
+        const apiBase = location.protocol === 'file:' ? 'http://localhost:8000' : '';
         const apiUrl = `${apiBase}/api/update_bug_status`;
         
         fetch(apiUrl, {
@@ -1813,7 +1807,7 @@
                 alert('更新失败: ' + (data.error || '未知错误'));
             }
         }).catch(err => {
-            alert('更新状态失败: ' + (err.message || err) + '\\n\\n请确认同主机的 8080 Python 服务已启动: python utils/report_hub.py --serve');
+            alert('更新状态失败: ' + (err.message || err) + '\n\n请确认控制台中枢服务已启动');
         });
     }
 

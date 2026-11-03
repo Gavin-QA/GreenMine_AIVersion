@@ -407,12 +407,13 @@ class ReportHub:
         
         return out_file
 
-    def serve(self, port: int = 8080):
-        """启动轻量本地/局域网 Web 门户服务"""
+    def serve(self, port: int = 8000):
+        """启动轻量本地/局域网 Web 门户服务 (统一端口 8000)"""
         import http.server
         import socketserver
         import json
         from pathlib import Path
+        from utils.bug_updater import update_bug_record
 
         self.build_index_html()
         os.chdir(self.runs_dir)
@@ -440,74 +441,12 @@ class ReportHub:
                         post_data = self.rfile.read(content_length)
                         raw_str = post_data.decode('utf-8', errors='ignore')
                         data = json.loads(raw_str, strict=False)
-                        
-                        bug_id = data.get('bug_id')
-                        if not bug_id:
-                            raise ValueError("缺少必要的 bug_id 参数")
 
-                        new_status = data.get('status')
-                        new_severity = normalize_severity(data.get('severity')) if "severity" in data else None
-                        new_assignee = data.get('assignee')
-                        new_ui_path = data.get('ui_path')
-                        new_analysis = data.get('analysis_notes')
-                        new_zentao_id = data.get('zentao_id')
+                        # 使用统一缺陷更新核心引擎
+                        resp_data = update_bug_record(data)
 
-                        success = False
-                        updated_targets = []
-
-                        def update_bug_dict(b_dict: dict):
-                            if new_status:
-                                b_dict['status'] = new_status
-                            if new_severity is not None:
-                                b_dict['severity'] = new_severity
-                            if new_assignee is not None:
-                                b_dict['assignee'] = new_assignee
-                            if new_ui_path is not None:
-                                b_dict['ui_path'] = new_ui_path
-                            if new_analysis is not None:
-                                b_dict['analysis_notes'] = new_analysis
-                            if new_zentao_id is not None:
-                                z_val = str(new_zentao_id).strip()
-                                b_dict['zentao_id'] = z_val
-                                if z_val and not new_status and b_dict.get('status') in ('激活', '待处理', '', None, 'Open'):
-                                    b_dict['status'] = '已提单'
-
-                        # 1. 在全局缺陷知识库 (artifacts/bugs/global_bugs*.json) 中查找并更新
-                        if GLOBAL_BUGS_DIR.exists():
-                            for bug_file in GLOBAL_BUGS_DIR.glob("global_bugs*.json"):
-                                try:
-                                    with open(bug_file, 'r', encoding='utf-8') as f:
-                                        bugs = json.load(f)
-                                    file_changed = False
-                                    for b in bugs:
-                                        if b.get('id') == bug_id:
-                                            update_bug_dict(b)
-                                            success = True
-                                            file_changed = True
-                                            updated_targets.append(bug_file.name)
-                                            break
-                                    if file_changed:
-                                        with open(bug_file, 'w', encoding='utf-8') as f:
-                                            json.dump(bugs, f, ensure_ascii=False, indent=2)
-                                except Exception as ge:
-                                    logger.warning(f"更新 {bug_file.name} 异常: {ge}")
-
-                        # 2. 在各个单次运行目录 (reports/runs/<app>/<run_id>/bugs/<bug_id>.json) 中查找并更新
-                        for run_dir in get_all_run_folders():
-                            run_bug_file = run_dir / "bugs" / f"{bug_id}.json"
-                            if run_bug_file.exists():
-                                try:
-                                    with open(run_bug_file, 'r', encoding='utf-8') as rf:
-                                        b_data = json.load(rf)
-                                    update_bug_dict(b_data)
-                                    with open(run_bug_file, 'w', encoding='utf-8') as rf:
-                                        json.dump(b_data, rf, ensure_ascii=False, indent=2)
-                                    success = True
-                                    updated_targets.append(f"{run_dir.name}/bugs/{bug_id}.json")
-                                except Exception as re_err:
-                                    logger.warning(f"更新运行目录 Bug 文件异常 ({run_bug_file}): {re_err}")
-
-                        if success:
+                        if resp_data.get("success"):
+                            bug_id = data.get("bug_id")
                             # 自动刷新受影响运行目录的 report.html
                             for run_dir in get_all_run_folders():
                                 run_bug_file = run_dir / "bugs" / f"{bug_id}.json"
@@ -519,9 +458,8 @@ class ReportHub:
 
                             # 异步防抖重构静态大盘与 runs_data.js，立即返回 HTTP 响应，毫秒级响应
                             hub_instance.trigger_async_rebuild(delay=1.0)
-                            resp_data = {"success": True, "bug_id": bug_id, "updated": updated_targets}
                         else:
-                            resp_data = {"success": False, "bug_id": bug_id, "error": f"在全局库及各运行目录中均未找到编号为 '{bug_id}' 的缺陷记录"}
+                            resp_data = {"success": False, "bug_id": data.get("bug_id"), "error": resp_data.get("error", "更新失败")}
 
                         resp_bytes = json.dumps(resp_data, ensure_ascii=False).encode('utf-8')
                         self.send_response(200)
@@ -585,7 +523,7 @@ def main():
     parser.add_argument("--build", action="store_true", help="仅重新生成 reports/runs/index.html")
     parser.add_argument("--refresh-all", action="store_true", help="强制重新生成所有子运行目录下的 report.html 并更新大盘")
     parser.add_argument("--serve", action="store_true", help="启动常驻 Web 服务")
-    parser.add_argument("--port", type=int, default=8080, help="Web 服务端口 (默认 8080)")
+    parser.add_argument("--port", type=int, default=8000, help="Web 服务端口 (统一默认 8000)")
     args = parser.parse_args()
 
     hub = ReportHub()
