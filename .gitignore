@@ -76,3 +76,6 @@ models/
 # 数据库本地自动备份临时快照目录 (主库 data/vision_platform.db 已正式纳入 Git 版本管理)
 /data/backups/
 /data/*.bak
+
+# 历史拓扑瞬时快照目录 (仅保留 artifacts/topology/global_page_tree_*.json 作为权威全景树)
+/artifacts/topology/snapshots/
