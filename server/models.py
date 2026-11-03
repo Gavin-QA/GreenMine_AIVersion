@@ -90,6 +90,7 @@ class BugRecord(Base):
     target_element = Column(String(256), nullable=True)
     actual_error = Column(Text, nullable=True)
     analysis_notes = Column(Text, nullable=True)
+    remark = Column(Text, nullable=True) # 人工复核备注或关闭原因说明 (非必填)
     screenshot_path = Column(String(256), nullable=True)
     occurrences = Column(Integer, default=1)
     first_seen = Column(DateTime, default=datetime.datetime.utcnow)

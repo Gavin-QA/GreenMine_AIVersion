@@ -40,6 +40,7 @@ def update_bug_record(data: Dict[str, Any]) -> Dict[str, Any]:
     new_assignee = data.get("assignee")
     new_ui_path = data.get("ui_path")
     new_analysis = data.get("analysis_notes")
+    new_remark = data.get("remark")
     new_zentao_id = data.get("zentao_id")
 
     success = False
@@ -56,6 +57,8 @@ def update_bug_record(data: Dict[str, Any]) -> Dict[str, Any]:
             target_dict["ui_path"] = new_ui_path
         if new_analysis is not None:
             target_dict["analysis_notes"] = new_analysis
+        if "remark" in data:
+            target_dict["remark"] = new_remark
         if new_zentao_id is not None:
             z_val = str(new_zentao_id).strip()
             target_dict["zentao_id"] = z_val
@@ -119,6 +122,8 @@ def update_bug_record(data: Dict[str, Any]) -> Dict[str, Any]:
                     b_rec.status = "已提单"
             if new_analysis:
                 b_rec.analysis_notes = new_analysis
+            if "remark" in data:
+                b_rec.remark = new_remark
             db.commit()
             updated_targets.append("database.BugRecord")
         db.close()

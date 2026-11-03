@@ -505,6 +505,10 @@
                 <label class="form-label">AI 智能初诊与排查指引</label>
                 <div style="background: #111827; padding: 12px; border-radius: 6px; font-size: 13px; line-height: 1.6; white-space: pre-wrap;">{{ selectedBug.analysis_notes }}</div>
               </div>
+              <div class="form-group" v-if="selectedBug.remark">
+                <label class="form-label">📌 处理备注 / 关闭原因</label>
+                <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); color: #34d399; padding: 12px; border-radius: 6px; font-size: 13px; line-height: 1.6; white-space: pre-wrap;">{{ selectedBug.remark }}</div>
+              </div>
               <div class="form-group" v-if="selectedBug.screenshot_path">
                 <label class="form-label">现场快照截图</label>
                 <div style="text-align: center; background: #05070d; border-radius: 8px; padding: 10px; border: 1px solid var(--border-color);">
@@ -585,6 +589,11 @@
               <div class="form-group">
                 <label class="form-label">AI 初诊与排查指引说明</label>
                 <textarea class="form-control" rows="5" v-model="editForm.analysis_notes" placeholder="输入根因分析或开发排查指引..."></textarea>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">📌 备注 / 关闭说明 (非必填)</label>
+                <textarea class="form-control" rows="3" v-model="editForm.remark" placeholder="如：核验无误非Bug、关闭原因或补充排查备注..."></textarea>
               </div>
 
               <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">

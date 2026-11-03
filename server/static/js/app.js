@@ -75,7 +75,8 @@ const app = createApp({
       assignee: '陈贻雄',
       zentao_id: '',
       ui_path: '',
-      analysis_notes: ''
+      analysis_notes: '',
+      remark: ''
     });
 
     // =========================================================================
@@ -611,6 +612,7 @@ const app = createApp({
       editForm.zentao_id = b.zentao_id || '';
       editForm.ui_path = b.ui_path || '';
       editForm.analysis_notes = b.analysis_notes || '';
+      editForm.remark = b.remark || '';
     }
 
     async function submitBugEdit() {
@@ -623,7 +625,8 @@ const app = createApp({
           assignee: editForm.assignee,
           zentao_id: editForm.zentao_id,
           ui_path: editForm.ui_path,
-          analysis_notes: editForm.analysis_notes
+          analysis_notes: editForm.analysis_notes,
+          remark: editForm.remark
         };
         const res = await fetch(`${apiBase}/api/bugs/${editingBug.value.id}`, {
           method: 'PUT',

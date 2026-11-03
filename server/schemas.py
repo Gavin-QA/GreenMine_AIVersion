@@ -110,6 +110,7 @@ class BugUpdate(BaseModel):
     assignee: Optional[str] = Field(default=None, description="责任人: 陈贻雄 / 梅本霞 等")
     zentao_id: Optional[str] = Field(default=None, description="禅道系统关联单号")
     analysis_notes: Optional[str] = Field(default=None, description="AI 智能初诊分析与排查指引说明")
+    remark: Optional[str] = Field(default=None, description="人工复核备注或关闭原因说明 (非必填)")
     ui_path: Optional[str] = Field(default=None, description="页面层级路径")
 
 
@@ -126,6 +127,7 @@ class BugResponse(BaseModel):
     target_element: Optional[str] = Field(default=None, description="案发时正在交互的目标 UI 元素自然语言描述")
     actual_error: Optional[str] = Field(default=None, description="现场捕获到的底层异常原始报错文本或堆栈")
     analysis_notes: Optional[str] = Field(default=None, description="大模型生成的智能初诊分析、根因推断与排查指引")
+    remark: Optional[str] = Field(default=None, description="人工复核备注或关闭原因说明")
     screenshot_path: Optional[str] = Field(default=None, description="案发现场第一视角的无损高清截图相对路径")
     occurrences: int = Field(default=1, description="AI 语义去重累计匹配到的历史复现总次数")
     first_seen: Optional[datetime.datetime] = Field(default=None, description="该缺陷首次被捕获的时间戳")

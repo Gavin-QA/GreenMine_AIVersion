@@ -131,10 +131,13 @@ def on_startup():
                         target_element=rb.get("target_element"),
                         actual_error=rb.get("details", {}).get("actual") if isinstance(rb.get("details"), dict) else rb.get("actual"),
                         analysis_notes=rb.get("analysis_notes"),
+                        remark=rb.get("remark"),
                         screenshot_path=rb.get("crash_screenshot") or rb.get("screenshot"),
                         occurrences=rb.get("occurrences", 1)
                     )
                     db.add(b_rec)
+                elif rb.get("remark") and not exist.remark:
+                    exist.remark = rb.get("remark")
             db.commit()
             logger.info("✨ 已将本地已有全局缺陷库同步入库！")
         db.close()
@@ -774,6 +777,9 @@ def update_bug(
     if payload.analysis_notes is not None:
         bug.analysis_notes = payload.analysis_notes
         update_dict["analysis_notes"] = payload.analysis_notes
+    if payload.remark is not None:
+        bug.remark = payload.remark
+        update_dict["remark"] = payload.remark
     if payload.ui_path is not None:
         bug.ui_path = payload.ui_path
         update_dict["ui_path"] = payload.ui_path
