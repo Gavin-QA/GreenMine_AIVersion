@@ -99,7 +99,10 @@ app.add_middleware(
 
 @app.on_event("startup")
 def on_startup():
-    """服务冷启动生命周期钩子：初始化数据库结构并自动同步已有全局缺陷库"""
+    """服务冷启动生命周期钩子：冷启动自动物理快照、初始化数据库结构并自动同步已有全局缺陷库"""
+    from .database import backup_database
+    backup_database(max_backups=5)
+
     logger.info("⚡ 正在初始化数据库引擎与表结构 (含自动平滑迁移)...")
     init_db()
     

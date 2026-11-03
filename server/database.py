@@ -38,6 +38,46 @@ def get_db():
         db.close()
 
 
+def backup_database(max_backups: int = 5) -> Optional[str]:
+    """
+    冷启动或任务执行前，自动对 SQLite 数据库创建带时间戳的本地物理镜像快照，
+    滚动保留最近 5 份备份，杜绝因极端异常导致数据资产损毁。
+    """
+    import shutil
+    import datetime
+    import logging
+    logger = logging.getLogger("server.database")
+
+    if not DATABASE_URL.startswith("sqlite"):
+        return None
+
+    db_path = DATA_DIR / "vision_platform.db"
+    if not db_path.exists():
+        return None
+
+    backup_dir = DATA_DIR / "backups"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+
+    now_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_file = backup_dir / f"vision_platform_{now_str}.db.bak"
+
+    try:
+        shutil.copy2(db_path, backup_file)
+        # 滚动清理超量历史备份
+        all_backups = sorted(backup_dir.glob("vision_platform_*.db.bak"), key=os.path.getmtime)
+        while len(all_backups) > max_backups:
+            oldest = all_backups.pop(0)
+            try:
+                oldest.unlink()
+            except Exception:
+                pass
+        logger.info(f"🛡️ [DatabaseBackup] 已完成本地数据库自动快照备份: {backup_file.name} (保留最近 {max_backups} 份)")
+        return str(backup_file)
+    except Exception as e:
+        logger.warning(f"⚠️ [DatabaseBackup] 备份数据库异常 (非致命): {e}")
+        return None
+
+
 def init_db():
     """初始化数据库表结构并自动平滑升级增量字段 (兼容 SQLite 与 MySQL)"""
     from sqlalchemy import inspect, text
