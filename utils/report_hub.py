@@ -235,6 +235,7 @@ class ReportHub:
                 "severity": normalize_severity(gb.get("severity", 3)),
                 "ui_path": raw_ui_path,
                 "analysis_notes": raw_analysis,
+                "remark": gb.get("remark", ""),
                 "zentao_id": gb.get("zentao_id", "")
             }
             enrich_bug_metadata(all_bugs_dict[b_id])
@@ -278,6 +279,8 @@ class ReportHub:
                         all_bugs_dict[b_id]["tags"] = b["tags"]
                     if not all_bugs_dict[b_id].get("zentao_id") and b.get("zentao_id"):
                         all_bugs_dict[b_id]["zentao_id"] = b.get("zentao_id")
+                    if not all_bugs_dict[b_id].get("remark") and b.get("remark"):
+                        all_bugs_dict[b_id]["remark"] = b.get("remark")
                     enrich_bug_metadata(all_bugs_dict[b_id])
                 else:
                     if rel_shot and target_run_dir and not (target_run_dir / rel_shot).exists():
@@ -325,6 +328,7 @@ class ReportHub:
                         "severity": normalize_severity(b.get("severity", 3)),
                         "ui_path": run_ui_path,
                         "analysis_notes": run_analysis,
+                        "remark": b.get("remark", ""),
                         "zentao_id": b.get("zentao_id", "")
                     }
                     enrich_bug_metadata(all_bugs_dict[b_id])

@@ -2299,6 +2299,17 @@
       
       const analysis = b.analysis_notes || '暂无归因分析备注';
       document.getElementById('modalAnalysis').innerText = analysis;
+
+      const remarkContainer = document.getElementById('modalRemarkContainer');
+      const remarkEl = document.getElementById('modalRemark');
+      if (remarkContainer && remarkEl) {
+        if (b.remark && b.remark.trim()) {
+          remarkEl.innerText = b.remark.trim();
+          remarkContainer.style.display = 'block';
+        } else {
+          remarkContainer.style.display = 'none';
+        }
+      }
       
       // 现场截图渲染 (支持双图对比：操作前 vs 报错现场)
       const rel_shot = b.rel_screenshot || '';
@@ -2401,7 +2412,16 @@
         <textarea id="editBugAnalysis" rows="4" style="width:100%;background:#0f172a;border:1px solid var(--primary);color:#f8fafc;padding:10px;border-radius:6px;font-size:13px;line-height:1.5;outline:none;resize:vertical;" placeholder="在此输入原因分析、关闭理由、误报归因或复盘结论...">${escapeHtml(b.analysis_notes || '')}</textarea>
       `;
 
-      // 7. 底部切换保存与取消按钮
+      // 7. 处理备注/关闭原因编辑输入框
+      const remarkContainer = document.getElementById('modalRemarkContainer');
+      if (remarkContainer) {
+        remarkContainer.style.display = 'block';
+        document.getElementById('modalRemark').innerHTML = `
+          <textarea id="editBugRemark" rows="3" style="width:100%;background:#064e3b;border:1px solid #10b981;color:#a7f3d0;padding:10px;border-radius:6px;font-size:13px;line-height:1.5;outline:none;resize:vertical;" placeholder="在此输入人工复核备注、关闭原因、非Bug说明...">${escapeHtml(b.remark || '')}</textarea>
+        `;
+      }
+
+      // 8. 底部切换保存与取消按钮
       document.getElementById('modalActionFooter').innerHTML = `
         <button id="saveBugBtn" onclick="saveBugDetail('${escapeHtml(b.id || bugId)}')" style="background:#10b981;color:#fff;border:none;font-size:13px;font-weight:700;padding:8px 20px;border-radius:6px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;box-shadow:0 4px 12px rgba(16,185,129,0.3);transition:all 0.2s;">💾 保存修改</button>
         <button onclick="showBugModal('${escapeHtml(b.card_id || b.id || bugId)}')" style="background:var(--bg-card);border:1px solid rgba(255,255,255,0.15);color:var(--text-muted);font-size:13px;padding:8px 16px;border-radius:6px;cursor:pointer;">取消</button>
@@ -2425,6 +2445,8 @@
       const newAssignee = document.getElementById('editBugAssignee').value.trim() || 'Unassigned';
       const newUiPath = document.getElementById('editBugUiPath').value.trim() || '首页';
       const newAnalysis = document.getElementById('editBugAnalysis').value.trim();
+      const editBugRemarkEl = document.getElementById('editBugRemark');
+      const newRemark = editBugRemarkEl ? editBugRemarkEl.value.trim() : (b.remark || '');
       const newZentaoId = document.getElementById('editBugZentaoId') ? document.getElementById('editBugZentaoId').value.trim() : (b.zentao_id || '');
 
       const apiBase = location.protocol === 'file:' ? 'http://localhost:8000' : '';
@@ -2440,6 +2462,7 @@
               assignee: newAssignee,
               ui_path: newUiPath,
               analysis_notes: newAnalysis,
+              remark: newRemark,
               zentao_id: newZentaoId
           })
       }).then(async res => {
@@ -2454,6 +2477,7 @@
               b.assignee = newAssignee;
               b.ui_path = newUiPath;
               b.analysis_notes = newAnalysis;
+              b.remark = newRemark;
               b.zentao_id = newZentaoId;
 
               // 退出编辑模式并重新渲染
