@@ -117,17 +117,25 @@ const app = createApp({
         const data = await res.json();
         Object.assign(liveSnapshot, data);
 
-        // 如果当前处于【本机物理环境实时心电图模式】，向折线图推入动态打点
+        const point = {
+          timestamp: data.timestamp || new Date().toISOString(),
+          dom_count: data.dom_count || 0,
+          listeners_count: data.listeners_count || 0,
+          js_heap_mb: data.js_heap_mb || 0,
+          ue_cpu_percent: data.ue_cpu_percent || 0,
+          ue_memory_mb: data.ue_memory_mb || 0,
+          webrtc_fps: (data.webrtc_fps !== null && data.webrtc_fps !== undefined) ? data.webrtc_fps : (data.gpu_usage_percent || 0)
+        };
+
+        // 无论当前是否停留在 monitor 大屏，后台常驻记录实时心电点 (最多保留前 15 分钟/225 点)
+        liveHistory.push(point);
+        if (liveHistory.length > 225) {
+          liveHistory.shift();
+        }
+
+        // 如果当前正处于【本机物理环境实时心电图模式】，向折线图实时推入动态打点
         if (activeTaskId.value === '__live__') {
-          appendMetricToCharts({
-            timestamp: data.timestamp || new Date().toISOString(),
-            dom_count: data.dom_count || 0,
-            listeners_count: data.listeners_count || 0,
-            js_heap_mb: data.js_heap_mb || 0,
-            ue_cpu_percent: data.ue_cpu_percent || 0,
-            ue_memory_mb: data.ue_memory_mb || 0,
-            webrtc_fps: (data.webrtc_fps !== null && data.webrtc_fps !== undefined) ? data.webrtc_fps : (data.gpu_usage_percent || 0)
-          });
+          appendMetricToCharts(point);
         }
       } catch (e) {
         console.error('获取实时快照失败:', e);
@@ -341,8 +349,11 @@ const app = createApp({
         `[${new Date().toLocaleTimeString()}] 📡 无需启动任何测试任务，只读探针正在每 4 秒采集一次 UE5、Chromium、CDP 与 NVIDIA GPU 即时切片并绘制实时动态曲线...`
       ];
 
-      // 切换到 Live 模式若之前已有 live 采样点保留滑动窗口，否则初始化
-      initCharts(false);
+      // 切换到 Live 模式：清空任务的历史数据，若当前已沉淀有实时点直接回溯渲染，否则干净从零开局
+      initCharts(true);
+      if (liveHistory.length > 0) {
+        resetChartsData(liveHistory);
+      }
     }
 
     function switchActiveTask(t) {
@@ -421,6 +432,10 @@ const app = createApp({
     // ECharts 图表渲染
     // =========================================================================
 
+    // 实时心电图独立数据队列 (前端常驻维护，最多保留前 15 分钟/225个已采集点；有值就回溯渲染，没值就空开局)
+    let liveHistory = [];
+
+    // 当前图表正在展示的数据缓冲 (由 resetChartsData 或 liveHistory 驱动)
     let chartTimes = [];
     let domData = [];
     let listenersData = [];
