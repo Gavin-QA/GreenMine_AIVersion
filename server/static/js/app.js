@@ -105,6 +105,19 @@ const app = createApp({
         const res = await fetch(`${apiBase}/api/metrics/live/snapshot?app_name=${taskForm.app_name}`);
         const data = await res.json();
         Object.assign(liveSnapshot, data);
+
+        // 如果当前处于【本机物理环境实时心电图模式】，向折线图推入动态打点
+        if (activeTaskId.value === '__live__') {
+          appendMetricToCharts({
+            timestamp: data.timestamp || new Date().toISOString(),
+            dom_count: data.dom_count || 0,
+            listeners_count: data.listeners_count || 0,
+            js_heap_mb: data.js_heap_mb || 0,
+            ue_cpu_percent: data.ue_cpu_percent || 0,
+            ue_memory_mb: data.ue_memory_mb || 0,
+            webrtc_fps: (data.webrtc_fps !== null && data.webrtc_fps !== undefined) ? data.webrtc_fps : (data.gpu_usage_percent || 0)
+          });
+        }
       } catch (e) {
         console.error('获取实时快照失败:', e);
       }
@@ -114,10 +127,9 @@ const app = createApp({
       try {
         const res = await fetch(`${apiBase}/api/tasks?limit=50`);
         tasks.value = await res.json();
-        if (!activeTaskId.value && tasks.value.length > 0) {
-          activeTaskId.value = tasks.value[0].id;
-          activeTask.value = tasks.value[0];
-        } else if (activeTaskId.value) {
+        if (!activeTaskId.value) {
+          activeTaskId.value = '__live__';
+        } else if (activeTaskId.value !== '__live__') {
           activeTask.value = tasks.value.find(t => t.id === activeTaskId.value) || activeTask.value;
         }
       } catch (e) {
@@ -296,7 +308,33 @@ const app = createApp({
       }
     }
 
+    function onMonitorTargetChange() {
+      if (activeTaskId.value === '__live__') {
+        switchToLiveMonitor();
+      } else {
+        const t = tasks.value.find(item => item.id === activeTaskId.value);
+        if (t) {
+          switchActiveTask(t);
+        }
+      }
+    }
+
+    function switchToLiveMonitor() {
+      activeTaskId.value = '__live__';
+      activeTask.value = null;
+      if (logWs) { logWs.close(); logWs = null; }
+      if (metricWs) { metricWs.close(); metricWs = null; }
+
+      terminalLogs.value = [
+        `[${new Date().toLocaleTimeString()}] ⚡ 进入【本机物理环境实时心电图模式】`,
+        `[${new Date().toLocaleTimeString()}] 📡 无需启动任何测试任务，只读探针正在每 4 秒采集一次 UE5、Chromium、CDP 与 NVIDIA GPU 即时切片并绘制实时动态曲线...`
+      ];
+
+      initCharts();
+    }
+
     function switchActiveTask(t) {
+      if (!t) return;
       activeTaskId.value = t.id;
       activeTask.value = t;
       connectTaskChannels(t.id);
@@ -307,7 +345,7 @@ const app = createApp({
     // =========================================================================
 
     function connectTaskChannels(taskId) {
-      if (!taskId) return;
+      if (!taskId || taskId === '__live__') return;
 
       // 1. 关闭已有 WS
       if (logWs) { logWs.close(); logWs = null; }
@@ -341,13 +379,14 @@ const app = createApp({
         }
       };
 
-      // 4. 加载历史指标初始化图表
+      // 4. 加载历史指标初始化图表 (智能降采样支撑 12 小时全生命周期无截断)
       loadHistoricalMetrics(taskId);
     }
 
     async function loadHistoricalMetrics(taskId) {
+      if (!taskId || taskId === '__live__') return;
       try {
-        const res = await fetch(`${apiBase}/api/metrics/${taskId}?limit=300`);
+        const res = await fetch(`${apiBase}/api/metrics/${taskId}?limit=1000`);
         const list = await res.json();
         if (list && list.length > 0) {
           resetChartsData(list);
@@ -395,13 +434,30 @@ const app = createApp({
         ueMemData = [];
         webrtcFpsData = [];
 
+        // 统一 DataZoom 缩放手柄与滚轮交互 (支持随意拖动观察全天 12 小时或放大至分钟级)
+        const commonDataZoom = [
+          { type: 'inside', start: 0, end: 100 },
+          { 
+            type: 'slider', 
+            start: 0, 
+            end: 100, 
+            height: 18, 
+            bottom: 4, 
+            borderColor: '#1a253c', 
+            fillerColor: 'rgba(0, 210, 255, 0.15)',
+            handleStyle: { color: '#00d2ff' },
+            textStyle: { color: '#8b9bb4', fontSize: 11 }
+          }
+        ];
+
         // DOM / Heap 图表
         domChart = echarts.init(domEl);
         domChart.setOption({
           title: { text: 'Chrome 渲染端指标 (DOM / Listeners / JSHeap)', textStyle: { color: '#8b9bb4', fontSize: 13 } },
           tooltip: { trigger: 'axis' },
           legend: { data: ['DOM 节点数', '事件监听器', 'V8 JS堆 (MB)'], textStyle: { color: '#8b9bb4' } },
-          grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
+          grid: { left: '3%', right: '4%', bottom: '15%', containLabel: true },
+          dataZoom: commonDataZoom,
           xAxis: { type: 'category', data: [], axisLine: { lineStyle: { color: '#233354' } } },
           yAxis: [
             { type: 'value', name: '数量', axisLine: { lineStyle: { color: '#233354' } }, splitLine: { lineStyle: { color: '#131b2e' } } },
@@ -417,19 +473,20 @@ const app = createApp({
         // UE5 引擎与 WebRTC 像素流图表
         ueChart = echarts.init(ueEl);
         ueChart.setOption({
-          title: { text: '伴生 UE5 引擎与 WebRTC 像素流 (CPU / 内存 / FPS)', textStyle: { color: '#8b9bb4', fontSize: 13 } },
+          title: { text: '伴生 UE5 引擎与 WebRTC 像素流 / GPU (CPU / 内存 / FPS)', textStyle: { color: '#8b9bb4', fontSize: 13 } },
           tooltip: { trigger: 'axis' },
-          legend: { data: ['UE5 CPU (%)', 'UE5 内存 (MB)', 'WebRTC FPS'], textStyle: { color: '#8b9bb4' } },
-          grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
+          legend: { data: ['UE5 CPU (%)', 'UE5 内存 (MB)', 'WebRTC FPS / GPU (%)'], textStyle: { color: '#8b9bb4' } },
+          grid: { left: '3%', right: '4%', bottom: '15%', containLabel: true },
+          dataZoom: commonDataZoom,
           xAxis: { type: 'category', data: [], axisLine: { lineStyle: { color: '#233354' } } },
           yAxis: [
             { type: 'value', name: 'CPU / 内存', axisLine: { lineStyle: { color: '#233354' } }, splitLine: { lineStyle: { color: '#131b2e' } } },
-            { type: 'value', name: 'FPS', max: 60, axisLine: { lineStyle: { color: '#233354' } }, splitLine: { show: false } }
+            { type: 'value', name: 'FPS / GPU %', max: 100, axisLine: { lineStyle: { color: '#233354' } }, splitLine: { show: false } }
           ],
           series: [
             { name: 'UE5 CPU (%)', type: 'line', smooth: true, data: [], itemStyle: { color: '#ff5252' } },
             { name: 'UE5 内存 (MB)', type: 'line', smooth: true, data: [], itemStyle: { color: '#00e676' } },
-            { name: 'WebRTC FPS', type: 'line', yAxisIndex: 1, smooth: true, data: [], itemStyle: { color: '#3a7bd5' } }
+            { name: 'WebRTC FPS / GPU (%)', type: 'line', yAxisIndex: 1, smooth: true, data: [], itemStyle: { color: '#3a7bd5' } }
           ]
         });
       });
@@ -531,8 +588,10 @@ const app = createApp({
     // 监听标签页切换
     watch(currentTab, (val) => {
       if (val === 'monitor') {
-        initCharts();
-        if (activeTaskId.value) {
+        if (activeTaskId.value === '__live__') {
+          switchToLiveMonitor();
+        } else if (activeTaskId.value) {
+          initCharts();
           loadHistoricalMetrics(activeTaskId.value);
         }
       } else if (val === 'bugs') {
@@ -590,6 +649,8 @@ const app = createApp({
       startTask,
       stopTask,
       switchActiveTask,
+      onMonitorTargetChange,
+      switchToLiveMonitor,
       viewBugDetail,
       formatReportUrl,
       syncZenTao

@@ -59,7 +59,7 @@
       <header class="top-bar">
         <div class="page-title">
           <span v-if="currentTab === 'dashboard'">🚀 任务发起与快速调度</span>
-          <span v-if="currentTab === 'monitor'">📈 双核性能与日志流大屏 ({{ activeTask ? activeTask.name : '未选择任务' }})</span>
+          <span v-if="currentTab === 'monitor'">📈 双核性能与日志流大屏 ({{ activeTaskId === '__live__' ? '⚡ 本机物理环境实时心电图' : (activeTask ? activeTask.name : '未选择任务') }})</span>
           <span v-if="currentTab === 'tasks'">📁 巡检任务执行历史与产物归档</span>
           <span v-if="currentTab === 'bugs'">🐛 缺陷知识库与禅道协同</span>
         </div>
@@ -257,15 +257,23 @@
         <div v-show="currentTab === 'monitor'">
           <div style="margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between;">
             <div style="display: flex; align-items: center; gap: 12px;">
-              <span style="font-size: 13px; color: var(--text-muted);">当前查看任务:</span>
-              <select class="form-control" style="width: 320px;" v-model="activeTaskId" @change="switchActiveTask(tasks.find(t => t.id === activeTaskId))">
+              <span style="font-size: 13px; color: var(--text-muted);">当前查看维度:</span>
+              <select class="form-control" style="width: 380px; font-weight: 600;" v-model="activeTaskId" @change="onMonitorTargetChange">
+                <option value="__live__" style="color: #00e676; font-weight: 700;">⚡ [实时模式] 本机物理环境实时心电图 (无需启动测试)</option>
+                <option disabled style="color: #64748b;">──────── 历史任务性能复盘 ────────</option>
                 <option v-for="t in tasks" :key="t.id" :value="t.id">
                   [{{ t.status }}] {{ t.name }} ({{ t.id }})
                 </option>
               </select>
             </div>
 
-            <div v-if="activeTask">
+            <div v-if="activeTaskId === '__live__'" style="display: flex; align-items: center; gap: 8px;">
+              <span class="badge badge-running" style="font-size: 12px; padding: 6px 14px; display: inline-flex; align-items: center; gap: 6px;">
+                <span class="pulse-dot" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #00e676;"></span>
+                物理探针每 4 秒实时流式绘制中
+              </span>
+            </div>
+            <div v-else-if="activeTask">
               <button v-if="activeTask.status === 'running'" class="btn btn-danger" @click="stopTask(activeTask.id)">
                 🛑 紧急停止任务
               </button>

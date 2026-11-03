@@ -286,9 +286,9 @@ DEFAULT_PRESET_TASKS = [
         "app_name": "zhaiwan",
         "mode": "explore",
         "badge": "抗压",
-        "max_steps": 100,
-        "max_times": 30,
-        "reset_memory": False,
+        "max_steps": 1000,
+        "max_times": 300,
+        "reset_memory": True,
         "ignore_errors": True,
         "case_path": None,
         "macro_objective": "全面探测中央 3D 矿山数字孪生模型健康度：重点进入三维视口页面，执行轨道视角全向旋转 (rotate_3d) 与镜头深度推进拉远 (zoom)，并发起三维视口晃动抗压测试 (canvas_stress_drag)，深度排查 UE5 像素流是否有花屏、断流、模型破面或 WebGL 上下文丢失！",
@@ -300,9 +300,9 @@ DEFAULT_PRESET_TASKS = [
         "app_name": "zhaiwan",
         "mode": "smoke",
         "badge": "冒烟",
-        "max_steps": 40,
-        "max_times": 15,
-        "reset_memory": False,
+        "max_steps": 1500,
+        "max_times": 150,
+        "reset_memory": True,
         "ignore_errors": True,
         "case_path": None,
         "macro_objective": "二级菜单全量冒烟体检：极速单次遍历全部 33 个业务二级菜单，验证两级跳转与基础展示健康度",
@@ -314,8 +314,8 @@ DEFAULT_PRESET_TASKS = [
         "app_name": "zhaiwan",
         "mode": "case",
         "badge": "回归",
-        "max_steps": 50,
-        "max_times": 20,
+        "max_steps": 500,
+        "max_times": 200,
         "reset_memory": False,
         "ignore_errors": True,
         "case_path": "test_cases/test_home_mine_intro.yaml",
@@ -324,7 +324,7 @@ DEFAULT_PRESET_TASKS = [
     },
     {
         "id": "preset_liwutong_explore",
-        "title": "【李屋塘】数字孪生采矿与选矿自主探索",
+        "title": "【里伍铜】数字孪生采矿与选矿自主探索",
         "app_name": "liwutong",
         "mode": "explore",
         "badge": "探索",
@@ -817,20 +817,23 @@ def get_live_performance_snapshot(
     "/api/metrics/{task_id}",
     response_model=List[PerformanceMetricResponse],
     tags=["4. 多核全栈性能监控"],
-    summary="获取任务的时序性能指标数据列表",
-    description="返回指定任务运行期间采集的所有性能时序打点，包含 DOM 数量、事件监听器、JSHeap 内存、UE5 内存与 WebRTC 实时帧率，专供 ECharts 折线图渲染。"
+    summary="获取任务的时序性能指标数据列表 (支持自适应等间距智能降采样与全周期保真)",
+    description="返回指定任务运行期间采集的所有性能时序打点。当点数超过 limit 时自动启用均匀等间距降采样算法，确保起点与终点 100% 完整覆盖，完美支撑数小时乃至通宵压测的全量 ECharts 渲染与 DataZoom 缩放。"
 )
 def get_task_metrics(
     task_id: str = FastPath(..., description="巡检任务全局标识码"),
-    limit: int = Query(default=500, ge=10, le=2000, description="最大返回时序点数量"),
+    limit: int = Query(default=1000, ge=10, le=5000, description="最大返回时序点数量"),
+    downsample: bool = Query(default=True, description="超出 limit 时是否进行自适应等间距降采样保留全周期跨度"),
     db: Session = Depends(get_db)
 ):
-    records = db.query(PerformanceMetric).filter(
+    query = db.query(PerformanceMetric).filter(
         PerformanceMetric.task_id == task_id
-    ).order_by(PerformanceMetric.timestamp.asc()).limit(limit).all()
+    ).order_by(PerformanceMetric.timestamp.asc())
+
+    total_count = query.count()
 
     # 若尚未入库，尝试从历史 reports/runs/**/memory_timeline.json 中自动回填历史数据
-    if not records:
+    if total_count == 0:
         task = db.query(TaskRun).filter(TaskRun.id == task_id).first()
         if task and task.run_dir:
             tl_path = PROJECT_ROOT / "reports" / "runs" / task.run_dir / "screenshots" / "memory_timeline.json"
@@ -858,11 +861,26 @@ def get_task_metrics(
                         db.add(pm)
                         new_records.append(pm)
                     db.commit()
-                    return new_records
+                    query = db.query(PerformanceMetric).filter(
+                        PerformanceMetric.task_id == task_id
+                    ).order_by(PerformanceMetric.timestamp.asc())
+                    total_count = len(new_records)
                 except Exception as e:
                     logger.debug(f"回填历史 memory_timeline.json 异常: {e}")
 
-    return records
+    if total_count == 0:
+        return []
+
+    # 智能等间距降采样：如果数据点数量超过 limit，保留起点、终点和中间均匀分布的点，确保跨度 100% 完整
+    if downsample and total_count > limit:
+        all_records = query.all()
+        step = (total_count - 1) / (limit - 1)
+        sampled_indices = {int(round(i * step)) for i in range(limit)}
+        sampled_indices.add(0)
+        sampled_indices.add(total_count - 1)
+        return [all_records[i] for i in sorted(sampled_indices) if i < total_count]
+
+    return query.limit(limit).all()
 
 
 @app.get(
