@@ -29,6 +29,8 @@ const app = createApp({
       webrtc_fps: 0,
       ue_memory_mb: 0,
       ue_cpu_percent: 0,
+      ue_cpu_raw_percent: 0,
+      cpu_cores: 12,
       gpu_usage_percent: 0,
       gpu_memory_mb: 0
     });

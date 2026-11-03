@@ -129,3 +129,4 @@ def update_bug_record(data: Dict[str, Any]) -> Dict[str, Any]:
     if success or "database.BugRecord" in updated_targets:
         return {"success": True, "bug_id": bug_id, "updated": updated_targets}
     return {"success": False, "bug_id": bug_id, "error": f"未找到编号为 '{bug_id}' 的缺陷记录"}
+

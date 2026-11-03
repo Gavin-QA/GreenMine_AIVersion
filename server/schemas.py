@@ -167,8 +167,10 @@ class LivePerformanceSnapshotResponse(BaseModel):
     chrome_cpu_percent: Optional[float] = Field(default=None, description="Chrome 进程树 CPU (%)")
     chrome_memory_mb: Optional[float] = Field(default=None, description="Chrome 进程树物理内存 (MB)")
     ue_pid: Optional[int] = Field(default=None, description="UE5 进程 PID")
-    ue_cpu_percent: Optional[float] = Field(default=None, description="UE5 进程 CPU (%)")
+    ue_cpu_percent: Optional[float] = Field(default=None, description="UE5 进程归一化 CPU (%)，对齐任务管理器单进程视角")
+    ue_cpu_raw_percent: Optional[float] = Field(default=None, description="UE5 进程多核累计原始算力占用率 (%)")
     ue_memory_mb: Optional[float] = Field(default=None, description="UE5 进程物理内存 (MB)")
+    cpu_cores: int = Field(default=12, description="本机系统逻辑处理器核心总数")
     gpu_usage_percent: Optional[float] = Field(default=None, description="GPU 3D 核心占用率 (%)")
     gpu_memory_mb: Optional[float] = Field(default=None, description="GPU 显存占用 (MB)")
 

@@ -110,10 +110,16 @@ class PerformanceMonitor:
 
             stats = self._get_process_cpu_mem(cached)
 
+        logical_cores = psutil.cpu_count(logical=True) or 1
+        raw_cpu = stats["cpu"]
+        normalized_cpu = round(raw_cpu / logical_cores, 2) if raw_cpu is not None else None
+
         return {
             "ue_pid": main_ue.pid,
-            "ue_cpu_percent": stats["cpu"],
-            "ue_memory_mb": stats["mem_mb"]
+            "ue_cpu_percent": normalized_cpu,
+            "ue_cpu_raw_percent": round(raw_cpu, 2) if raw_cpu is not None else None,
+            "ue_memory_mb": stats["mem_mb"],
+            "cpu_cores": logical_cores
         }
 
     def collect_chrome_process_metrics(self, app_name: str = "zhaiwan") -> Dict[str, Any]:
@@ -133,7 +139,7 @@ class PerformanceMonitor:
                 continue
 
         if not chrome_procs:
-            return {"chrome_pid": None, "chrome_cpu_percent": None, "chrome_memory_mb": None}
+            return {"chrome_pid": None, "chrome_cpu_percent": None, "chrome_cpu_raw_percent": None, "chrome_memory_mb": None}
 
         total_cpu = 0.0
         total_mem = 0.0
@@ -153,10 +159,15 @@ class PerformanceMonitor:
                 total_cpu += stats["cpu"]
                 total_mem += stats["mem_mb"]
 
+        logical_cores = psutil.cpu_count(logical=True) or 1
+        normalized_cpu = round(total_cpu / logical_cores, 2)
+
         return {
             "chrome_pid": main_pid,
-            "chrome_cpu_percent": round(total_cpu, 2),
-            "chrome_memory_mb": round(total_mem, 2)
+            "chrome_cpu_percent": normalized_cpu,
+            "chrome_cpu_raw_percent": round(total_cpu, 2),
+            "chrome_memory_mb": round(total_mem, 2),
+            "cpu_cores": logical_cores
         }
 
     def collect_gpu_metrics(self) -> Dict[str, Optional[float]]:
@@ -329,6 +340,7 @@ class PerformanceMonitor:
     def collect_full_snapshot(self, app_name: str = "zhaiwan") -> Dict[str, Any]:
         """采集一次跨核全栈性能切片 (UE + Chrome + CDP + GPU)"""
         now = datetime.datetime.utcnow()
+        logical_cores = psutil.cpu_count(logical=True) or 1
         ue_data = self.collect_ue_metrics(app_name)
         chrome_data = self.collect_chrome_process_metrics(app_name)
         gpu_data = self.collect_gpu_metrics()
@@ -337,6 +349,7 @@ class PerformanceMonitor:
         return {
             "app_name": app_name,
             "timestamp": now,
+            "cpu_cores": logical_cores,
             "cdp_online": cdp_data.get("cdp_online", False),
             "ue_online": bool(ue_data.get("ue_pid")),
             "gpu_online": gpu_data.get("gpu_usage_percent") is not None,
@@ -351,9 +364,11 @@ class PerformanceMonitor:
             "webrtc_fps": cdp_data.get("webrtc_fps"),
             "chrome_pid": chrome_data.get("chrome_pid"),
             "chrome_cpu_percent": chrome_data.get("chrome_cpu_percent"),
+            "chrome_cpu_raw_percent": chrome_data.get("chrome_cpu_raw_percent"),
             "chrome_memory_mb": chrome_data.get("chrome_memory_mb"),
             "ue_pid": ue_data.get("ue_pid"),
             "ue_cpu_percent": ue_data.get("ue_cpu_percent"),
+            "ue_cpu_raw_percent": ue_data.get("ue_cpu_raw_percent"),
             "ue_memory_mb": ue_data.get("ue_memory_mb"),
             "gpu_usage_percent": gpu_data.get("gpu_usage_percent"),
             "gpu_memory_mb": gpu_data.get("gpu_memory_mb")
