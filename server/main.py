@@ -4,7 +4,7 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Set, Dict, Any
 
 from fastapi import (
     FastAPI,
@@ -95,6 +95,68 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# =============================================================================
+# 全局平台实时事件总线 (Live-Update Event Bus)
+# =============================================================================
+platform_event_subscribers: Set[WebSocket] = set()
+
+async def broadcast_platform_event(event_type: str, payload: dict = None):
+    """向所有在线前端控制台广播数据更新事件"""
+    if not platform_event_subscribers:
+        return
+    msg = {
+        "event": event_type,
+        "data": payload or {},
+        "timestamp": datetime.datetime.utcnow().isoformat()
+    }
+    dead = []
+    for ws in list(platform_event_subscribers):
+        try:
+            await ws.send_json(msg)
+        except Exception:
+            dead.append(ws)
+    for ws in dead:
+        platform_event_subscribers.discard(ws)
+
+
+def notify_platform_data_change(event_type: str = "data_refresh", payload: dict = None):
+    """安全跨线程/同步函数触发异步广播"""
+    try:
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        if loop and loop.is_running():
+            asyncio.create_task(broadcast_platform_event(event_type, payload))
+        else:
+            asyncio.run(broadcast_platform_event(event_type, payload))
+    except Exception as e:
+        logger.debug(f"[Platform-Broadcast] 广播事件异常 (可忽略): {e}")
+
+
+@app.websocket("/ws/platform")
+async def websocket_platform_events(websocket: WebSocket):
+    """
+    全局平台事件热推通道 (Live-Update)
+    任何任务启动/结束、缺陷修改、禅道同步等动作发生后，即刻广播给前端控制台，实现免刷新无感热更新。
+    """
+    await websocket.accept()
+    platform_event_subscribers.add(websocket)
+    try:
+        await websocket.send_json({"event": "connected", "message": "平台实时数据热推总线已就绪"})
+        while True:
+            data = await websocket.receive_text()
+            if data == "ping":
+                await websocket.send_text("pong")
+    except (WebSocketDisconnect, asyncio.CancelledError):
+        pass
+    except Exception as e:
+        logger.debug(f"[WS-Platform] 客户端断开: {e}")
+    finally:
+        platform_event_subscribers.discard(websocket)
+
 
 
 @app.on_event("startup")
@@ -211,6 +273,7 @@ async def update_bug_compatible_api(data: dict):
     result = update_bug_record(data)
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("error", "更新缺陷记录失败"))
+    notify_platform_data_change("bug_updated", {"bug_id": data.get("bug_id")})
     return result
 
 
@@ -589,6 +652,7 @@ def create_task(payload: TaskCreate, db: Session = Depends(get_db)):
     db.add(task)
     db.commit()
     db.refresh(task)
+    notify_platform_data_change("task_updated", {"task_id": task_id})
     return task
 
 
@@ -648,6 +712,7 @@ def start_task_execution(
     success = task_manager.start_task(task_id)
     if not success:
         raise HTTPException(status_code=500, detail="拉起任务进程失败，请检查运行环境或日志")
+    notify_platform_data_change("task_updated", {"task_id": task_id})
     return {"code": 200, "message": "任务启动成功", "task_id": task_id}
 
 
@@ -663,6 +728,7 @@ def stop_task_execution(
     stopped = task_manager.stop_task(task_id)
     if not stopped:
         return {"code": 200, "message": "任务未在运行或已处于终态", "task_id": task_id}
+    notify_platform_data_change("task_updated", {"task_id": task_id})
     return {"code": 200, "message": "任务已安全终止并归档", "task_id": task_id}
 
 
@@ -788,6 +854,7 @@ def update_bug(
     update_bug_record(update_dict)
     db.commit()
     db.refresh(bug)
+    notify_platform_data_change("bug_updated", {"bug_id": bug_id})
     return bug
 
 
@@ -853,6 +920,8 @@ def sync_bug_to_zentao(
         from utils.zentao_sync import update_bug_records
         _, g_file, r_files = find_bug_in_databases(bug_id)
         update_bug_records(bug_id, z_id, g_file, r_files, assignee=assignee_name)
+
+        notify_platform_data_change("bug_updated", {"bug_id": bug.id, "zentao_id": z_id})
 
         return {
             "code": 200,

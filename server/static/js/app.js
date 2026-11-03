@@ -732,6 +732,68 @@ const app = createApp({
       }
     });
 
+    // =========================================================================
+    // 全局平台事件实时热更新总线 (WebSocket Live-Update Bus)
+    // =========================================================================
+    let platformWs = null;
+    let platformReconnectTimer = null;
+
+    function initPlatformWebSocket() {
+      const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${protocol}//${location.host}/ws/platform`;
+
+      try {
+        platformWs = new WebSocket(wsUrl);
+
+        platformWs.onopen = () => {
+          console.log('[Live-Update] 🟢 平台数据实时热推总线已就绪');
+          if (platformReconnectTimer) {
+            clearTimeout(platformReconnectTimer);
+            platformReconnectTimer = null;
+          }
+        };
+
+        platformWs.onmessage = (event) => {
+          try {
+            const msg = JSON.parse(event.data);
+            if (msg.event === 'bug_updated') {
+              console.log('[Live-Update] ⚡ 监听到缺陷数据变更，静默热更新...', msg.data);
+              fetchBugs();
+              if (selectedBug.value && msg.data && selectedBug.value.id === msg.data.bug_id) {
+                // 如果当前正在查看该缺陷详情，静默重新拉取
+                fetch(`${apiBase}/api/bugs`).then(r => r.json()).then(list => {
+                  const found = list.find(x => x.id === selectedBug.value.id);
+                  if (found) Object.assign(selectedBug.value, found);
+                }).catch(() => {});
+              }
+            } else if (msg.event === 'task_updated') {
+              console.log('[Live-Update] ⚡ 监听到巡检任务状态变更，静默热更新...', msg.data);
+              fetchTasks();
+            } else if (msg.event === 'data_refresh') {
+              fetchBugs();
+              fetchTasks();
+            }
+          } catch (e) {
+            // 忽略非 JSON 心跳
+          }
+        };
+
+        platformWs.onclose = () => {
+          if (!platformReconnectTimer) {
+            platformReconnectTimer = setTimeout(initPlatformWebSocket, 4000);
+          }
+        };
+
+        platformWs.onerror = () => {
+          if (platformWs) platformWs.close();
+        };
+      } catch (err) {
+        if (!platformReconnectTimer) {
+          platformReconnectTimer = setTimeout(initPlatformWebSocket, 4000);
+        }
+      }
+    }
+
     let liveTimer = null;
     let taskTimer = null;
 
@@ -741,6 +803,15 @@ const app = createApp({
       fetchTasks();
       fetchLiveSnapshot();
       fetchBugs();
+      initPlatformWebSocket();
+
+      // 当用户从其他应用/窗口切回本控制台标签页时，自动静默触发最新数据同步
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) {
+          fetchBugs();
+          fetchTasks();
+        }
+      });
 
       // 定时轮询环境快照与任务状态
       liveTimer = setInterval(fetchLiveSnapshot, 4000);
@@ -755,6 +826,8 @@ const app = createApp({
     onUnmounted(() => {
       if (liveTimer) clearInterval(liveTimer);
       if (taskTimer) clearInterval(taskTimer);
+      if (platformReconnectTimer) clearTimeout(platformReconnectTimer);
+      if (platformWs) platformWs.close();
       if (logWs) logWs.close();
       if (metricWs) metricWs.close();
     });
