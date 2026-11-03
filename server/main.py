@@ -4,7 +4,7 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import List, Optional, Set, Dict, Any
+from typing import List, Optional
 
 from fastapi import (
     FastAPI,
@@ -97,68 +97,6 @@ app.add_middleware(
 )
 
 
-# =============================================================================
-# 全局平台实时事件总线 (Live-Update Event Bus)
-# =============================================================================
-platform_event_subscribers: Set[WebSocket] = set()
-
-async def broadcast_platform_event(event_type: str, payload: dict = None):
-    """向所有在线前端控制台广播数据更新事件"""
-    if not platform_event_subscribers:
-        return
-    msg = {
-        "event": event_type,
-        "data": payload or {},
-        "timestamp": datetime.datetime.utcnow().isoformat()
-    }
-    dead = []
-    for ws in list(platform_event_subscribers):
-        try:
-            await ws.send_json(msg)
-        except Exception:
-            dead.append(ws)
-    for ws in dead:
-        platform_event_subscribers.discard(ws)
-
-
-def notify_platform_data_change(event_type: str = "data_refresh", payload: dict = None):
-    """安全跨线程/同步函数触发异步广播"""
-    try:
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
-        if loop and loop.is_running():
-            asyncio.create_task(broadcast_platform_event(event_type, payload))
-        else:
-            asyncio.run(broadcast_platform_event(event_type, payload))
-    except Exception as e:
-        logger.debug(f"[Platform-Broadcast] 广播事件异常 (可忽略): {e}")
-
-
-@app.websocket("/ws/platform")
-async def websocket_platform_events(websocket: WebSocket):
-    """
-    全局平台事件热推通道 (Live-Update)
-    任何任务启动/结束、缺陷修改、禅道同步等动作发生后，即刻广播给前端控制台，实现免刷新无感热更新。
-    """
-    await websocket.accept()
-    platform_event_subscribers.add(websocket)
-    try:
-        await websocket.send_json({"event": "connected", "message": "平台实时数据热推总线已就绪"})
-        while True:
-            data = await websocket.receive_text()
-            if data == "ping":
-                await websocket.send_text("pong")
-    except (WebSocketDisconnect, asyncio.CancelledError):
-        pass
-    except Exception as e:
-        logger.debug(f"[WS-Platform] 客户端断开: {e}")
-    finally:
-        platform_event_subscribers.discard(websocket)
-
-
-
 @app.on_event("startup")
 def on_startup():
     """服务冷启动生命周期钩子：冷启动自动物理快照、初始化数据库结构并自动同步已有全局缺陷库"""
@@ -213,6 +151,69 @@ def on_startup():
             logger.info(f"🧹 冷启动数据治理：自动清理了 {deleted} 条超过 7 天的历史性能打点")
     except Exception as e:
         logger.debug(f"滚动清理性能时序异常 (可忽略): {e}")
+
+    # 5. 自动增量同步本地历史测试运行目录到任务产物库
+    try:
+        from utils.paths import get_all_run_folders, RUNS_DIR
+        from utils.report_generator import ReportGenerator
+
+        db = SessionLocal()
+        existing_run_dirs = {t.run_dir for t in db.query(TaskRun).all() if t.run_dir}
+        for f in get_all_run_folders():
+            try:
+                rel_p = f.relative_to(RUNS_DIR).as_posix()
+            except Exception:
+                rel_p = f.name
+            if rel_p in existing_run_dirs:
+                continue
+
+            try:
+                generator = ReportGenerator(f)
+                data = generator.parse_run_data()
+                run_id = data.get("run_id") or f.name
+                app_key = rel_p.split("/")[0] if "/" in rel_p else "zhaiwan"
+                mode_val = "smoke" if run_id.startswith("smoke_") else ("case" if run_id.startswith("yaml_") else "explore")
+                kpi = data.get("kpi", {})
+
+                start_dt = None
+                if data.get("start_time"):
+                    try:
+                        start_dt = datetime.datetime.strptime(data["start_time"].strip(), "%Y-%m-%d %H:%M:%S")
+                    except Exception:
+                        pass
+                if not start_dt:
+                    start_dt = datetime.datetime.fromtimestamp(f.stat().st_mtime)
+
+                task_id = f"task_{run_id}"
+                if not db.query(TaskRun).filter(TaskRun.id == task_id).first():
+                    t_rec = TaskRun(
+                        id=task_id,
+                        name=f"巡检执行报告 · {run_id}",
+                        app_name=app_key,
+                        mode=mode_val,
+                        status="completed",
+                        macro_objective=data.get("macro_objective") or "常规自动化巡检与探索",
+                        run_dir=rel_p,
+                        report_url=f"reports/runs/{rel_p}/report.html",
+                        exit_code=0,
+                        start_time=start_dt,
+                        duration=data.get("duration") or "未知",
+                        total_steps=kpi.get("total_steps", 0),
+                        planner_phases=kpi.get("planner_phases", 0),
+                        coverage_rate=float(kpi.get("page_coverage_rate") or 0.0),
+                        bugs_count=kpi.get("bugs_count", 0),
+                        apis_count=kpi.get("apis_count", 0),
+                        yaml_steps_count=kpi.get("yaml_steps_count", 0)
+                    )
+                    db.add(t_rec)
+                    existing_run_dirs.add(rel_p)
+            except Exception as fe:
+                logger.debug(f"解析运行目录 {f.name} 跳过: {fe}")
+        db.commit()
+        db.close()
+        logger.info("📁 已自动同步本地历史巡检运行目录入库！")
+    except Exception as te:
+        logger.debug(f"冷启动增量同步历史运行异常 (可忽略): {te}")
 
 
 # 静态文件挂载：平台前端 UI 静态资源与测试产物报告截图
@@ -273,7 +274,6 @@ async def update_bug_compatible_api(data: dict):
     result = update_bug_record(data)
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("error", "更新缺陷记录失败"))
-    notify_platform_data_change("bug_updated", {"bug_id": data.get("bug_id")})
     return result
 
 
@@ -652,7 +652,6 @@ def create_task(payload: TaskCreate, db: Session = Depends(get_db)):
     db.add(task)
     db.commit()
     db.refresh(task)
-    notify_platform_data_change("task_updated", {"task_id": task_id})
     return task
 
 
@@ -712,7 +711,6 @@ def start_task_execution(
     success = task_manager.start_task(task_id)
     if not success:
         raise HTTPException(status_code=500, detail="拉起任务进程失败，请检查运行环境或日志")
-    notify_platform_data_change("task_updated", {"task_id": task_id})
     return {"code": 200, "message": "任务启动成功", "task_id": task_id}
 
 
@@ -728,7 +726,6 @@ def stop_task_execution(
     stopped = task_manager.stop_task(task_id)
     if not stopped:
         return {"code": 200, "message": "任务未在运行或已处于终态", "task_id": task_id}
-    notify_platform_data_change("task_updated", {"task_id": task_id})
     return {"code": 200, "message": "任务已安全终止并归档", "task_id": task_id}
 
 
@@ -854,7 +851,6 @@ def update_bug(
     update_bug_record(update_dict)
     db.commit()
     db.refresh(bug)
-    notify_platform_data_change("bug_updated", {"bug_id": bug_id})
     return bug
 
 
@@ -920,8 +916,6 @@ def sync_bug_to_zentao(
         from utils.zentao_sync import update_bug_records
         _, g_file, r_files = find_bug_in_databases(bug_id)
         update_bug_records(bug_id, z_id, g_file, r_files, assignee=assignee_name)
-
-        notify_platform_data_change("bug_updated", {"bug_id": bug.id, "zentao_id": z_id})
 
         return {
             "code": 200,
