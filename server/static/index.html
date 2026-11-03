@@ -64,6 +64,14 @@
           <span v-if="currentTab === 'bugs'">🐛 缺陷知识库与禅道协同</span>
         </div>
         <div class="top-actions">
+          <div style="display: flex; align-items: center; gap: 8px; background: rgba(13, 20, 36, 0.9); padding: 5px 12px; border-radius: 6px; border: 1px solid #00d2ff;">
+            <span style="font-size: 12px; color: #fff; font-weight: 600;">🎯 目标矿山:</span>
+            <select v-model="taskForm.app_name" @change="fetchLiveSnapshot" style="background: #111a2e; color: #00d2ff; border: none; font-weight: 700; font-size: 13px; cursor: pointer; outline: none;">
+              <option v-for="app in options.apps" :key="app.key" :value="app.key">
+                {{ app.name }}
+              </option>
+            </select>
+          </div>
           <button class="btn btn-secondary" @click="currentTab = 'dashboard'">+ 新建任务</button>
           <a :href="options.report_hub_url || '/report-hub'" target="_blank" class="btn btn-secondary" style="border-color: #00d2ff; color: #00d2ff;">
             🌐 产物总门户 (Report Hub)
@@ -76,7 +84,22 @@
         <!-- 1. 任务控制台 (免敲命令，选项化表单与预设任务库) -->
         <!-- ============================================================= -->
         <div v-show="currentTab === 'dashboard'">
-          <!-- 实时环境概览 -->
+          <!-- 实时环境概览与顶置切换条 -->
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; background: rgba(13, 20, 36, 0.85); padding: 8px 16px; border-radius: 6px; border: 1px solid #1a253c;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #00d2ff; box-shadow: 0 0 8px #00d2ff;"></span>
+              <span style="font-size: 13px; color: #fff; font-weight: 600;">正在实时监控大屏应用：</span>
+              <select v-model="taskForm.app_name" @change="fetchLiveSnapshot" style="background: #111a2e; color: #00d2ff; border: 1px solid #00d2ff; padding: 4px 12px; border-radius: 4px; font-weight: 700; font-size: 13px; cursor: pointer; outline: none;">
+                <option v-for="app in options.apps" :key="app.key" :value="app.key">
+                  {{ app.name }}
+                </option>
+              </select>
+            </div>
+            <div style="font-size: 12px; color: var(--text-muted);">
+              <span>伴生 UE 进程: <strong style="color: #00e676;">{{ taskForm.app_name }}.exe</strong> | 调试端口: <strong style="color: #00d2ff;">9223</strong></span>
+            </div>
+          </div>
+
           <div class="grid-4" style="margin-bottom: 20px;">
             <div class="kpi-card" :title="liveSnapshot.cdp_online ? 'Chromium CDP 协议探针在线，实时抓取 2D 页面 DOM 树与事件监听器' : 'CDP 调试端口 (9223) 未激活\n启动大屏附带参数 --remote-debugging-port=9223 即可秒级点亮此卡片'" style="cursor: help;">
               <div class="kpi-title">CHROMIUM DOM 节点</div>
