@@ -647,8 +647,10 @@ async def websocket_task_logs(websocket: WebSocket, task_id: str):
         while True:
             line = await queue.get()
             await websocket.send_text(line)
-    except WebSocketDisconnect:
+    except (WebSocketDisconnect, asyncio.CancelledError):
         pass
+    except Exception as e:
+        logger.debug(f"[WS-Logs] 任务 [{task_id}] 推流通道安全关闭: {e}")
     finally:
         task_manager.unsubscribe_logs(task_id, queue)
 
@@ -918,8 +920,10 @@ async def websocket_task_metrics(websocket: WebSocket, task_id: str):
         while True:
             metric_dict = await queue.get()
             await websocket.send_json(metric_dict)
-    except WebSocketDisconnect:
+    except (WebSocketDisconnect, asyncio.CancelledError):
         pass
+    except Exception as e:
+        logger.debug(f"[WS-Metrics] 任务 [{task_id}] 性能推流通道安全关闭: {e}")
     finally:
         performance_monitor.unsubscribe_metrics(task_id, queue)
 

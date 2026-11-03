@@ -11,4 +11,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 if __name__ == "__main__":
     logging.info("🚀 启动 Electron AI Vision Testing Platform 服务...")
-    uvicorn.run("server.main:app", host="127.0.0.1", port=8000, reload=False)
+    try:
+        uvicorn.run("server.main:app", host="127.0.0.1", port=8000, reload=False, log_level="info")
+    except KeyboardInterrupt:
+        print("\n🛑 收到退出信号，平台服务已优雅退出。")
