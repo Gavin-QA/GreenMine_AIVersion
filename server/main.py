@@ -227,7 +227,7 @@ def health_check():
 def get_config_options():
     apps = [
         {"key": "zhaiwan", "name": "寨湾矿山 (Zhaiwan)", "desc": "包含中央 UE5 像素流三维矿山与两侧 2D 业务看板"},
-        {"key": "liwutong", "name": "李屋塘矿山 (Liwutong)", "desc": "数字孪生采矿与智能选矿平台"}
+        {"key": "liwutong", "name": "里伍铜矿山 (Liwutong)", "desc": "数字孪生采矿与智能选矿平台"}
     ]
     modes = [
         {"key": "explore", "name": "自主探索模式 (Explorer)", "desc": "Planner-Worker 双核黑客模式，自主规划链路挖掘深层 Crash"},
@@ -272,9 +272,9 @@ DEFAULT_PRESET_TASKS = [
         "app_name": "zhaiwan",
         "mode": "explore",
         "badge": "推荐",
-        "max_steps": 200,
-        "max_times": 60,
-        "reset_memory": False,
+        "max_steps": 2000,
+        "max_times": 600,
+        "reset_memory": True,
         "ignore_errors": True,
         "case_path": None,
         "macro_objective": "开启全栈地毯式扫荡：不局限于任何单一模块，请依次悬停并点击顶部导航栏，深度遍历所有的顶级菜单与二级业务菜单。在每个页面内，务必全量探测核心业务组件（包含所有的数据指标卡片、Echarts图表时间维度切换、表格翻页与明细操作、以及各类深层弹窗和抽屉）。遇到折叠面板必须全部展开，遇到Tab必须逐一切换。请像QA黑客一样发散思维，重点寻找白屏、数据不一致、或者深层状态丢失的隐蔽 Bug。不要在单一页面陷入死循环死磕，确保整个应用 100% 页面全覆盖度！",
@@ -347,7 +347,7 @@ DEFAULT_PRESET_TASKS = [
     description="提供系统默认验证的常用巡检任务模板，以及用户在界面中自行保存/编辑的个性化预设方案。"
 )
 def get_preset_tasks(db: Session = Depends(get_db)):
-    # 1. 确保系统预设已装载到数据库中 (初次启动种子数据注入)
+    # 1. 确保系统预设已装载到数据库中并与代码保持实时同步
     for p in DEFAULT_PRESET_TASKS:
         exist = db.query(PresetTaskRecord).filter(PresetTaskRecord.id == p["id"]).first()
         if not exist:
@@ -367,6 +367,19 @@ def get_preset_tasks(db: Session = Depends(get_db)):
                 is_system=True
             )
             db.add(rec)
+        elif exist.is_system:
+            # 允许用户在源码 DEFAULT_PRESET_TASKS 中直接修改，并自动热同步至数据库
+            exist.title = p["title"]
+            exist.app_name = p["app_name"]
+            exist.mode = p["mode"]
+            exist.badge = p["badge"]
+            exist.description = p.get("description")
+            exist.macro_objective = p["macro_objective"]
+            exist.max_steps = p["max_steps"]
+            exist.max_times = p["max_times"]
+            exist.reset_memory = p.get("reset_memory", False)
+            exist.ignore_errors = p.get("ignore_errors", True)
+            exist.case_path = p.get("case_path")
     db.commit()
 
     # 2. 查询全部预设（系统预设优先，用户自定义按更新时间倒序）
