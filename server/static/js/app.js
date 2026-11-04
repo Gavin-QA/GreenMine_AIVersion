@@ -156,6 +156,12 @@ const app = createApp({
 
     const bugSeverityFilter = ref('');
 
+    const bugAssigneeFilter = ref('');
+
+    const bugStatusFilter = ref('');
+
+    const bugOccurrencesFilter = ref('');
+
     const selectedBug = ref(null);
 
     const editingBug = ref(null);
@@ -350,9 +356,15 @@ const app = createApp({
 
       try {
 
-        let url = `${apiBase}/api/bugs?limit=100`;
+        let url = `${apiBase}/api/bugs?limit=300`;
 
-        if (bugSeverityFilter.value) url += `&severity=${bugSeverityFilter.value}`;
+        if (bugSeverityFilter.value) url += `&severity=${encodeURIComponent(bugSeverityFilter.value)}`;
+
+        if (bugAssigneeFilter.value) url += `&assignee=${encodeURIComponent(bugAssigneeFilter.value)}`;
+
+        if (bugStatusFilter.value) url += `&status=${encodeURIComponent(bugStatusFilter.value)}`;
+
+        if (bugOccurrencesFilter.value) url += `&occurrences_range=${encodeURIComponent(bugOccurrencesFilter.value)}`;
 
         if (bugSearch.value) url += `&search=${encodeURIComponent(bugSearch.value)}`;
 
@@ -365,6 +377,24 @@ const app = createApp({
         console.error('获取缺陷列表失败:', e);
 
       }
+
+    }
+
+
+
+    function resetBugFilters() {
+
+      bugSearch.value = '';
+
+      bugSeverityFilter.value = '';
+
+      bugAssigneeFilter.value = '';
+
+      bugStatusFilter.value = '';
+
+      bugOccurrencesFilter.value = '';
+
+      fetchBugs();
 
     }
 
@@ -1760,6 +1790,14 @@ const app = createApp({
       bugSearch,
 
       bugSeverityFilter,
+
+      bugAssigneeFilter,
+
+      bugStatusFilter,
+
+      bugOccurrencesFilter,
+
+      resetBugFilters,
 
       selectedBug,
 

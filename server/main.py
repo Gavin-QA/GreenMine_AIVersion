@@ -1420,15 +1420,17 @@ async def websocket_task_logs(websocket: WebSocket, task_id: str):
 
 def list_bugs(
 
-    status: Optional[str] = Query(default=None, description="缺陷状态过滤 (激活/已提单/误报/已关闭)"),
+    status: Optional[str] = Query(default=None, description="缺陷状态过滤 (激活/已提单/误报/已解决)"),
 
     assignee: Optional[str] = Query(default=None, description="责任人过滤 (如 陈贻雄 / 梅本霞)"),
 
     severity: Optional[str] = Query(default=None, description="严重度过滤 (High/Medium/Low)"),
 
-    search: Optional[str] = Query(default=None, description="标题、报错文本或编号的全局模糊检索"),
+    occurrences_range: Optional[str] = Query(default=None, description="频次区间过滤 (1-2 / 3-9 / 10+)"),
 
-    limit: int = Query(default=100, ge=1, le=500, description="最大返回条数"),
+    search: Optional[str] = Query(default=None, description="编号、标题、报错文本或禅道单号的全局模糊检索"),
+
+    limit: int = Query(default=200, ge=1, le=500, description="最大返回条数"),
 
     offset: int = Query(default=0, ge=0, description="偏移量"),
 
@@ -1454,15 +1456,31 @@ def list_bugs(
 
         q = q.filter(BugRecord.severity == severity)
 
+    if occurrences_range == "1-2":
+
+        q = q.filter(BugRecord.occurrences >= 1, BugRecord.occurrences <= 2)
+
+    elif occurrences_range == "3-9":
+
+        q = q.filter(BugRecord.occurrences >= 3, BugRecord.occurrences <= 9)
+
+    elif occurrences_range == "10+":
+
+        q = q.filter(BugRecord.occurrences >= 10)
+
     if search:
+
+        search_kw = search.strip()
 
         q = q.filter(
 
-            (BugRecord.title.like(f"%{search}%")) |
+            (BugRecord.id.like(f"%{search_kw}%")) |
 
-            (BugRecord.actual_error.like(f"%{search}%")) |
+            (BugRecord.title.like(f"%{search_kw}%")) |
 
-            (BugRecord.id.like(f"%{search}%"))
+            (BugRecord.actual_error.like(f"%{search_kw}%")) |
+
+            (BugRecord.zentao_id.like(f"%{search_kw}%"))
 
         )
 

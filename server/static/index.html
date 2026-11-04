@@ -814,25 +814,133 @@
 
           <div class="card">
 
-            <div class="card-header">
+            <div class="card-header" style="flex-direction: column; align-items: stretch; gap: 14px; padding-bottom: 16px;">
 
-              <div class="card-title">🐛 全局缺陷资产库 (AI 智能查重去重与指派)</div>
+              <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
 
-              <div style="display: flex; gap: 10px;">
+                <div class="card-title" style="display: flex; align-items: center; gap: 10px;">
 
-                <input type="text" class="form-control" style="width: 220px;" placeholder="搜索缺陷标题/错误..." v-model="bugSearch" @input="fetchBugs">
+                  <span>🐛 全局缺陷治理中枢 (AI 智能查重去重与分流)</span>
 
-                <select class="form-control" style="width: 130px;" v-model="bugSeverityFilter" @change="fetchBugs">
+                  <span style="font-size: 12px; font-weight: normal; color: #00d2ff; background: rgba(0, 210, 255, 0.1); border: 1px solid rgba(0, 210, 255, 0.25); padding: 2px 10px; border-radius: 12px;">
 
-                  <option value="">全部严重度</option>
+                    共 {{ bugs ? bugs.length : 0 }} 条缺陷
 
-                  <option value="High">High (高)</option>
+                  </span>
 
-                  <option value="Medium">Medium (中)</option>
+                </div>
 
-                  <option value="Low">Low (低)</option>
+                <div style="display: flex; align-items: center; gap: 10px;">
 
-                </select>
+                  <span style="font-size: 12px; color: var(--text-muted);">✨ 智能关联实时过滤</span>
+
+                  <button class="btn btn-secondary" @click="resetBugFilters" style="padding: 5px 12px; font-size: 12px;" title="清空全部筛选条件">
+
+                    ↺ 重置筛选
+
+                  </button>
+
+                </div>
+
+              </div>
+
+
+
+              <!-- 5维一体现代复合筛选栏 -->
+
+              <div class="bug-filter-bar" style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center; background: rgba(11, 15, 25, 0.7); padding: 12px 16px; border-radius: 8px; border: 1px solid var(--border-color);">
+
+                <!-- 1. 全局关键字检索 (Bug编号、标题、报错堆栈、禅道单号) -->
+
+                <div style="flex: 1; min-width: 260px;">
+
+                  <input type="text" class="form-control" style="width: 100%;" 
+
+                         placeholder="🔍 检索 Bug 编号 / 标题 / 报错堆栈 / 禅道单号..." 
+
+                         v-model="bugSearch" @input="fetchBugs">
+
+                </div>
+
+
+
+                <!-- 2. 严重程度下拉项 -->
+
+                <div style="width: 135px;">
+
+                  <select class="form-control" style="width: 100%;" v-model="bugSeverityFilter" @change="fetchBugs">
+
+                    <option value="">⚡ 全部严重程度</option>
+
+                    <option value="High">🔴 High (高)</option>
+
+                    <option value="Medium">🟡 Medium (中)</option>
+
+                    <option value="Low">🟢 Low (低)</option>
+
+                  </select>
+
+                </div>
+
+
+
+                <!-- 3. 责任人下拉项 -->
+
+                <div style="width: 145px;">
+
+                  <select class="form-control" style="width: 100%;" v-model="bugAssigneeFilter" @change="fetchBugs">
+
+                    <option value="">👤 全部责任人</option>
+
+                    <option value="陈贻雄">👨‍💻 陈贻雄 (前端)</option>
+
+                    <option value="梅本霞">👩‍💻 梅本霞 (后端)</option>
+
+                  </select>
+
+                </div>
+
+
+
+                <!-- 4. 状态下拉项 -->
+
+                <div style="width: 130px;">
+
+                  <select class="form-control" style="width: 100%;" v-model="bugStatusFilter" @change="fetchBugs">
+
+                    <option value="">📌 全部状态</option>
+
+                    <option value="激活">🔥 激活 (Open)</option>
+
+                    <option value="已提单">📋 已提单</option>
+
+                    <option value="误报">⚪ 误报</option>
+
+                    <option value="已解决">✅ 已解决</option>
+
+                  </select>
+
+                </div>
+
+
+
+                <!-- 5. 频次范围 3 个区间下拉项 -->
+
+                <div style="width: 160px;">
+
+                  <select class="form-control" style="width: 100%;" v-model="bugOccurrencesFilter" @change="fetchBugs">
+
+                    <option value="">🔄 全部频次</option>
+
+                    <option value="1-2">🌱 偶发/初现 (1~2 次)</option>
+
+                    <option value="3-9">⚡ 多发/频现 (3~9 次)</option>
+
+                    <option value="10+">💥 顽固/高频 (≥ 10 次)</option>
+
+                  </select>
+
+                </div>
 
               </div>
 
