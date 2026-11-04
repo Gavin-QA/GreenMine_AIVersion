@@ -111,7 +111,7 @@ class TaskManager:
             # 更新任务数据库状态
             task.status = "running"
             task.pid = process.pid
-            task.start_time = datetime.datetime.utcnow()
+            task.start_time = datetime.datetime.now()
             db.commit()
 
             with self._lock:
@@ -197,7 +197,7 @@ class TaskManager:
             task: Optional[TaskRun] = db.query(TaskRun).filter(TaskRun.id == task_id).first()
             if task:
                 task.exit_code = exit_code
-                task.end_time = datetime.datetime.utcnow()
+                task.end_time = datetime.datetime.now()
                 if task.start_time:
                     delta = task.end_time - task.start_time
                     task.duration = str(delta).split(".")[0]
@@ -295,7 +295,7 @@ class TaskManager:
                 task = db.query(TaskRun).filter(TaskRun.id == task_id).first()
                 if task:
                     task.status = "stopped"
-                    task.end_time = datetime.datetime.utcnow()
+                    task.end_time = datetime.datetime.now()
                     db.commit()
             finally:
                 db.close()

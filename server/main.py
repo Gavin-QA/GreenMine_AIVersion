@@ -824,7 +824,7 @@ def save_or_update_preset_task(
 
 ):
 
-    now = datetime.datetime.utcnow()
+    now = datetime.datetime.now()
 
     preset_id = payload.id
 
@@ -1032,7 +1032,7 @@ def launch_preset_task(
 
 
 
-    now = datetime.datetime.utcnow()
+    now = datetime.datetime.now()
 
     task_id = f"task_{now.strftime('%Y%m%d_%H%M%S')}"
 
@@ -1118,7 +1118,7 @@ def launch_preset_task(
 
 def create_task(payload: TaskCreate, db: Session = Depends(get_db)):
 
-    now = datetime.datetime.utcnow()
+    now = datetime.datetime.now()
 
     task_id = f"task_{now.strftime('%Y%m%d_%H%M%S')}"
 

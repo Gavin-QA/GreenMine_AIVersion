@@ -3,9 +3,10 @@
 server/sync_service.py —— 磁盘自动化产物与 SQLite 数据库多端极速热同步服务
 
 核心职责：
-1. 自动感知 reports/runs/ 目录下新增或变更的测试任务，极速增量入库至 TaskRun（已入库历史批次直接毫秒级跳过，杜绝重复解析）；
-2. 自动同步 artifacts/bugs/global_bugs_*.json 的最新复现频次、运行批次 run_id、责任人与 AI 诊断报告至 BugRecord；
-3. 支持轻量化文件时间戳防抖热同步（Hot Sync），用户通宵夜跑后无需重启服务，刷新页面或点击同步即可秒级呈现最新结果。
+1. 自动感知 reports/runs/ 目录下新增或变更的测试任务，极速增量入库至 TaskRun；
+2. 核心防重与双引擎归一：智能关联平台自定义发起的任务与底层运行目录，杜绝影子重复记录；
+3. 自动同步 artifacts/bugs/global_bugs_*.json 的最新复现频次、运行批次 run_id、责任人与 AI 诊断报告至 BugRecord；
+4. 支持轻量化文件时间戳防抖热同步（Hot Sync），用户通宵夜跑后无需重启服务，刷新页面或点击同步即可秒级呈现最新结果。
 """
 
 import os
@@ -15,11 +16,11 @@ import logging
 import datetime
 from pathlib import Path
 from threading import Lock
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 from sqlalchemy.orm import Session
 
-from .models import TaskRun, BugRecord
+from .models import TaskRun, BugRecord, StepRecord, PerformanceMetric
 from utils.paths import PROJECT_ROOT, GLOBAL_BUGS_DIR, RUNS_DIR, get_all_run_folders
 
 logger = logging.getLogger("server.sync_service")
@@ -54,28 +55,120 @@ def get_filesystem_fingerprint() -> Dict[str, float]:
     return fingerprints
 
 
+def cleanup_duplicate_task_runs(db: Session) -> int:
+    """自动清理并合并指向同一物理目录的重复任务记录 (保全用户自定义业务名称与完整指标)"""
+    from collections import defaultdict
+
+    all_tasks = db.query(TaskRun).all()
+    by_folder = defaultdict(list)
+
+    for t in all_tasks:
+        folder = None
+        if t.run_dir:
+            folder = Path(t.run_dir.replace("\\", "/").strip("/")).name
+        elif t.report_url:
+            for seg in t.report_url.replace("\\", "/").split("/"):
+                if seg.startswith(("explore_", "smoke_", "yaml_")):
+                    folder = seg
+                    break
+        if folder:
+            by_folder[folder].append(t)
+
+    cleaned_count = 0
+    for folder, group in by_folder.items():
+        if len(group) <= 1:
+            continue
+
+        # 优先保留平台派发的业务命名任务
+        platform_tasks = [t for t in group if not t.id.startswith(("task_explore_", "task_smoke_", "task_yaml_"))]
+        generic_tasks = [t for t in group if t.id.startswith(("task_explore_", "task_smoke_", "task_yaml_"))]
+
+        if platform_tasks:
+            primary = platform_tasks[0]
+            shadows = [t for t in group if t.id != primary.id]
+        else:
+            primary = sorted(group, key=lambda x: (len(x.name), x.id), reverse=True)[0]
+            shadows = [t for t in group if t.id != primary.id]
+
+        for s in shadows:
+            # 汇聚指标
+            if (s.total_steps or 0) > (primary.total_steps or 0):
+                primary.total_steps = s.total_steps
+            if s.duration and (not primary.duration or primary.duration == "未知"):
+                primary.duration = s.duration
+            if s.report_url and not primary.report_url:
+                primary.report_url = s.report_url
+            if s.run_dir and not primary.run_dir:
+                primary.run_dir = s.run_dir
+            if (s.coverage_rate or 0) > (primary.coverage_rate or 0):
+                primary.coverage_rate = s.coverage_rate
+            if (s.bugs_count or 0) > (primary.bugs_count or 0):
+                primary.bugs_count = s.bugs_count
+
+            # 转移关联的缺陷与步骤记录
+            bugs = db.query(BugRecord).filter(BugRecord.task_id == s.id).all()
+            for b in bugs:
+                b.task_id = primary.id
+            steps = db.query(StepRecord).filter(StepRecord.task_id == s.id).all()
+            for st in steps:
+                st.task_id = primary.id
+            metrics = db.query(PerformanceMetric).filter(PerformanceMetric.task_id == s.id).all()
+            for m in metrics:
+                m.task_id = primary.id
+
+            db.delete(s)
+            cleaned_count += 1
+
+    if cleaned_count > 0:
+        db.commit()
+        logger.info(f"🛡️ [TaskClean] 已自动合并清理 {cleaned_count} 条物理运行重复任务记录")
+    return cleaned_count
+
+
 def sync_all_task_runs(db: Session) -> int:
-    """全量/增量同步测试运行目录到 TaskRun 表 (极速索引跳过模式)"""
+    """全量/增量同步测试运行目录到 TaskRun 表 (多维索引与防重归一模式)"""
     from utils.report_generator import ReportGenerator
+
+    # 1. 预先执行一次重复检测与清理
+    cleanup_duplicate_task_runs(db)
 
     synced_count = 0
     run_folders = get_all_run_folders()
-    existing_tasks = {t.id: t for t in db.query(TaskRun).all()}
+    all_tasks = db.query(TaskRun).all()
+
+    # 建立多维索引：同时以 task_id、run_dir、run_id 索引已有任务
+    existing_by_id: Dict[str, TaskRun] = {t.id: t for t in all_tasks}
+    existing_by_run: Dict[str, TaskRun] = {}
+
+    for t in all_tasks:
+        if t.run_dir:
+            clean_rd = t.run_dir.replace("\\", "/").strip("/")
+            existing_by_run[clean_rd] = t
+            existing_by_run[Path(clean_rd).name] = t
+        if t.report_url:
+            clean_ru = t.report_url.replace("\\", "/").strip("/")
+            for seg in clean_ru.split("/"):
+                if seg.startswith(("explore_", "smoke_", "yaml_")):
+                    existing_by_run[seg] = t
 
     for f in run_folders:
         try:
             run_id = f.name
             task_id = f"task_{run_id}"
-            existing = existing_tasks.get(task_id)
-
-            # ⚡ 核心极速优化：如果历史任务已入库且已有执行步数，直接毫秒级跳过，绝不重复解析磁盘大报告！
-            if existing and (existing.total_steps or 0) > 0 and existing.duration and existing.duration != "未知":
-                continue
 
             try:
                 rel_p = f.relative_to(RUNS_DIR).as_posix()
             except Exception:
                 rel_p = f.name
+
+            # 核心防重：优先命中平台派发的业务任务，严禁新建影子记录
+            existing = existing_by_run.get(rel_p) or existing_by_run.get(run_id) or existing_by_id.get(task_id)
+
+            # ⚡ 核心极速优化：如果历史任务已入库且已有执行步数，直接毫秒级跳过，绝不重复解析磁盘大报告！
+            if existing and (existing.total_steps or 0) > 0 and existing.duration and existing.duration != "未知":
+                if not existing.run_dir:
+                    existing.run_dir = rel_p
+                continue
 
             generator = ReportGenerator(f)
             data = generator.parse_run_data()
@@ -101,7 +194,7 @@ def sync_all_task_runs(db: Session) -> int:
                     status="completed",
                     macro_objective=data.get("macro_objective") or "常规自动化巡检与探索",
                     run_dir=rel_p,
-                    report_url=f"reports/runs/{rel_p}/report.html",
+                    report_url=f"/reports/runs/{rel_p}/report.html",
                     exit_code=0,
                     start_time=start_dt,
                     duration=data.get("duration") or "未知",
@@ -113,10 +206,19 @@ def sync_all_task_runs(db: Session) -> int:
                     yaml_steps_count=kpi.get("yaml_steps_count", 0)
                 )
                 db.add(t_rec)
-                existing_tasks[task_id] = t_rec
+                existing_by_id[task_id] = t_rec
+                existing_by_run[rel_p] = t_rec
+                existing_by_run[run_id] = t_rec
                 synced_count += 1
             else:
-                # 若任务已有但关键统计数据发生变动（如夜跑完成产生了最终 kpi），进行增量刷新
+                # 仅增量刷新指标，严格保留用户原本设置的有业务意义的名称
+                changed = False
+                if not existing.run_dir:
+                    existing.run_dir = rel_p
+                    changed = True
+                if not existing.report_url:
+                    existing.report_url = f"/reports/runs/{rel_p}/report.html"
+                    changed = True
                 new_bugs = kpi.get("bugs_count", 0)
                 new_steps = kpi.get("total_steps", 0)
                 new_duration = data.get("duration")
@@ -125,6 +227,11 @@ def sync_all_task_runs(db: Session) -> int:
                     existing.total_steps = new_steps
                     if new_duration:
                         existing.duration = new_duration
+                    changed = True
+                if existing.status != "completed":
+                    existing.status = "completed"
+                    changed = True
+                if changed:
                     synced_count += 1
 
         except Exception as fe:
@@ -135,12 +242,25 @@ def sync_all_task_runs(db: Session) -> int:
 
 
 def sync_all_bugs(db: Session) -> int:
-    """全量/增量同步 global_bugs_*.json 到 BugRecord 表 (内存批量匹配)"""
+    """全量/增量同步 global_bugs_*.json 到 BugRecord 表 (智能归属映射)"""
     synced_count = 0
     if not GLOBAL_BUGS_DIR.exists():
         return 0
 
-    existing_tasks = {t.id for t in db.query(TaskRun.id).all()}
+    all_tasks = db.query(TaskRun).all()
+    # 建立 task_id 智能反查索引 (支持由 run_id 或 run_dir 命中平台真实发起的任务 ID)
+    task_id_lookup: Dict[str, str] = {}
+    for t in all_tasks:
+        task_id_lookup[t.id] = t.id
+        if t.run_dir:
+            clean_rd = t.run_dir.replace("\\", "/").strip("/")
+            task_id_lookup[clean_rd] = t.id
+            task_id_lookup[Path(clean_rd).name] = t.id
+        if t.report_url:
+            for seg in t.report_url.replace("\\", "/").split("/"):
+                if seg.startswith(("explore_", "smoke_", "yaml_")):
+                    task_id_lookup[seg] = t.id
+
     existing_bugs = {b.id: b for b in db.query(BugRecord).all()}
 
     for bug_file in GLOBAL_BUGS_DIR.glob("global_bugs*.json"):
@@ -157,8 +277,12 @@ def sync_all_bugs(db: Session) -> int:
                 continue
 
             raw_run_id = rb.get("run_id") or ""
-            target_task_id = f"task_{raw_run_id}" if raw_run_id else None
-            assigned_task_id = target_task_id if target_task_id in existing_tasks else None
+            # 智能映射缺陷归属的任务 ID
+            assigned_task_id = None
+            if raw_run_id:
+                assigned_task_id = task_id_lookup.get(raw_run_id) or task_id_lookup.get(f"task_{raw_run_id}")
+            if not assigned_task_id and rb.get("task_id"):
+                assigned_task_id = task_id_lookup.get(rb.get("task_id"))
 
             # 解析日期
             last_seen_dt = None
@@ -172,7 +296,7 @@ def sync_all_bugs(db: Session) -> int:
                     except Exception:
                         pass
             if not last_seen_dt:
-                last_seen_dt = datetime.datetime.utcnow()
+                last_seen_dt = datetime.datetime.now()
 
             first_seen_dt = None
             raw_first_seen = rb.get("date") or rb.get("first_seen")
@@ -221,8 +345,11 @@ def sync_all_bugs(db: Session) -> int:
 
                 if raw_run_id and exist.run_id != raw_run_id:
                     exist.run_id = raw_run_id
-                    if assigned_task_id:
-                        exist.task_id = assigned_task_id
+                    changed = True
+
+                # 自动校准关联任务 ID
+                if assigned_task_id and exist.task_id != assigned_task_id:
+                    exist.task_id = assigned_task_id
                     changed = True
 
                 if rb.get("status") and exist.status != rb.get("status"):
@@ -247,6 +374,12 @@ def sync_all_bugs(db: Session) -> int:
 
                 if changed:
                     synced_count += 1
+
+    # 同步反向更新每个 TaskRun 的 bugs_count
+    for t in all_tasks:
+        b_count = db.query(BugRecord).filter(BugRecord.task_id == t.id).count()
+        if b_count != t.bugs_count:
+            t.bugs_count = b_count
 
     db.commit()
     return synced_count
