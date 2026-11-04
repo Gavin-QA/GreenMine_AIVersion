@@ -118,6 +118,7 @@ class BugResponse(BaseModel):
     """缺陷资产记录响应模型"""
     id: str = Field(description="全局统一缺陷编号 (格式如 BUG-20261030-001)")
     task_id: Optional[str] = Field(default=None, description="首次发现或最近复现该缺陷的任务 ID")
+    run_id: Optional[str] = Field(default=None, description="首次发现或最近复现的运行批次编号 (如 explore_20261103_183408)")
     title: str = Field(description="缺陷标题与摘要描述")
     severity: str = Field(description="严重等级：High(高) / Medium(中) / Low(低)")
     status: str = Field(description="缺陷生命周期状态：激活 / 已提单 / 误报 / 已关闭 / 已解决")

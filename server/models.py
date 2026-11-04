@@ -81,6 +81,7 @@ class BugRecord(Base):
 
     id = Column(String(64), primary_key=True, index=True) # 如 BUG-20261030-002
     task_id = Column(String(64), ForeignKey("task_runs.id"), nullable=True, index=True)
+    run_id = Column(String(64), nullable=True, index=True) # 如 explore_20261103_183408
     title = Column(String(256), index=True)
     severity = Column(String(32), default="Medium", index=True) # High, Medium, Low
     status = Column(String(32), default="激活", index=True) # 激活, 已提单, 误报, 已关闭

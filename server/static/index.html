@@ -1,638 +1,655 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Electron AI Vision - 自动化巡检与多核性能监控平台</title>
-  <link rel="stylesheet" href="/static/css/style.css">
-  <!-- 离线/内嵌本地依赖 (无外网亦可顺畅运行) -->
-  <script src="/static/js/vue.global.prod.js"></script>
-  <script src="/static/js/echarts.min.js"></script>
-</head>
-<body>
-  <div id="app">
-    <!-- 侧边导航栏 -->
-    <aside class="sidebar">
-      <div class="brand">
-        <div class="brand-icon">⚡</div>
-        <div>
-          <div class="brand-title">Vision Platform</div>
-          <div class="brand-sub">多模态巡检与性能中枢</div>
-        </div>
-      </div>
-
-      <ul class="nav-menu">
-        <li class="nav-item" :class="{ active: currentTab === 'dashboard' }" @click="currentTab = 'dashboard'">
-          <span class="nav-icon">📊</span>
-          <span>任务控制台</span>
-        </li>
-        <li class="nav-item" :class="{ active: currentTab === 'monitor' }" @click="currentTab = 'monitor'">
-          <span class="nav-icon">📈</span>
-          <span>实时监控大屏</span>
-        </li>
-        <li class="nav-item" :class="{ active: currentTab === 'tasks' }" @click="currentTab = 'tasks'">
-          <span class="nav-icon">📁</span>
-          <span>任务与产物库</span>
-        </li>
-        <li class="nav-item" :class="{ active: currentTab === 'bugs' }" @click="currentTab = 'bugs'">
-          <span class="nav-icon">🐛</span>
-          <span>缺陷治理中枢</span>
-        </li>
-      </ul>
-
-      <!-- 底座物理状态探测 -->
-      <div class="sidebar-status">
-        <div>目标应用: <b style="color: #00d2ff;">{{ liveSnapshot.app_name }}</b></div>
-        <div class="status-badge" :style="{ background: liveSnapshot.ue_online ? 'rgba(0, 230, 118, 0.1)' : 'rgba(255, 82, 82, 0.1)', color: liveSnapshot.ue_online ? '#00e676' : '#ff5252' }">
-          <span class="dot" :style="{ background: liveSnapshot.ue_online ? '#00e676' : '#ff5252' }"></span>
-          <span>UE5 伴生进程: {{ liveSnapshot.ue_online ? '在线 (PID ' + liveSnapshot.ue_pid + ')' : '离线' }}</span>
-        </div>
-        <div class="status-badge" style="margin-top: 4px;" :style="{ background: liveSnapshot.cdp_online ? 'rgba(0, 210, 255, 0.1)' : 'rgba(139, 155, 180, 0.1)', color: liveSnapshot.cdp_online ? '#00d2ff' : '#8b9bb4' }">
-          <span class="dot" :style="{ background: liveSnapshot.cdp_online ? '#00d2ff' : '#8b9bb4' }"></span>
-          <span>CDP 调试直连: {{ liveSnapshot.cdp_online ? '在线' : '待命' }}</span>
-        </div>
-      </div>
-    </aside>
-
-    <!-- 主展示区 -->
-    <main class="main-content">
-      <header class="top-bar">
-        <div class="page-title">
-          <span v-if="currentTab === 'dashboard'">🚀 任务发起与快速调度</span>
-          <span v-if="currentTab === 'monitor'">📈 双核性能与日志流大屏 ({{ activeTaskId === '__live__' ? '⚡ 本机物理环境实时心电图' : (activeTask ? activeTask.name : '未选择任务') }})</span>
-          <span v-if="currentTab === 'tasks'">📁 巡检任务执行历史与产物归档</span>
-          <span v-if="currentTab === 'bugs'">🐛 缺陷知识库与禅道协同</span>
-        </div>
-        <div class="top-actions">
-          <div style="display: flex; align-items: center; gap: 8px; background: rgba(13, 20, 36, 0.9); padding: 5px 12px; border-radius: 6px; border: 1px solid #00d2ff;">
-            <span style="font-size: 12px; color: #fff; font-weight: 600;">🎯 目标矿山:</span>
-            <select v-model="taskForm.app_name" @change="fetchLiveSnapshot" style="background: #111a2e; color: #00d2ff; border: none; font-weight: 700; font-size: 13px; cursor: pointer; outline: none;">
-              <option v-for="app in options.apps" :key="app.key" :value="app.key">
-                {{ app.name }}
-              </option>
-            </select>
-          </div>
-          <button class="btn btn-secondary" @click="currentTab = 'dashboard'">+ 新建任务</button>
-          <a :href="options.report_hub_url || '/report-hub'" target="_blank" class="btn btn-secondary" style="border-color: #00d2ff; color: #00d2ff;">
-            🌐 产物总门户 (Report Hub)
-          </a>
-        </div>
-      </header>
-
-      <div class="content-body">
-        <!-- ============================================================= -->
-        <!-- 1. 任务控制台 (免敲命令，选项化表单与预设任务库) -->
-        <!-- ============================================================= -->
-        <div v-show="currentTab === 'dashboard'">
-          <!-- 实时环境概览与顶置切换条 -->
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; background: rgba(13, 20, 36, 0.85); padding: 8px 16px; border-radius: 6px; border: 1px solid #1a253c;">
-            <div style="display: flex; align-items: center; gap: 10px;">
-              <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #00d2ff; box-shadow: 0 0 8px #00d2ff;"></span>
-              <span style="font-size: 13px; color: #fff; font-weight: 600;">正在实时监控大屏应用：</span>
-              <select v-model="taskForm.app_name" @change="fetchLiveSnapshot" style="background: #111a2e; color: #00d2ff; border: 1px solid #00d2ff; padding: 4px 12px; border-radius: 4px; font-weight: 700; font-size: 13px; cursor: pointer; outline: none;">
-                <option v-for="app in options.apps" :key="app.key" :value="app.key">
-                  {{ app.name }}
-                </option>
-              </select>
-            </div>
-            <div style="font-size: 12px; color: var(--text-muted);">
-              <span>伴生 UE 进程: <strong style="color: #00e676;">{{ taskForm.app_name }}.exe</strong> | 调试端口: <strong style="color: #00d2ff;">9223</strong></span>
-            </div>
-          </div>
-
-          <div class="grid-4" style="margin-bottom: 20px;">
-            <div class="kpi-card" :title="liveSnapshot.cdp_online ? 'Chromium CDP 协议探针在线，实时抓取 2D 页面 DOM 树与事件监听器' : 'CDP 调试端口 (9223) 未激活\n启动大屏附带参数 --remote-debugging-port=9223 即可秒级点亮此卡片'" style="cursor: help;">
-              <div class="kpi-title">CHROMIUM DOM 节点</div>
-              <div class="kpi-val" style="color: #00d2ff;">{{ liveSnapshot.dom_count.toLocaleString() }}</div>
-              <div class="kpi-sub">
-                事件监听器: {{ liveSnapshot.listeners_count.toLocaleString() }}
-                <span v-if="!liveSnapshot.cdp_online" style="font-size: 10px; color: #ffb300; margin-left: 4px;">(端口离线)</span>
-              </div>
-            </div>
-            <div class="kpi-card purple" :title="liveSnapshot.cdp_online ? 'V8 引擎堆内存实时水位，反映大屏前端是否存在内存泄漏' : 'CDP 调试端口未连接 (显示为安全退避 0 值)'" style="cursor: help;">
-              <div class="kpi-title">V8 JS 堆内存</div>
-              <div class="kpi-val" style="color: #9d4edd;">{{ liveSnapshot.js_heap_mb }} <span style="font-size: 14px;">MB</span></div>
-              <div class="kpi-sub">总容量: {{ liveSnapshot.js_heap_total_mb }} MB</div>
-            </div>
-            <div 
-              class="kpi-card green" 
-              :title="`Windows 任务管理器等价视点: ${liveSnapshot.ue_cpu_percent || 0}% (占全机总算力)\n多核累计物理算力: ${liveSnapshot.ue_cpu_raw_percent || 0}% (相当于跑满 ${((liveSnapshot.ue_cpu_raw_percent || 0) / 100).toFixed(2)} 个核心，基于本机 ${liveSnapshot.cpu_cores || 12} 逻辑核心)`"
-              style="cursor: help;"
-            >
-              <div class="kpi-title">伴生 UE5 进程</div>
-              <div class="kpi-val" style="color: #00e676;">{{ liveSnapshot.ue_memory_mb || 0 }} <span style="font-size: 14px;">MB</span></div>
-              <div class="kpi-sub">
-                CPU 占用: {{ liveSnapshot.ue_cpu_percent || 0 }}% 
-                <span style="font-size: 11px; opacity: 0.8; text-decoration: underline dotted;">({{ liveSnapshot.cpu_cores || 12 }}核对齐) ℹ️</span>
-              </div>
-            </div>
-            <div 
-              class="kpi-card warning" 
-              :title="`NVIDIA 官方驱动实时 3D 核心硬件负载: ${liveSnapshot.gpu_usage_percent || 0}%\n采样源: nvidia-smi 驱动级瞬时切片 (包含 UE5 渲染引擎、DWM 桌面窗口管理器与 Chromium 画面合成器总计；任务管理器单进程估算约 24% 左右)`"
-              style="cursor: help;"
-            >
-              <div class="kpi-title">GPU 3D 渲染 / 显存</div>
-              <div class="kpi-val" style="color: #ffb300;">{{ liveSnapshot.gpu_usage_percent || 0 }}%</div>
-              <div class="kpi-sub">显存已用: {{ liveSnapshot.gpu_memory_mb || 0 }} MB <span style="font-size: 11px; opacity: 0.8;">ℹ️</span></div>
-            </div>
-          </div>
-
-          <!-- 🌟 常用预设任务库卡片列表 -->
-          <div class="card" style="border-left: 4px solid #00d2ff;">
-            <div class="card-header">
-              <div class="card-title">🌟 标准预设巡检任务库 (免输入一键快速启动)</div>
-              <span style="font-size: 12px; color: var(--text-muted);">经过生产验证的标准模式组合，点击按钮直接启动或载入微调</span>
-            </div>
-            
-            <div class="grid-3">
-              <div 
-                v-for="p in presetTasks" 
-                :key="p.id" 
-                class="card" 
-                style="background: #0d1424; margin-bottom: 0; display: flex; flex-direction: column; justify-content: space-between; border-color: #1a253c;"
-              >
-                <div>
-                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                    <span class="badge" :class="p.badge === '推荐' ? 'badge-running' : (p.badge === '抗压' ? 'badge-high' : 'badge-low')">
-                      {{ p.badge }}
-                    </span>
-                    <span style="font-size: 11px; color: var(--text-muted); font-family: monospace;">{{ p.app_name }} / {{ p.mode }}</span>
-                  </div>
-                  <div style="font-weight: 700; font-size: 14px; margin-bottom: 6px; color: #fff;">{{ p.title }}</div>
-                  <div style="font-size: 12px; color: var(--text-muted); line-height: 1.5; margin-bottom: 12px;">{{ p.description }}</div>
-                  <div style="font-size: 11px; color: #8b9bb4; margin-bottom: 14px;">
-                    <span>步数: <b style="color: #00d2ff;">{{ p.max_steps }}</b> 步</span> &nbsp;|&nbsp; 
-                    <span>时限: <b style="color: #ffb300;">{{ p.max_times }}</b> 分钟</span>
-                  </div>
-                </div>
-
-                <div style="display: flex; gap: 8px; margin-top: auto; border-top: 1px solid #1a253c; padding-top: 10px;">
-                  <button class="btn btn-primary" style="flex: 1; padding: 6px 10px; font-size: 12px; justify-content: center;" @click="launchPreset(p)">
-                    🚀 一键拉起
-                  </button>
-                  <button class="btn btn-secondary" style="padding: 6px 10px; font-size: 12px;" @click="loadPresetToForm(p)" title="载入到下方表单修改并可另存">
-                    ✏️ 载入微调
-                  </button>
-                  <button v-if="!p.is_system" class="btn btn-danger" style="padding: 6px 8px; font-size: 12px;" @click="deletePreset(p)" title="删除此自定义预设">
-                    🗑️
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- 任务发起选项配置表单 -->
-          <div class="card" id="taskFormCard">
-            <div class="card-header">
-              <div class="card-title">📝 自定义巡检任务配置 (灵活调参)</div>
-            </div>
-
-            <div class="grid-2">
-              <div>
-                <div class="form-group">
-                  <label class="form-label">任务名称</label>
-                  <input type="text" class="form-control" v-model="taskForm.name" placeholder="请输入本次巡检任务名称">
-                </div>
-
-                <div class="form-group">
-                  <label class="form-label">矿山应用选择</label>
-                  <select class="form-control" v-model="taskForm.app_name">
-                    <option v-for="app in options.apps" :key="app.key" :value="app.key">
-                      {{ app.name }} ({{ app.desc }})
-                    </option>
-                  </select>
-                </div>
-
-                <div class="form-group">
-                  <label class="form-label">运行模式</label>
-                  <select class="form-control" v-model="taskForm.mode">
-                    <option v-for="m in options.modes" :key="m.key" :value="m.key">
-                      {{ m.name }} - {{ m.desc }}
-                    </option>
-                  </select>
-                </div>
-
-                <div class="grid-2">
-                  <div class="form-group">
-                    <label class="form-label">最大步数限制 (Steps)</label>
-                    <input type="number" class="form-control" v-model.number="taskForm.max_steps" min="5" max="3000">
-                  </div>
-                  <div class="form-group">
-                    <label class="form-label">最长运行时间 (分钟)</label>
-                    <input type="number" class="form-control" v-model.number="taskForm.max_times" min="1" max="1440">
-                  </div>
-                </div>
-
-                <div class="form-group" style="display: flex; gap: 20px; align-items: center; margin-top: 10px;">
-                  <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px;">
-                    <input type="checkbox" v-model="taskForm.ignore_errors">
-                    <span>容错继续 (报错时不阻断流程)</span>
-                  </label>
-                  <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px;">
-                    <input type="checkbox" v-model="taskForm.reset_memory">
-                    <span>重置长期记忆 (从零开始探索)</span>
-                  </label>
-                </div>
-              </div>
-
-              <div>
-                <div class="form-group">
-                  <label class="form-label">预置高质量探索提示词库 (一键套用)</label>
-                  <div class="select-pills" style="margin-bottom: 12px;">
-                    <span 
-                      class="pill-item" 
-                      v-for="(tpl, idx) in options.prompt_templates" 
-                      :key="idx"
-                      @click="applyTemplate(tpl)"
-                    >
-                      🎯 {{ tpl.title }}
-                    </span>
-                  </div>
-
-                  <label class="form-label">宏观探索目标提示词 (Macro Objective Prompt)</label>
-                  <textarea 
-                    class="form-control" 
-                    v-model="taskForm.macro_objective" 
-                    rows="6" 
-                    placeholder="输入自然语言意图，引导 AI 发起针对性探测..."
-                  ></textarea>
-                </div>
-
-                <div style="margin-top: 24px; display: flex; justify-content: flex-end; gap: 12px; align-items: center;">
-                  <button class="btn btn-secondary" style="border-color: #00d2ff; color: #00d2ff;" @click="saveCurrentFormAsPreset(false)" title="将当前填写的全部配置持久化保存为常用预设">
-                    💾 保存为新预设
-                  </button>
-                  <button v-if="taskForm.preset_id" class="btn btn-secondary" style="border-color: #ffb300; color: #ffb300;" @click="saveCurrentFormAsPreset(true)" title="直接回写覆盖当前载入的原预设">
-                    🔄 覆盖当前预设
-                  </button>
-                  <button class="btn btn-primary" style="padding: 10px 24px; font-size: 14px;" @click="submitCreateTask">
-                    🚀 立即创建并启动巡检
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- ============================================================= -->
-        <!-- 2. 实时监控大屏 (ECharts 曲线 + 实时日志流推流) -->
-        <!-- ============================================================= -->
-        <div v-show="currentTab === 'monitor'">
-          <div style="margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between;">
-            <div style="display: flex; align-items: center; gap: 12px;">
-              <span style="font-size: 13px; color: var(--text-muted);">当前查看维度:</span>
-              <select class="form-control" style="width: 380px; font-weight: 600;" v-model="activeTaskId" @change="onMonitorTargetChange">
-                <option value="__live__" style="color: #00e676; font-weight: 700;">⚡ [实时模式] 本机物理环境实时心电图 (无需启动测试)</option>
-                <option disabled style="color: #64748b;">──────── 历史任务性能复盘 ────────</option>
-                <option v-for="t in tasks" :key="t.id" :value="t.id">
-                  [{{ t.status }}] {{ t.name }} ({{ t.id }})
-                </option>
-              </select>
-            </div>
-
-            <div v-if="activeTaskId === '__live__'" style="display: flex; align-items: center; gap: 8px;">
-              <span class="badge badge-running" style="font-size: 12px; padding: 6px 14px; display: inline-flex; align-items: center; gap: 6px;">
-                <span class="pulse-dot" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #00e676;"></span>
-                物理探针每 4 秒实时流式绘制中
-              </span>
-            </div>
-            <div v-else-if="activeTask">
-              <button v-if="activeTask.status === 'running'" class="btn btn-danger" @click="stopTask(activeTask.id)">
-                🛑 紧急停止任务
-              </button>
-              <button v-else-if="activeTask.status === 'pending' || activeTask.status === 'stopped'" class="btn btn-primary" @click="startTask(activeTask.id)">
-                ▶️ 继续启动
-              </button>
-              <a v-if="activeTask.report_url" :href="formatReportUrl(activeTask.report_url)" target="_blank" class="btn btn-secondary" style="margin-left: 8px;">
-                📑 查看专属报告
-              </a>
-            </div>
-          </div>
-
-          <!-- 双 ECharts 性能折线图 -->
-          <div class="grid-2">
-            <div class="card">
-              <div id="domChart" class="chart-box"></div>
-            </div>
-            <div class="card">
-              <div id="ueChart" class="chart-box"></div>
-            </div>
-          </div>
-
-          <!-- 实时控制台终端日志流 -->
-          <div class="card">
-            <div class="card-header">
-              <div class="card-title">🖥️ 实时控制台日志推流 (WebSocket 直连)</div>
-              <span style="font-size: 12px; color: var(--text-muted);">实时缓存行数: {{ terminalLogs.length }}</span>
-            </div>
-            <div id="terminalWindow" class="terminal-window">
-              <div v-if="terminalLogs.length === 0" style="color: var(--text-muted); text-align: center; padding: 40px;">
-                暂无日志流或任务尚未启动，启动任务后将实时输出执行过程...
-              </div>
-              <div 
-                v-for="(log, idx) in terminalLogs" 
-                :key="idx" 
-                class="log-line"
-                :class="{
-                  error: log.includes('ERROR') || log.includes('❌') || log.includes('Traceback'),
-                  warn: log.includes('WARNING') || log.includes('⚠️'),
-                  info: log.includes('INFO'),
-                  success: log.includes('圆满完成') || log.includes('✅')
-                }"
-              >{{ log }}</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- ============================================================= -->
-        <!-- 3. 任务与产物库列表 -->
-        <!-- ============================================================= -->
-        <div v-show="currentTab === 'tasks'">
-          <div class="card">
-            <div class="card-header">
-              <div class="card-title">📁 历史巡检任务列表</div>
-            </div>
-            <div class="table-responsive">
-              <table class="data-table">
-                <thead>
-                  <tr>
-                    <th>任务 ID / 名称</th>
-                    <th>应用</th>
-                    <th>模式</th>
-                    <th>状态</th>
-                    <th>步数 / 覆盖率</th>
-                    <th>发现缺陷</th>
-                    <th>运行时长</th>
-                    <th>操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="t in tasks" :key="t.id">
-                    <td>
-                      <div style="font-weight: 600;">{{ t.name }}</div>
-                      <div style="font-size: 11px; color: var(--text-muted); font-family: monospace;">{{ t.id }}</div>
-                    </td>
-                    <td>{{ t.app_name }}</td>
-                    <td>{{ t.mode }}</td>
-                    <td>
-                      <span class="badge" :class="'badge-' + t.status">{{ t.status }}</span>
-                    </td>
-                    <td>{{ t.total_steps }} 步 ({{ t.coverage_rate }}%)</td>
-                    <td style="color: #ff5252; font-weight: 600;">{{ t.bugs_count }}</td>
-                    <td>{{ t.duration || '-' }}</td>
-                    <td>
-                      <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 12px;" @click="switchActiveTask(t); currentTab = 'monitor'">
-                        监控
-                      </button>
-                      <a v-if="t.report_url" :href="formatReportUrl(t.report_url)" target="_blank" class="btn btn-secondary" style="padding: 4px 10px; font-size: 12px; margin-left: 6px;">
-                        报告
-                      </a>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-
-        <!-- ============================================================= -->
-        <!-- 4. 缺陷治理中枢 (Bug List & 禅道一键推单) -->
-        <!-- ============================================================= -->
-        <div v-show="currentTab === 'bugs'">
-          <div class="card">
-            <div class="card-header">
-              <div class="card-title">🐛 全局缺陷资产库 (AI 智能查重去重与指派)</div>
-              <div style="display: flex; gap: 10px;">
-                <input type="text" class="form-control" style="width: 220px;" placeholder="搜索缺陷标题/错误..." v-model="bugSearch" @input="fetchBugs">
-                <select class="form-control" style="width: 130px;" v-model="bugSeverityFilter" @change="fetchBugs">
-                  <option value="">全部严重度</option>
-                  <option value="High">High (高)</option>
-                  <option value="Medium">Medium (中)</option>
-                  <option value="Low">Low (低)</option>
-                </select>
-              </div>
-            </div>
-
-            <div class="table-responsive">
-              <table class="data-table">
-                <thead>
-                  <tr>
-                    <th>Bug 编号</th>
-                    <th>标题与报错信息</th>
-                    <th>严重程度</th>
-                    <th>责任人</th>
-                    <th>状态</th>
-                    <th>禅道单号</th>
-                    <th>频次</th>
-                    <th>操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="b in bugs" :key="b.id">
-                    <td style="font-family: monospace; font-weight: 600; color: #00d2ff;">{{ b.id }}</td>
-                    <td>
-                      <div style="font-weight: 500; cursor: pointer;" @click="viewBugDetail(b)">{{ b.title }}</div>
-                      <div style="font-size: 11px; color: var(--text-muted); max-width: 450px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                        {{ b.actual_error }}
-                      </div>
-                    </td>
-                    <td>
-                      <span class="badge" :class="'badge-' + b.severity.toLowerCase()">{{ b.severity }}</span>
-                    </td>
-                    <td>{{ b.assignee }}</td>
-                    <td>{{ b.status }}</td>
-                    <td>
-                      <a 
-                        v-if="b.zentao_id" 
-                        :href="formatZenTaoUrl(b.zentao_id)" 
-                        target="_blank" 
-                        style="color: #00e676; font-weight: 600; text-decoration: underline; text-underline-offset: 3px;"
-                        title="点击跳转至禅道查看缺陷详情"
-                      >
-                        #{{ b.zentao_id }} ↗
-                      </a>
-                      <span v-else style="color: var(--text-muted);">-</span>
-                    </td>
-                    <td>{{ b.occurrences }} 次</td>
-                    <td>
-                      <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px;" @click="viewBugDetail(b)">
-                        详情
-                      </button>
-                      <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px; margin-left: 6px; border-color: #00d2ff; color: #00d2ff;" @click="openEditBugModal(b)">
-                        编辑
-                      </button>
-                      <button 
-                        v-if="!b.zentao_id" 
-                        class="btn btn-primary" 
-                        style="padding: 4px 8px; font-size: 12px; margin-left: 6px;"
-                        @click="syncZenTao(b)"
-                      >
-                        推禅道
-                      </button>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <!-- 缺陷详情弹窗 -->
-          <div class="modal-overlay" v-if="selectedBug" @click.self="selectedBug = null">
-            <div class="modal-content">
-              <div class="modal-header">
-                <div>
-                  <h3 style="display: flex; align-items: center; gap: 10px;">
-                    <span>[{{ selectedBug.id }}] 缺陷详细诊断分析</span>
-                    <a 
-                      v-if="selectedBug.zentao_id" 
-                      :href="formatZenTaoUrl(selectedBug.zentao_id)" 
-                      target="_blank" 
-                      class="badge" 
-                      style="background: rgba(0, 230, 118, 0.15); color: #00e676; border: 1px solid rgba(0, 230, 118, 0.3); text-decoration: none;"
-                    >
-                      禅道工单 #{{ selectedBug.zentao_id }} ↗
-                    </a>
-                  </h3>
-                </div>
-                <button class="modal-close" @click="selectedBug = null">&times;</button>
-              </div>
-              <div class="form-group">
-                <label class="form-label">缺陷标题</label>
-                <div style="font-weight: 600;">{{ selectedBug.title }}</div>
-              </div>
-              <div class="grid-2">
-                <div class="form-group">
-                  <label class="form-label">责任人 (自动分流)</label>
-                  <div>{{ selectedBug.assignee }}</div>
-                </div>
-                <div class="form-group">
-                  <label class="form-label">当前状态</label>
-                  <div style="display: flex; align-items: center; gap: 10px;">
-                    <span>{{ selectedBug.status }} (复现 {{ selectedBug.occurrences }} 次)</span>
-                    <a 
-                      v-if="selectedBug.zentao_id" 
-                      :href="formatZenTaoUrl(selectedBug.zentao_id)" 
-                      target="_blank" 
-                      style="color: #00e676; font-size: 13px; font-weight: 600; text-decoration: underline;"
-                    >
-                      进入禅道查看 #{{ selectedBug.zentao_id }}
-                    </a>
-                  </div>
-                </div>
-              </div>
-              <div class="form-group">
-                <label class="form-label">案发现场实际报错</label>
-                <pre style="background: #05070d; padding: 12px; border-radius: 6px; font-size: 12px; color: #ff6b6b; white-space: pre-wrap; word-break: break-all;">{{ selectedBug.actual_error }}</pre>
-              </div>
-              <div class="form-group" v-if="selectedBug.analysis_notes">
-                <label class="form-label">AI 智能初诊与排查指引</label>
-                <div style="background: #111827; padding: 12px; border-radius: 6px; font-size: 13px; line-height: 1.6; white-space: pre-wrap;">{{ selectedBug.analysis_notes }}</div>
-              </div>
-              <div class="form-group" v-if="selectedBug.remark">
-                <label class="form-label">📌 处理备注 / 关闭原因</label>
-                <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); color: #34d399; padding: 12px; border-radius: 6px; font-size: 13px; line-height: 1.6; white-space: pre-wrap;">{{ selectedBug.remark }}</div>
-              </div>
-              <div class="form-group" v-if="selectedBug.screenshot_path">
-                <label class="form-label">现场快照截图</label>
-                <div style="text-align: center; background: #05070d; border-radius: 8px; padding: 10px; border: 1px solid var(--border-color);">
-                  <a :href="formatScreenshotUrl(selectedBug.screenshot_path)" target="_blank" title="点击查看大图">
-                    <img 
-                      :src="formatScreenshotUrl(selectedBug.screenshot_path)" 
-                      style="max-width: 100%; max-height: 520px; object-fit: contain; border-radius: 6px;"
-                      alt="缺陷案发现场截图"
-                    >
-                  </a>
-                  <div style="font-size: 11px; color: var(--text-muted); margin-top: 6px; font-family: monospace;">
-                    {{ formatScreenshotUrl(selectedBug.screenshot_path) }} (点击可在新标签页查看原始高清大图)
-                  </div>
-                </div>
-              </div>
-              <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
-                <button class="btn btn-secondary" @click="selectedBug = null">关闭</button>
-                <button class="btn btn-secondary" style="border-color: #00d2ff; color: #00d2ff;" @click="openEditBugModal(selectedBug)">
-                  ✏️ 编辑缺陷属性
-                </button>
-                <button v-if="!selectedBug.zentao_id" class="btn btn-primary" @click="syncZenTao(selectedBug)">
-                  提交至禅道
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <!-- 缺陷在线编辑弹窗 -->
-          <div class="modal-overlay" v-if="editingBug" @click.self="editingBug = null">
-            <div class="modal-content">
-              <div class="modal-header">
-                <h3>✏️ 编辑缺陷属性 [{{ editForm.id }}]</h3>
-                <button class="modal-close" @click="editingBug = null">&times;</button>
-              </div>
-
-              <div class="form-group">
-                <label class="form-label">缺陷标题</label>
-                <input type="text" class="form-control" v-model="editForm.title" placeholder="请输入缺陷摘要标题">
-              </div>
-
-              <div class="grid-2">
-                <div class="form-group">
-                  <label class="form-label">严重程度</label>
-                  <select class="form-control" v-model="editForm.severity">
-                    <option value="High">High (高)</option>
-                    <option value="Medium">Medium (中)</option>
-                    <option value="Low">Low (低)</option>
-                  </select>
-                </div>
-                <div class="form-group">
-                  <label class="form-label">缺陷状态</label>
-                  <select class="form-control" v-model="editForm.status">
-                    <option value="激活">激活 (Open)</option>
-                    <option value="已提单">已提单 (Submitted)</option>
-                    <option value="已解决">已解决 (Resolved)</option>
-                    <option value="误报">误报 (False Positive)</option>
-                    <option value="已关闭">已关闭 (Closed)</option>
-                  </select>
-                </div>
-              </div>
-
-              <div class="grid-2">
-                <div class="form-group">
-                  <label class="form-label">责任人 (前端/后端分流)</label>
-                  <input type="text" class="form-control" v-model="editForm.assignee" placeholder="如 陈贻雄 / 梅本霞">
-                </div>
-                <div class="form-group">
-                  <label class="form-label">关联禅道 Bug 单号</label>
-                  <input type="text" class="form-control" v-model="editForm.zentao_id" placeholder="如 1188 (可手动补录或修改)">
-                </div>
-              </div>
-
-              <div class="form-group">
-                <label class="form-label">业务页面层级路径 (UI Path)</label>
-                <input type="text" class="form-control" v-model="editForm.ui_path" placeholder="如 首页 > 矿山简介 > 生产指标">
-              </div>
-
-              <div class="form-group">
-                <label class="form-label">AI 初诊与排查指引说明</label>
-                <textarea class="form-control" rows="5" v-model="editForm.analysis_notes" placeholder="输入根因分析或开发排查指引..."></textarea>
-              </div>
-
-              <div class="form-group">
-                <label class="form-label">📌 备注 / 关闭说明 (非必填)</label>
-                <textarea class="form-control" rows="3" v-model="editForm.remark" placeholder="如：核验无误非Bug、关闭原因或补充排查备注..."></textarea>
-              </div>
-
-              <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
-                <button class="btn btn-secondary" @click="editingBug = null">取消</button>
-                <button class="btn btn-primary" @click="submitBugEdit">
-                  💾 保存并多端同步
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-      </div>
-    </main>
-  </div>
-
-  <script src="/static/js/app.js"></script>
-</body>
-</html>
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Electron AI Vision - 自动化巡检与多核性能监控平台</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <!-- 离线/内嵌本地依赖 (无外网亦可顺畅运行) -->
+  <script src="/static/js/vue.global.prod.js"></script>
+  <script src="/static/js/echarts.min.js"></script>
+</head>
+<body>
+  <div id="app">
+    <!-- 侧边导航栏 -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-icon">⚡</div>
+        <div>
+          <div class="brand-title">Vision Platform</div>
+          <div class="brand-sub">多模态巡检与性能中枢</div>
+        </div>
+      </div>
+
+      <ul class="nav-menu">
+        <li class="nav-item" :class="{ active: currentTab === 'dashboard' }" @click="currentTab = 'dashboard'">
+          <span class="nav-icon">📊</span>
+          <span>任务控制台</span>
+        </li>
+        <li class="nav-item" :class="{ active: currentTab === 'monitor' }" @click="currentTab = 'monitor'">
+          <span class="nav-icon">📈</span>
+          <span>实时监控大屏</span>
+        </li>
+        <li class="nav-item" :class="{ active: currentTab === 'tasks' }" @click="currentTab = 'tasks'">
+          <span class="nav-icon">📁</span>
+          <span>任务与产物库</span>
+        </li>
+        <li class="nav-item" :class="{ active: currentTab === 'bugs' }" @click="currentTab = 'bugs'">
+          <span class="nav-icon">🐛</span>
+          <span>缺陷治理中枢</span>
+        </li>
+      </ul>
+
+      <!-- 底座物理状态探测 -->
+      <div class="sidebar-status">
+        <div>目标应用: <b style="color: #00d2ff;">{{ liveSnapshot.app_name }}</b></div>
+        <div class="status-badge" :style="{ background: liveSnapshot.ue_online ? 'rgba(0, 230, 118, 0.1)' : 'rgba(255, 82, 82, 0.1)', color: liveSnapshot.ue_online ? '#00e676' : '#ff5252' }">
+          <span class="dot" :style="{ background: liveSnapshot.ue_online ? '#00e676' : '#ff5252' }"></span>
+          <span>UE5 伴生进程: {{ liveSnapshot.ue_online ? '在线 (PID ' + liveSnapshot.ue_pid + ')' : '离线' }}</span>
+        </div>
+        <div class="status-badge" style="margin-top: 4px;" :style="{ background: liveSnapshot.cdp_online ? 'rgba(0, 210, 255, 0.1)' : 'rgba(139, 155, 180, 0.1)', color: liveSnapshot.cdp_online ? '#00d2ff' : '#8b9bb4' }">
+          <span class="dot" :style="{ background: liveSnapshot.cdp_online ? '#00d2ff' : '#8b9bb4' }"></span>
+          <span>CDP 调试直连: {{ liveSnapshot.cdp_online ? '在线' : '待命' }}</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- 主展示区 -->
+    <main class="main-content">
+      <header class="top-bar">
+        <div class="page-title">
+          <span v-if="currentTab === 'dashboard'">🚀 任务发起与快速调度</span>
+          <span v-if="currentTab === 'monitor'">📈 双核性能与日志流大屏 ({{ activeTaskId === '__live__' ? '⚡ 本机物理环境实时心电图' : (activeTask ? activeTask.name : '未选择任务') }})</span>
+          <span v-if="currentTab === 'tasks'">📁 巡检任务执行历史与产物归档</span>
+          <span v-if="currentTab === 'bugs'">🐛 缺陷知识库与禅道协同</span>
+        </div>
+        <div class="top-actions">
+          <div style="display: flex; align-items: center; gap: 8px; background: rgba(13, 20, 36, 0.9); padding: 5px 12px; border-radius: 6px; border: 1px solid #00d2ff;">
+            <span style="font-size: 12px; color: #fff; font-weight: 600;">🎯 目标矿山:</span>
+            <select v-model="taskForm.app_name" @change="fetchLiveSnapshot" style="background: #111a2e; color: #00d2ff; border: none; font-weight: 700; font-size: 13px; cursor: pointer; outline: none;">
+              <option v-for="app in options.apps" :key="app.key" :value="app.key">
+                {{ app.name }}
+              </option>
+            </select>
+          </div>
+          <button class="btn btn-secondary" @click="triggerHotSync" :disabled="isSyncing" style="border-color: #10b981; color: #34d399;" title="重新扫描磁盘上的最新测试运行批次与全局缺陷">
+            <span>{{ isSyncing ? '⏳ 同步中...' : '⚡ 立即同步磁盘数据' }}</span>
+          </button>
+          <button class="btn btn-secondary" @click="currentTab = 'dashboard'">+ 新建任务</button>
+          <a :href="options.report_hub_url || '/report-hub'" target="_blank" class="btn btn-secondary" style="border-color: #00d2ff; color: #00d2ff;">
+            🌐 产物总门户 (Report Hub)
+          </a>
+        </div>
+      </header>
+
+      <div class="content-body">
+        <!-- ============================================================= -->
+        <!-- 1. 任务控制台 (免敲命令，选项化表单与预设任务库) -->
+        <!-- ============================================================= -->
+        <div v-show="currentTab === 'dashboard'">
+          <!-- 实时环境概览与顶置切换条 -->
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; background: rgba(13, 20, 36, 0.85); padding: 8px 16px; border-radius: 6px; border: 1px solid #1a253c;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #00d2ff; box-shadow: 0 0 8px #00d2ff;"></span>
+              <span style="font-size: 13px; color: #fff; font-weight: 600;">正在实时监控大屏应用：</span>
+              <select v-model="taskForm.app_name" @change="fetchLiveSnapshot" style="background: #111a2e; color: #00d2ff; border: 1px solid #00d2ff; padding: 4px 12px; border-radius: 4px; font-weight: 700; font-size: 13px; cursor: pointer; outline: none;">
+                <option v-for="app in options.apps" :key="app.key" :value="app.key">
+                  {{ app.name }}
+                </option>
+              </select>
+            </div>
+            <div style="font-size: 12px; color: var(--text-muted);">
+              <span>伴生 UE 进程: <strong style="color: #00e676;">{{ taskForm.app_name }}.exe</strong> | 调试端口: <strong style="color: #00d2ff;">9223</strong></span>
+            </div>
+          </div>
+
+          <div class="grid-4" style="margin-bottom: 20px;">
+            <div class="kpi-card" :title="liveSnapshot.cdp_online ? 'Chromium CDP 协议探针在线，实时抓取 2D 页面 DOM 树与事件监听器' : 'CDP 调试端口 (9223) 未激活\n启动大屏附带参数 --remote-debugging-port=9223 即可秒级点亮此卡片'" style="cursor: help;">
+              <div class="kpi-title">CHROMIUM DOM 节点</div>
+              <div class="kpi-val" style="color: #00d2ff;">{{ liveSnapshot.dom_count.toLocaleString() }}</div>
+              <div class="kpi-sub">
+                事件监听器: {{ liveSnapshot.listeners_count.toLocaleString() }}
+                <span v-if="!liveSnapshot.cdp_online" style="font-size: 10px; color: #ffb300; margin-left: 4px;">(端口离线)</span>
+              </div>
+            </div>
+            <div class="kpi-card purple" :title="liveSnapshot.cdp_online ? 'V8 引擎堆内存实时水位，反映大屏前端是否存在内存泄漏' : 'CDP 调试端口未连接 (显示为安全退避 0 值)'" style="cursor: help;">
+              <div class="kpi-title">V8 JS 堆内存</div>
+              <div class="kpi-val" style="color: #9d4edd;">{{ liveSnapshot.js_heap_mb }} <span style="font-size: 14px;">MB</span></div>
+              <div class="kpi-sub">总容量: {{ liveSnapshot.js_heap_total_mb }} MB</div>
+            </div>
+            <div 
+              class="kpi-card green" 
+              :title="`Windows 任务管理器等价视点: ${liveSnapshot.ue_cpu_percent || 0}% (占全机总算力)\n多核累计物理算力: ${liveSnapshot.ue_cpu_raw_percent || 0}% (相当于跑满 ${((liveSnapshot.ue_cpu_raw_percent || 0) / 100).toFixed(2)} 个核心，基于本机 ${liveSnapshot.cpu_cores || 12} 逻辑核心)`"
+              style="cursor: help;"
+            >
+              <div class="kpi-title">伴生 UE5 进程</div>
+              <div class="kpi-val" style="color: #00e676;">{{ liveSnapshot.ue_memory_mb || 0 }} <span style="font-size: 14px;">MB</span></div>
+              <div class="kpi-sub">
+                CPU 占用: {{ liveSnapshot.ue_cpu_percent || 0 }}% 
+                <span style="font-size: 11px; opacity: 0.8; text-decoration: underline dotted;">({{ liveSnapshot.cpu_cores || 12 }}核对齐) ℹ️</span>
+              </div>
+            </div>
+            <div 
+              class="kpi-card warning" 
+              :title="`NVIDIA 官方驱动实时 3D 核心硬件负载: ${liveSnapshot.gpu_usage_percent || 0}%\n采样源: nvidia-smi 驱动级瞬时切片 (包含 UE5 渲染引擎、DWM 桌面窗口管理器与 Chromium 画面合成器总计；任务管理器单进程估算约 24% 左右)`"
+              style="cursor: help;"
+            >
+              <div class="kpi-title">GPU 3D 渲染 / 显存</div>
+              <div class="kpi-val" style="color: #ffb300;">{{ liveSnapshot.gpu_usage_percent || 0 }}%</div>
+              <div class="kpi-sub">显存已用: {{ liveSnapshot.gpu_memory_mb || 0 }} MB <span style="font-size: 11px; opacity: 0.8;">ℹ️</span></div>
+            </div>
+          </div>
+
+          <!-- 🌟 常用预设任务库卡片列表 -->
+          <div class="card" style="border-left: 4px solid #00d2ff;">
+            <div class="card-header">
+              <div class="card-title">🌟 标准预设巡检任务库 (免输入一键快速启动)</div>
+              <span style="font-size: 12px; color: var(--text-muted);">经过生产验证的标准模式组合，点击按钮直接启动或载入微调</span>
+            </div>
+            
+            <div class="grid-3">
+              <div 
+                v-for="p in presetTasks" 
+                :key="p.id" 
+                class="card" 
+                style="background: #0d1424; margin-bottom: 0; display: flex; flex-direction: column; justify-content: space-between; border-color: #1a253c;"
+              >
+                <div>
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <span class="badge" :class="p.badge === '推荐' ? 'badge-running' : (p.badge === '抗压' ? 'badge-high' : 'badge-low')">
+                      {{ p.badge }}
+                    </span>
+                    <span style="font-size: 11px; color: var(--text-muted); font-family: monospace;">{{ p.app_name }} / {{ p.mode }}</span>
+                  </div>
+                  <div style="font-weight: 700; font-size: 14px; margin-bottom: 6px; color: #fff;">{{ p.title }}</div>
+                  <div style="font-size: 12px; color: var(--text-muted); line-height: 1.5; margin-bottom: 12px;">{{ p.description }}</div>
+                  <div style="font-size: 11px; color: #8b9bb4; margin-bottom: 14px;">
+                    <span>步数: <b style="color: #00d2ff;">{{ p.max_steps }}</b> 步</span> &nbsp;|&nbsp; 
+                    <span>时限: <b style="color: #ffb300;">{{ p.max_times }}</b> 分钟</span>
+                  </div>
+                </div>
+
+                <div style="display: flex; gap: 8px; margin-top: auto; border-top: 1px solid #1a253c; padding-top: 10px;">
+                  <button class="btn btn-primary" style="flex: 1; padding: 6px 10px; font-size: 12px; justify-content: center;" @click="launchPreset(p)">
+                    🚀 一键拉起
+                  </button>
+                  <button class="btn btn-secondary" style="padding: 6px 10px; font-size: 12px;" @click="loadPresetToForm(p)" title="载入到下方表单修改并可另存">
+                    ✏️ 载入微调
+                  </button>
+                  <button v-if="!p.is_system" class="btn btn-danger" style="padding: 6px 8px; font-size: 12px;" @click="deletePreset(p)" title="删除此自定义预设">
+                    🗑️
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 任务发起选项配置表单 -->
+          <div class="card" id="taskFormCard">
+            <div class="card-header">
+              <div class="card-title">📝 自定义巡检任务配置 (灵活调参)</div>
+            </div>
+
+            <div class="grid-2">
+              <div>
+                <div class="form-group">
+                  <label class="form-label">任务名称</label>
+                  <input type="text" class="form-control" v-model="taskForm.name" placeholder="请输入本次巡检任务名称">
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label">矿山应用选择</label>
+                  <select class="form-control" v-model="taskForm.app_name">
+                    <option v-for="app in options.apps" :key="app.key" :value="app.key">
+                      {{ app.name }} ({{ app.desc }})
+                    </option>
+                  </select>
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label">运行模式</label>
+                  <select class="form-control" v-model="taskForm.mode">
+                    <option v-for="m in options.modes" :key="m.key" :value="m.key">
+                      {{ m.name }} - {{ m.desc }}
+                    </option>
+                  </select>
+                </div>
+
+                <div class="grid-2">
+                  <div class="form-group">
+                    <label class="form-label">最大步数限制 (Steps)</label>
+                    <input type="number" class="form-control" v-model.number="taskForm.max_steps" min="5" max="3000">
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">最长运行时间 (分钟)</label>
+                    <input type="number" class="form-control" v-model.number="taskForm.max_times" min="1" max="1440">
+                  </div>
+                </div>
+
+                <div class="form-group" style="display: flex; gap: 20px; align-items: center; margin-top: 10px;">
+                  <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px;">
+                    <input type="checkbox" v-model="taskForm.ignore_errors">
+                    <span>容错继续 (报错时不阻断流程)</span>
+                  </label>
+                  <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px;">
+                    <input type="checkbox" v-model="taskForm.reset_memory">
+                    <span>重置长期记忆 (从零开始探索)</span>
+                  </label>
+                </div>
+              </div>
+
+              <div>
+                <div class="form-group">
+                  <label class="form-label">预置高质量探索提示词库 (一键套用)</label>
+                  <div class="select-pills" style="margin-bottom: 12px;">
+                    <span 
+                      class="pill-item" 
+                      v-for="(tpl, idx) in options.prompt_templates" 
+                      :key="idx"
+                      @click="applyTemplate(tpl)"
+                    >
+                      🎯 {{ tpl.title }}
+                    </span>
+                  </div>
+
+                  <label class="form-label">宏观探索目标提示词 (Macro Objective Prompt)</label>
+                  <textarea 
+                    class="form-control" 
+                    v-model="taskForm.macro_objective" 
+                    rows="6" 
+                    placeholder="输入自然语言意图，引导 AI 发起针对性探测..."
+                  ></textarea>
+                </div>
+
+                <div style="margin-top: 24px; display: flex; justify-content: flex-end; gap: 12px; align-items: center;">
+                  <button class="btn btn-secondary" style="border-color: #00d2ff; color: #00d2ff;" @click="saveCurrentFormAsPreset(false)" title="将当前填写的全部配置持久化保存为常用预设">
+                    💾 保存为新预设
+                  </button>
+                  <button v-if="taskForm.preset_id" class="btn btn-secondary" style="border-color: #ffb300; color: #ffb300;" @click="saveCurrentFormAsPreset(true)" title="直接回写覆盖当前载入的原预设">
+                    🔄 覆盖当前预设
+                  </button>
+                  <button class="btn btn-primary" style="padding: 10px 24px; font-size: 14px;" @click="submitCreateTask">
+                    🚀 立即创建并启动巡检
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ============================================================= -->
+        <!-- 2. 实时监控大屏 (ECharts 曲线 + 实时日志流推流) -->
+        <!-- ============================================================= -->
+        <div v-show="currentTab === 'monitor'">
+          <div style="margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <span style="font-size: 13px; color: var(--text-muted);">当前查看维度:</span>
+              <select class="form-control" style="width: 380px; font-weight: 600;" v-model="activeTaskId" @change="onMonitorTargetChange">
+                <option value="__live__" style="color: #00e676; font-weight: 700;">⚡ [实时模式] 本机物理环境实时心电图 (无需启动测试)</option>
+                <option disabled style="color: #64748b;">──────── 历史任务性能复盘 ────────</option>
+                <option v-for="t in tasks" :key="t.id" :value="t.id">
+                  [{{ t.status }}] {{ t.name }} ({{ t.id }})
+                </option>
+              </select>
+            </div>
+
+            <div v-if="activeTaskId === '__live__'" style="display: flex; align-items: center; gap: 8px;">
+              <span class="badge badge-running" style="font-size: 12px; padding: 6px 14px; display: inline-flex; align-items: center; gap: 6px;">
+                <span class="pulse-dot" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #00e676;"></span>
+                物理探针每 4 秒实时流式绘制中
+              </span>
+            </div>
+            <div v-else-if="activeTask">
+              <button v-if="activeTask.status === 'running'" class="btn btn-danger" @click="stopTask(activeTask.id)">
+                🛑 紧急停止任务
+              </button>
+              <button v-else-if="activeTask.status === 'pending' || activeTask.status === 'stopped'" class="btn btn-primary" @click="startTask(activeTask.id)">
+                ▶️ 继续启动
+              </button>
+              <a v-if="activeTask.report_url" :href="formatReportUrl(activeTask.report_url)" target="_blank" class="btn btn-secondary" style="margin-left: 8px;">
+                📑 查看专属报告
+              </a>
+            </div>
+          </div>
+
+          <!-- 双 ECharts 性能折线图 -->
+          <div class="grid-2">
+            <div class="card">
+              <div id="domChart" class="chart-box"></div>
+            </div>
+            <div class="card">
+              <div id="ueChart" class="chart-box"></div>
+            </div>
+          </div>
+
+          <!-- 实时控制台终端日志流 -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">🖥️ 实时控制台日志推流 (WebSocket 直连)</div>
+              <span style="font-size: 12px; color: var(--text-muted);">实时缓存行数: {{ terminalLogs.length }}</span>
+            </div>
+            <div id="terminalWindow" class="terminal-window">
+              <div v-if="terminalLogs.length === 0" style="color: var(--text-muted); text-align: center; padding: 40px;">
+                暂无日志流或任务尚未启动，启动任务后将实时输出执行过程...
+              </div>
+              <div 
+                v-for="(log, idx) in terminalLogs" 
+                :key="idx" 
+                class="log-line"
+                :class="{
+                  error: log.includes('ERROR') || log.includes('❌') || log.includes('Traceback'),
+                  warn: log.includes('WARNING') || log.includes('⚠️'),
+                  info: log.includes('INFO'),
+                  success: log.includes('圆满完成') || log.includes('✅')
+                }"
+              >{{ log }}</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ============================================================= -->
+        <!-- 3. 任务与产物库列表 -->
+        <!-- ============================================================= -->
+        <div v-show="currentTab === 'tasks'">
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">📁 历史巡检任务列表</div>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>任务 ID / 名称</th>
+                    <th>应用</th>
+                    <th>模式</th>
+                    <th>状态</th>
+                    <th>步数 / 覆盖率</th>
+                    <th>发现缺陷</th>
+                    <th>运行时长</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="t in tasks" :key="t.id">
+                    <td>
+                      <div style="font-weight: 600;">{{ t.name }}</div>
+                      <div style="font-size: 11px; color: var(--text-muted); font-family: monospace;">{{ t.id }}</div>
+                    </td>
+                    <td>{{ t.app_name }}</td>
+                    <td>{{ t.mode }}</td>
+                    <td>
+                      <span class="badge" :class="'badge-' + t.status">{{ t.status }}</span>
+                    </td>
+                    <td>{{ t.total_steps }} 步 ({{ t.coverage_rate }}%)</td>
+                    <td style="color: #ff5252; font-weight: 600;">{{ t.bugs_count }}</td>
+                    <td>{{ t.duration || '-' }}</td>
+                    <td>
+                      <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 12px;" @click="switchActiveTask(t); currentTab = 'monitor'">
+                        监控
+                      </button>
+                      <a v-if="t.report_url" :href="formatReportUrl(t.report_url)" target="_blank" class="btn btn-secondary" style="padding: 4px 10px; font-size: 12px; margin-left: 6px;">
+                        报告
+                      </a>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- ============================================================= -->
+        <!-- 4. 缺陷治理中枢 (Bug List & 禅道一键推单) -->
+        <!-- ============================================================= -->
+        <div v-show="currentTab === 'bugs'">
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">🐛 全局缺陷资产库 (AI 智能查重去重与指派)</div>
+              <div style="display: flex; gap: 10px;">
+                <input type="text" class="form-control" style="width: 220px;" placeholder="搜索缺陷标题/错误..." v-model="bugSearch" @input="fetchBugs">
+                <select class="form-control" style="width: 130px;" v-model="bugSeverityFilter" @change="fetchBugs">
+                  <option value="">全部严重度</option>
+                  <option value="High">High (高)</option>
+                  <option value="Medium">Medium (中)</option>
+                  <option value="Low">Low (低)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Bug 编号</th>
+                    <th>标题与报错信息</th>
+                    <th>严重程度</th>
+                    <th>责任人</th>
+                    <th>状态</th>
+                    <th>禅道单号</th>
+                    <th>频次</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="b in bugs" :key="b.id">
+                    <td style="font-family: monospace; font-weight: 600; color: #00d2ff;">{{ b.id }}</td>
+                    <td>
+                      <div style="font-weight: 500; cursor: pointer;" @click="viewBugDetail(b)">{{ b.title }}</div>
+                      <div style="font-size: 11px; color: var(--text-muted); max-width: 450px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                        {{ b.actual_error }}
+                      </div>
+                    </td>
+                    <td>
+                      <span class="badge" :class="'badge-' + b.severity.toLowerCase()">{{ b.severity }}</span>
+                    </td>
+                    <td>{{ b.assignee }}</td>
+                    <td>{{ b.status }}</td>
+                    <td>
+                      <a 
+                        v-if="b.zentao_id" 
+                        :href="formatZenTaoUrl(b.zentao_id)" 
+                        target="_blank" 
+                        style="color: #00e676; font-weight: 600; text-decoration: underline; text-underline-offset: 3px;"
+                        title="点击跳转至禅道查看缺陷详情"
+                      >
+                        #{{ b.zentao_id }} ↗
+                      </a>
+                      <span v-else style="color: var(--text-muted);">-</span>
+                    </td>
+                    <td>{{ b.occurrences }} 次</td>
+                    <td>
+                      <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px;" @click="viewBugDetail(b)">
+                        详情
+                      </button>
+                      <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px; margin-left: 6px; border-color: #00d2ff; color: #00d2ff;" @click="openEditBugModal(b)">
+                        编辑
+                      </button>
+                      <button 
+                        v-if="!b.zentao_id" 
+                        class="btn btn-primary" 
+                        style="padding: 4px 8px; font-size: 12px; margin-left: 6px;"
+                        @click="syncZenTao(b)"
+                      >
+                        推禅道
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- 缺陷详情弹窗 -->
+          <div class="modal-overlay" v-if="selectedBug" @click.self="selectedBug = null">
+            <div class="modal-content">
+              <div class="modal-header">
+                <div>
+                  <h3 style="display: flex; align-items: center; gap: 10px;">
+                    <span>[{{ selectedBug.id }}] 缺陷详细诊断分析</span>
+                    <a 
+                      v-if="selectedBug.zentao_id" 
+                      :href="formatZenTaoUrl(selectedBug.zentao_id)" 
+                      target="_blank" 
+                      class="badge" 
+                      style="background: rgba(0, 230, 118, 0.15); color: #00e676; border: 1px solid rgba(0, 230, 118, 0.3); text-decoration: none;"
+                    >
+                      禅道工单 #{{ selectedBug.zentao_id }} ↗
+                    </a>
+                  </h3>
+                </div>
+                <button class="modal-close" @click="selectedBug = null">&times;</button>
+              </div>
+              <div class="form-group">
+                <label class="form-label">缺陷标题</label>
+                <div style="font-weight: 600;">{{ selectedBug.title }}</div>
+              </div>
+              <div class="grid-2">
+                <div class="form-group">
+                  <label class="form-label">责任人 (自动分流)</label>
+                  <div>{{ selectedBug.assignee }}</div>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">当前状态</label>
+                  <div style="display: flex; align-items: center; gap: 10px;">
+                    <span>{{ selectedBug.status }} (复现 {{ selectedBug.occurrences }} 次)</span>
+                    <a 
+                      v-if="selectedBug.zentao_id" 
+                      :href="formatZenTaoUrl(selectedBug.zentao_id)" 
+                      target="_blank" 
+                      style="color: #00e676; font-size: 13px; font-weight: 600; text-decoration: underline;"
+                    >
+                      进入禅道查看 #{{ selectedBug.zentao_id }}
+                    </a>
+                  </div>
+                </div>
+              </div>
+              <div class="form-group" v-if="selectedBug.run_id || selectedBug.task_id">
+                <label class="form-label">📍 案发运行批次 (Run ID)</label>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <code style="background: #0f172a; color: #38bdf8; padding: 4px 8px; border-radius: 4px; font-size: 13px; border: 1px solid #1e293b; font-family: monospace;">{{ selectedBug.run_id || selectedBug.task_id }}</code>
+                  <a 
+                    v-if="selectedBug.run_id" 
+                    :href="'reports/runs/zhaiwan/' + selectedBug.run_id + '/report.html'" 
+                    target="_blank" 
+                    style="color: #60a5fa; font-size: 13px; text-decoration: underline; font-weight: 500;"
+                  >
+                    查看该批次完整测试报告 ↗
+                  </a>
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">案发现场实际报错</label>
+                <pre style="background: #05070d; padding: 12px; border-radius: 6px; font-size: 12px; color: #ff6b6b; white-space: pre-wrap; word-break: break-all;">{{ selectedBug.actual_error }}</pre>
+              </div>
+              <div class="form-group" v-if="selectedBug.analysis_notes">
+                <label class="form-label">AI 智能初诊与排查指引</label>
+                <div style="background: #111827; padding: 12px; border-radius: 6px; font-size: 13px; line-height: 1.6; white-space: pre-wrap;">{{ selectedBug.analysis_notes }}</div>
+              </div>
+              <div class="form-group" v-if="selectedBug.remark">
+                <label class="form-label">📌 处理备注 / 关闭原因</label>
+                <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); color: #34d399; padding: 12px; border-radius: 6px; font-size: 13px; line-height: 1.6; white-space: pre-wrap;">{{ selectedBug.remark }}</div>
+              </div>
+              <div class="form-group" v-if="selectedBug.screenshot_path">
+                <label class="form-label">现场快照截图</label>
+                <div style="text-align: center; background: #05070d; border-radius: 8px; padding: 10px; border: 1px solid var(--border-color);">
+                  <a :href="formatScreenshotUrl(selectedBug.screenshot_path)" target="_blank" title="点击查看大图">
+                    <img 
+                      :src="formatScreenshotUrl(selectedBug.screenshot_path)" 
+                      style="max-width: 100%; max-height: 520px; object-fit: contain; border-radius: 6px;"
+                      alt="缺陷案发现场截图"
+                    >
+                  </a>
+                  <div style="font-size: 11px; color: var(--text-muted); margin-top: 6px; font-family: monospace;">
+                    {{ formatScreenshotUrl(selectedBug.screenshot_path) }} (点击可在新标签页查看原始高清大图)
+                  </div>
+                </div>
+              </div>
+              <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
+                <button class="btn btn-secondary" @click="selectedBug = null">关闭</button>
+                <button class="btn btn-secondary" style="border-color: #00d2ff; color: #00d2ff;" @click="openEditBugModal(selectedBug)">
+                  ✏️ 编辑缺陷属性
+                </button>
+                <button v-if="!selectedBug.zentao_id" class="btn btn-primary" @click="syncZenTao(selectedBug)">
+                  提交至禅道
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 缺陷在线编辑弹窗 -->
+          <div class="modal-overlay" v-if="editingBug" @click.self="editingBug = null">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h3>✏️ 编辑缺陷属性 [{{ editForm.id }}]</h3>
+                <button class="modal-close" @click="editingBug = null">&times;</button>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">缺陷标题</label>
+                <input type="text" class="form-control" v-model="editForm.title" placeholder="请输入缺陷摘要标题">
+              </div>
+
+              <div class="grid-2">
+                <div class="form-group">
+                  <label class="form-label">严重程度</label>
+                  <select class="form-control" v-model="editForm.severity">
+                    <option value="High">High (高)</option>
+                    <option value="Medium">Medium (中)</option>
+                    <option value="Low">Low (低)</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">缺陷状态</label>
+                  <select class="form-control" v-model="editForm.status">
+                    <option value="激活">激活 (Open)</option>
+                    <option value="已提单">已提单 (Submitted)</option>
+                    <option value="已解决">已解决 (Resolved)</option>
+                    <option value="误报">误报 (False Positive)</option>
+                    <option value="已关闭">已关闭 (Closed)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="grid-2">
+                <div class="form-group">
+                  <label class="form-label">责任人 (前端/后端分流)</label>
+                  <input type="text" class="form-control" v-model="editForm.assignee" placeholder="如 陈贻雄 / 梅本霞">
+                </div>
+                <div class="form-group">
+                  <label class="form-label">关联禅道 Bug 单号</label>
+                  <input type="text" class="form-control" v-model="editForm.zentao_id" placeholder="如 1188 (可手动补录或修改)">
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">业务页面层级路径 (UI Path)</label>
+                <input type="text" class="form-control" v-model="editForm.ui_path" placeholder="如 首页 > 矿山简介 > 生产指标">
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">AI 初诊与排查指引说明</label>
+                <textarea class="form-control" rows="5" v-model="editForm.analysis_notes" placeholder="输入根因分析或开发排查指引..."></textarea>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">📌 备注 / 关闭说明 (非必填)</label>
+                <textarea class="form-control" rows="3" v-model="editForm.remark" placeholder="如：核验无误非Bug、关闭原因或补充排查备注..."></textarea>
+              </div>
+
+              <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
+                <button class="btn btn-secondary" @click="editingBug = null">取消</button>
+                <button class="btn btn-primary" @click="submitBugEdit">
+                  💾 保存并多端同步
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </main>
+  </div>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

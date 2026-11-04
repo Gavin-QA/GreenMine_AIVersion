@@ -103,11 +103,14 @@ def init_db():
                 if col_name not in existing_cols:
                     conn.execute(text(f"ALTER TABLE performance_metrics ADD COLUMN {col_name} {col_ddl}"))
 
-    # 针对已有 bug_records 表平滑补齐 remark 备注列
+    # 针对已有 bug_records 表平滑补齐 remark 备注列及 run_id 关联批次列
     if "bug_records" in inspector.get_table_names():
         bug_cols = {col["name"] for col in inspector.get_columns("bug_records")}
         if "remark" not in bug_cols:
             with engine.begin() as conn:
                 conn.execute(text("ALTER TABLE bug_records ADD COLUMN remark TEXT"))
+        if "run_id" not in bug_cols:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE bug_records ADD COLUMN run_id VARCHAR(64)"))
 
 
