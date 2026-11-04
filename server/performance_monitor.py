@@ -7,13 +7,14 @@ import threading
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
+import collections
 import psutil
 import requests
 
 from config.settings import settings
 from utils.system_guard import SystemMemoryGuard
 from .database import SessionLocal
-from .models import PerformanceMetric, TaskRun
+from .models import PerformanceMetric, TaskRun, AmbientMetric
 
 logger = logging.getLogger("server.performance_monitor")
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -42,6 +43,11 @@ class PerformanceMonitor:
         self._cached_fps_state: Dict[str, Dict[str, float]] = {} # {task_or_app: {"frames": n, "time": t}}
         self._lock = threading.Lock()
         self._ws_subscribers: Dict[str, Set[asyncio.Queue]] = {}
+        self._cached_gpu: Dict[str, Any] = {"time": 0.0, "data": {"gpu_usage_percent": None, "gpu_memory_mb": None}}
+        self._ambient_thread: Optional[threading.Thread] = None
+        self._ambient_stop_event = threading.Event()
+        self._ambient_buffers: Dict[str, collections.deque] = {}
+        self._ambient_offline_skip: Dict[str, int] = {}
 
     def get_app_config(self, app_name: str = "zhaiwan") -> Dict[str, Any]:
         """获取指定应用的配置 (端口、UE进程名、可执行文件等)"""
@@ -68,10 +74,10 @@ class PerformanceMonitor:
         except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
             return {"cpu": 0.0, "mem_mb": 0.0, "alive": False}
 
-    def collect_ue_metrics(self, app_name: str = "zhaiwan") -> Dict[str, Any]:
-        """采集 UE 伴生主进程及其引擎子进程的资源占用"""
+    def collect_ue_metrics(self, app_name: str = "zhaiwan", allow_fallback: bool = False) -> Dict[str, Any]:
+        """采集 UE 伴生主进程及其引擎子进程的资源占用 (支持分项目精确匹配，避免跨应用数据串线)"""
         cfg = self.get_app_config(app_name)
-        ue_target = cfg.get("ue_process_name", "zhaiwan.exe").lower()
+        ue_target = cfg.get("ue_process_name", f"{app_name}.exe").lower()
         candidates: List[psutil.Process] = []
 
         for p in psutil.process_iter(['pid', 'name', 'exe']):
@@ -82,8 +88,8 @@ class PerformanceMonitor:
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
 
-        if not candidates:
-            # 智能嗅探：若当前指定应用未运行，自动扫描其他已配置应用的伴生 UE 进程 (如天瑞/寨湾/里伍铜)
+        if not candidates and allow_fallback:
+            # 智能嗅探：仅在显式允许 fallback 时扫描其他已配置应用
             for other_app, other_cfg in (getattr(settings, "apps", {}) or {}).items():
                 if other_app == app_name:
                     continue
@@ -198,13 +204,16 @@ class PerformanceMonitor:
         }
 
     def collect_gpu_metrics(self) -> Dict[str, Optional[float]]:
-        """通过 Windows 无窗口静默调用 nvidia-smi 提取独立 GPU 3D 负载与显存"""
+        """通过 Windows 无窗口静默调用 nvidia-smi 提取独立 GPU 3D 负载与显存 (带极速本地缓存)"""
+        with self._lock:
+            if time.time() - self._cached_gpu["time"] < 2.5 and self._cached_gpu["data"].get("gpu_usage_percent") is not None:
+                return self._cached_gpu["data"]
+
         cmd = [
             "nvidia-smi",
             "--query-gpu=utilization.gpu,memory.used",
             "--format=csv,noheader,nounits"
         ]
-        # 使用 CREATE_NO_WINDOW (0x08000000) 确保不弹黑框干扰大屏
         creationflags = 0x08000000 if hasattr(subprocess, "CREATE_NO_WINDOW") else 0
         try:
             res = subprocess.run(
@@ -218,10 +227,13 @@ class PerformanceMonitor:
                 line = res.stdout.strip().splitlines()[0]
                 parts = [p.strip() for p in line.split(",")]
                 if len(parts) >= 2:
-                    return {
+                    res_dict = {
                         "gpu_usage_percent": float(parts[0]),
                         "gpu_memory_mb": float(parts[1])
                     }
+                    with self._lock:
+                        self._cached_gpu = {"time": time.time(), "data": res_dict}
+                    return res_dict
         except Exception:
             pass
         return {"gpu_usage_percent": None, "gpu_memory_mb": None}
@@ -379,11 +391,11 @@ class PerformanceMonitor:
             "host_commit_avail_gb": float(host_mem.get("commit_avail_gb", 0.0)),
         }
 
-    def collect_full_snapshot(self, app_name: str = "zhaiwan") -> Dict[str, Any]:
+    def collect_full_snapshot(self, app_name: str = "zhaiwan", allow_fallback: bool = False) -> Dict[str, Any]:
         """采集一次跨核全栈性能切片 (UE + Chrome + CDP + GPU + Host Commit)"""
         now = datetime.datetime.utcnow()
         logical_cores = psutil.cpu_count(logical=True) or 1
-        ue_data = self.collect_ue_metrics(app_name)
+        ue_data = self.collect_ue_metrics(app_name, allow_fallback=allow_fallback)
         chrome_data = self.collect_chrome_process_metrics(app_name)
         gpu_data = self.collect_gpu_metrics()
         cdp_data = self.collect_cdp_metrics(app_name)
@@ -540,24 +552,309 @@ class PerformanceMonitor:
 
     def cleanup_expired_metrics(self, retention_days: int = 7) -> int:
         """
-        滚动清理超过指定保留期限 (默认 7 天) 的历史性能打点数据，
-        防止 SQLite 数据库无限膨胀，保障海量巡检下的极致读写性能。
+        正式测试任务性能资产安全守护说明：
+        根据业务要求，用户每天执行的正式巡检与长周期回归测试任务（如 14 小时压测等）
+        属于必须永久保全的测试缺陷与复盘资产，永久保留不自动清理。
+        """
+        logger.info("🛡️ [PerformanceMonitor] 正式测试任务性能资产永久保全 (不自动清理)")
+        return 0
+
+    def cleanup_expired_ambient_metrics(self, hours: int = 24) -> int:
+        """
+        环境实时时序数据滚动清理机制：
+        只保留最近 24 小时内的环境实时心电图打点，超过 24 小时的自动滚动剔除，保障轻量零负担。
+        - 仅清理 ambient_metrics 表中的实时数据；
+        - 正式测试任务 (14小时+任务) 的 performance_metrics 永久保留，绝不清理！
         """
         db = SessionLocal()
         deleted_count = 0
         try:
-            cutoff = datetime.datetime.now() - datetime.timedelta(days=retention_days)
-            deleted_count = db.query(PerformanceMetric).filter(PerformanceMetric.timestamp < cutoff).delete(synchronize_session=False)
+            cutoff = datetime.datetime.utcnow() - datetime.timedelta(hours=hours)
+            deleted_count = db.query(AmbientMetric).filter(AmbientMetric.timestamp < cutoff).delete(synchronize_session=False)
             db.commit()
             if deleted_count > 0:
-                logger.info(f"🧹 [PerformanceMonitor] 滚动清理完成：已删除 {deleted_count} 条超过 {retention_days} 天的历史性能时序打点")
+                logger.info(f"🧹 [AmbientMonitor] 滚动清理完成：已自动清除 {deleted_count} 条超过 {hours} 小时的环境心电图打点")
             return deleted_count
         except Exception as e:
             db.rollback()
-            logger.error(f"❌ [PerformanceMonitor] 清理过期性能数据异常: {e}")
+            logger.error(f"❌ [AmbientMonitor] 清理环境时序异常: {e}")
             return 0
         finally:
             db.close()
+
+    def start_ambient_monitoring(self, interval_sec: float = 4.0):
+        """拉起后台常驻环境监控守护线程，静默记录已运行应用的 24 小时心电图"""
+        with self._lock:
+            if self._ambient_thread and self._ambient_thread.is_alive():
+                logger.info("⚡ [AmbientMonitor] 环境监控常驻守护线程已在运行中")
+                return
+
+            self._ambient_stop_event.clear()
+            thread = threading.Thread(
+                target=self._ambient_worker,
+                args=(interval_sec,),
+                name="PerfMonitor-AmbientDaemon",
+                daemon=True
+            )
+            self._ambient_thread = thread
+            thread.start()
+            logger.info(f"📊 [AmbientMonitor] 环境监控常驻守护线程已激活 (心跳周期: {interval_sec}s，自动分项目隔离采样)")
+
+    def stop_ambient_monitoring(self):
+        """停止后台常驻环境监控守护线程"""
+        with self._lock:
+            self._ambient_stop_event.set()
+            thread = self._ambient_thread
+        if thread and thread.is_alive():
+            thread.join(timeout=2.0)
+        logger.info("🛑 [AmbientMonitor] 环境监控常驻守护线程已停止")
+
+    def _warmup_ambient_buffers(self):
+        """服务冷启动时，从 DB 预热最近 24 小时的数据到内存环形缓冲区，确保图表瞬间充满数据"""
+        db = SessionLocal()
+        try:
+            cutoff = datetime.datetime.utcnow() - datetime.timedelta(hours=24)
+            records = db.query(AmbientMetric).filter(AmbientMetric.timestamp >= cutoff).order_by(AmbientMetric.timestamp.asc()).all()
+            with self._lock:
+                for r in records:
+                    app = r.app_name
+                    if app not in self._ambient_buffers:
+                        self._ambient_buffers[app] = collections.deque(maxlen=17280)
+                    ts_str = r.timestamp.isoformat()
+                    if not ts_str.endswith("Z"):
+                        ts_str += "Z"
+                    self._ambient_buffers[app].append({
+                        "app_name": app,
+                        "timestamp": ts_str,
+                        "page_scope": r.page_scope,
+                        "dom_count": r.dom_count or 0,
+                        "listeners_count": r.listeners_count or 0,
+                        "js_heap_mb": r.js_heap_mb or 0.0,
+                        "js_heap_total_mb": r.js_heap_total_mb or 0.0,
+                        "echarts_instances": r.echarts_instances or 0,
+                        "canvas_count": r.canvas_count or 0,
+                        "video_instances": r.video_instances or 0,
+                        "webrtc_fps": r.webrtc_fps,
+                        "chrome_pid": r.chrome_pid,
+                        "chrome_cpu_percent": r.chrome_cpu_percent,
+                        "chrome_memory_mb": r.chrome_memory_mb,
+                        "ue_pid": r.ue_pid,
+                        "ue_cpu_percent": r.ue_cpu_percent,
+                        "ue_memory_mb": r.ue_memory_mb,
+                        "ue_commit_mb": r.ue_commit_mb,
+                        "host_ram_load_percent": r.host_ram_load_percent,
+                        "host_commit_load_percent": r.host_commit_load_percent,
+                        "host_commit_avail_gb": r.host_commit_avail_gb,
+                        "gpu_usage_percent": r.gpu_usage_percent,
+                        "gpu_memory_mb": r.gpu_memory_mb,
+                    })
+            if records:
+                logger.info(f"🔥 [AmbientMonitor] 已成功预热 {len(records)} 条历史实时指标到内存环形队列")
+        except Exception as e:
+            logger.debug(f"[AmbientMonitor] 预热历史数据异常 (可忽略): {e}")
+        finally:
+            db.close()
+
+    def _ambient_worker(self, interval_sec: float = 4.0):
+        """常驻环境守护采样循环：即使未启动测试任务，也在后台静默记录已运行应用的 24 小时心电图"""
+        self._warmup_ambient_buffers()
+        cleanup_counter = 0
+
+        while not self._ambient_stop_event.is_set():
+            try:
+                apps_cfg = getattr(settings, "apps", {}) or {}
+                target_apps = list(apps_cfg.keys()) if apps_cfg else ["zhaiwan", "tianrui", "liwutong"]
+
+                for app_name in target_apps:
+                    snapshot = self.collect_full_snapshot(app_name=app_name)
+                    ue_online = snapshot.get("ue_online", False)
+                    cdp_online = snapshot.get("cdp_online", False)
+
+                    # 离线应用退避策略：若应用离线，每隔 8 次周期 (约 32 秒) 记录一次离线点
+                    if not ue_online and not cdp_online:
+                        skip_count = self._ambient_offline_skip.get(app_name, 0) + 1
+                        self._ambient_offline_skip[app_name] = skip_count
+                        if skip_count < 8:
+                            continue
+                        self._ambient_offline_skip[app_name] = 0
+                    else:
+                        self._ambient_offline_skip[app_name] = 0
+
+                    ts = snapshot["timestamp"]
+                    ts_str = ts.isoformat() + "Z" if not ts.isoformat().endswith("Z") else ts.isoformat()
+
+                    point = {
+                        "app_name": app_name,
+                        "timestamp": ts_str,
+                        "page_scope": snapshot.get("page_scope"),
+                        "dom_count": snapshot.get("dom_count", 0),
+                        "listeners_count": snapshot.get("listeners_count", 0),
+                        "js_heap_mb": snapshot.get("js_heap_mb", 0.0),
+                        "js_heap_total_mb": snapshot.get("js_heap_total_mb", 0.0),
+                        "echarts_instances": snapshot.get("echarts_instances", 0),
+                        "canvas_count": snapshot.get("canvas_count", 0),
+                        "video_instances": snapshot.get("video_instances", 0),
+                        "webrtc_fps": snapshot.get("webrtc_fps"),
+                        "chrome_pid": snapshot.get("chrome_pid"),
+                        "chrome_cpu_percent": snapshot.get("chrome_cpu_percent"),
+                        "chrome_memory_mb": snapshot.get("chrome_memory_mb"),
+                        "ue_pid": snapshot.get("ue_pid"),
+                        "ue_cpu_percent": snapshot.get("ue_cpu_percent"),
+                        "ue_memory_mb": snapshot.get("ue_memory_mb"),
+                        "ue_commit_mb": snapshot.get("ue_commit_mb"),
+                        "host_ram_load_percent": snapshot.get("host_ram_load_percent"),
+                        "host_commit_load_percent": snapshot.get("host_commit_load_percent"),
+                        "host_commit_avail_gb": snapshot.get("host_commit_avail_gb"),
+                        "gpu_usage_percent": snapshot.get("gpu_usage_percent"),
+                        "gpu_memory_mb": snapshot.get("gpu_memory_mb"),
+                    }
+
+                    with self._lock:
+                        if app_name not in self._ambient_buffers:
+                            self._ambient_buffers[app_name] = collections.deque(maxlen=17280)
+                        self._ambient_buffers[app_name].append(point)
+
+                    # 若应用在线运行，持久化到 ambient_metrics 表
+                    if ue_online or cdp_online:
+                        db = SessionLocal()
+                        try:
+                            amb = AmbientMetric(
+                                app_name=app_name,
+                                timestamp=ts,
+                                page_scope=snapshot.get("page_scope"),
+                                dom_count=snapshot.get("dom_count", 0),
+                                listeners_count=snapshot.get("listeners_count", 0),
+                                js_heap_mb=snapshot.get("js_heap_mb", 0.0),
+                                js_heap_total_mb=snapshot.get("js_heap_total_mb", 0.0),
+                                echarts_instances=snapshot.get("echarts_instances", 0),
+                                canvas_count=snapshot.get("canvas_count", 0),
+                                video_instances=snapshot.get("video_instances", 0),
+                                webrtc_fps=snapshot.get("webrtc_fps"),
+                                chrome_pid=snapshot.get("chrome_pid"),
+                                chrome_cpu_percent=snapshot.get("chrome_cpu_percent"),
+                                chrome_memory_mb=snapshot.get("chrome_memory_mb"),
+                                ue_pid=snapshot.get("ue_pid"),
+                                ue_cpu_percent=snapshot.get("ue_cpu_percent"),
+                                ue_memory_mb=snapshot.get("ue_memory_mb"),
+                                ue_commit_mb=snapshot.get("ue_commit_mb"),
+                                host_ram_load_percent=snapshot.get("host_ram_load_percent"),
+                                host_commit_load_percent=snapshot.get("host_commit_load_percent"),
+                                host_commit_avail_gb=snapshot.get("host_commit_avail_gb"),
+                                gpu_usage_percent=snapshot.get("gpu_usage_percent"),
+                                gpu_memory_mb=snapshot.get("gpu_memory_mb")
+                            )
+                            db.add(amb)
+                            db.commit()
+                        except Exception as dbe:
+                            db.rollback()
+                            logger.debug(f"[AmbientMonitor] 写入 ambient_metrics 失败: {dbe}")
+                        finally:
+                            db.close()
+
+                cleanup_counter += 1
+                if cleanup_counter >= (15 * 60 // max(int(interval_sec), 1)):
+                    cleanup_counter = 0
+                    self.cleanup_expired_ambient_metrics(hours=24)
+
+            except Exception as e:
+                logger.debug(f"[AmbientMonitor] 守护循环异常: {e}")
+
+            self._ambient_stop_event.wait(timeout=interval_sec)
+
+    def get_ambient_history(self, app_name: str, hours: float = 24.0, limit: int = 1000, downsample: bool = True) -> List[Dict[str, Any]]:
+        """获取指定应用最近 hours 小时 (最高 24 小时) 的环境实时历史时序，支持自适应等间距智能降采样"""
+        cutoff = datetime.datetime.utcnow() - datetime.timedelta(hours=hours)
+        records: List[Dict[str, Any]] = []
+
+        with self._lock:
+            buf = self._ambient_buffers.get(app_name)
+            if buf:
+                for item in buf:
+                    try:
+                        ts = datetime.datetime.fromisoformat(item["timestamp"].rstrip("Z"))
+                        if ts >= cutoff:
+                            records.append(item)
+                    except Exception:
+                        records.append(item)
+
+        if len(records) < 5:
+            db = SessionLocal()
+            try:
+                db_recs = db.query(AmbientMetric).filter(
+                    AmbientMetric.app_name == app_name,
+                    AmbientMetric.timestamp >= cutoff
+                ).order_by(AmbientMetric.timestamp.asc()).all()
+
+                records = [{
+                    "app_name": r.app_name,
+                    "timestamp": r.timestamp.isoformat() + "Z" if not r.timestamp.isoformat().endswith("Z") else r.timestamp.isoformat(),
+                    "page_scope": r.page_scope,
+                    "dom_count": r.dom_count or 0,
+                    "listeners_count": r.listeners_count or 0,
+                    "js_heap_mb": r.js_heap_mb or 0.0,
+                    "js_heap_total_mb": r.js_heap_total_mb or 0.0,
+                    "echarts_instances": r.echarts_instances or 0,
+                    "canvas_count": r.canvas_count or 0,
+                    "video_instances": r.video_instances or 0,
+                    "webrtc_fps": r.webrtc_fps,
+                    "chrome_pid": r.chrome_pid,
+                    "chrome_cpu_percent": r.chrome_cpu_percent,
+                    "chrome_memory_mb": r.chrome_memory_mb,
+                    "ue_pid": r.ue_pid,
+                    "ue_cpu_percent": r.ue_cpu_percent,
+                    "ue_memory_mb": r.ue_memory_mb,
+                    "ue_commit_mb": r.ue_commit_mb,
+                    "host_ram_load_percent": r.host_ram_load_percent,
+                    "host_commit_load_percent": r.host_commit_load_percent,
+                    "host_commit_avail_gb": r.host_commit_avail_gb,
+                    "gpu_usage_percent": r.gpu_usage_percent,
+                    "gpu_memory_mb": r.gpu_memory_mb,
+                } for r in db_recs]
+            finally:
+                db.close()
+
+        total_count = len(records)
+        if total_count == 0:
+            return []
+
+        if downsample and total_count > limit:
+            step = (total_count - 1) / (limit - 1)
+            sampled_indices = {int(round(i * step)) for i in range(limit)}
+            sampled_indices.add(0)
+            sampled_indices.add(total_count - 1)
+            return [records[i] for i in sorted(sampled_indices) if i < total_count]
+
+        return records
+
+    def get_all_apps_live_status(self) -> List[Dict[str, Any]]:
+        """获取所有已配置应用的即时运行状态与专用提交量 (分项目独立检测)"""
+        apps_cfg = getattr(settings, "apps", {}) or {}
+        friendly_titles = {
+            "tianrui": "四川天瑞",
+            "zhaiwan": "寨湾矿山",
+            "liwutong": "李屋塘矿山"
+        }
+        target_keys = ["tianrui", "zhaiwan", "liwutong"]
+        for k in apps_cfg.keys():
+            if k not in target_keys:
+                target_keys.append(k)
+
+        result = []
+        for app_name in target_keys:
+            cfg = apps_cfg.get(app_name, {})
+            ue_metrics = self.collect_ue_metrics(app_name, allow_fallback=False)
+            title = friendly_titles.get(app_name) or cfg.get("name") or cfg.get("title") or app_name
+            is_online = bool(ue_metrics.get("ue_pid"))
+            result.append({
+                "app_name": app_name,
+                "title": title,
+                "online": is_online,
+                "ue_pid": ue_metrics.get("ue_pid"),
+                "ue_memory_mb": ue_metrics.get("ue_memory_mb"),
+                "ue_commit_mb": ue_metrics.get("ue_commit_mb"),
+                "ue_cpu_percent": ue_metrics.get("ue_cpu_percent")
+            })
+        return result
 
     def subscribe_metrics(self, task_id: str) -> asyncio.Queue:
         """创建针对特定任务的实时性能推流通道"""

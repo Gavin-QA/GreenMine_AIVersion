@@ -632,6 +632,82 @@
 
 
 
+          <!-- 实时心电图专属控制栏：分项目独立切换 + 状态微标 + 24小时回溯跨度 -->
+          <div v-if="activeTaskId === '__live__'" style="margin-bottom: 16px; background: rgba(13, 20, 36, 0.95); padding: 10px 16px; border-radius: 8px; border: 1px solid #1e293b; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+              <span style="font-size: 13px; font-weight: 700; color: #94a3b8; display: flex; align-items: center; gap: 6px;">
+                🎯 监控目标项目:
+              </span>
+              <div style="display: flex; gap: 8px;">
+                <button 
+                  v-for="app in liveAppsStatus" 
+                  :key="app.app_name" 
+                  @click="changeLiveApp(app.app_name)"
+                  type="button"
+                  :style="{
+                    background: liveSelectedApp === app.app_name ? 'rgba(0, 210, 255, 0.15)' : 'rgba(30, 41, 59, 0.5)',
+                    border: liveSelectedApp === app.app_name ? '1px solid #00d2ff' : '1px solid #334155',
+                    color: liveSelectedApp === app.app_name ? '#00d2ff' : '#cbd5e1',
+                    padding: '6px 14px',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }"
+                >
+                  <span 
+                    :style="{
+                      display: 'inline-block',
+                      width: '8px',
+                      height: '8px',
+                      borderRadius: '50%',
+                      background: app.online ? '#00e676' : '#64748b',
+                      boxShadow: app.online ? '0 0 8px #00e676' : 'none'
+                    }"
+                  ></span>
+                  <span>{{ app.title }}</span>
+                  <span v-if="app.online && app.ue_commit_mb" style="font-size: 11px; padding: 2px 6px; border-radius: 4px; background: rgba(255, 145, 0, 0.2); color: #ff9100; font-weight: 700;">
+                    {{ (app.ue_commit_mb / 1024).toFixed(1) }}G Commit
+                  </span>
+                  <span v-else-if="app.online" style="font-size: 11px; color: #00e676; font-weight: 600;">
+                    在线
+                  </span>
+                  <span v-else style="font-size: 11px; color: #64748b;">
+                    待命
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            <!-- 时间跨度快捷切换器 -->
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 12px; color: #94a3b8;">历史回溯:</span>
+              <div style="display: flex; background: #0b1120; border: 1px solid #1e293b; border-radius: 6px; padding: 2px;">
+                <button 
+                  v-for="span in [{'key':'15m','name':'15分钟'},{'key':'1h','name':'1小时'},{'key':'6h','name':'6小时'},{'key':'24h','name':'24小时'}]"
+                  :key="span.key"
+                  @click="changeLiveTimeSpan(span.key)"
+                  type="button"
+                  :style="{
+                    background: liveTimeSpan === span.key ? '#00d2ff' : 'transparent',
+                    color: liveTimeSpan === span.key ? '#000' : '#94a3b8',
+                    border: 'none',
+                    padding: '4px 10px',
+                    borderRadius: '4px',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    cursor: 'pointer'
+                  }"
+                >
+                  {{ span.name }}
+                </button>
+              </div>
+            </div>
+          </div>
+
           <!-- 双 ECharts 性能折线图 -->
 
           <div class="grid-2">

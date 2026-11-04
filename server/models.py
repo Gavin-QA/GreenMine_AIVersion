@@ -142,6 +142,51 @@ class PerformanceMetric(Base):
     task = relationship("TaskRun", back_populates="metrics")
 
 
+class AmbientMetric(Base):
+    """
+    环境常驻实时时序性能表 (专门记录未拉起正式任务时后台常驻运行的应用心电图)
+    - 独立隔离存储，与正式测试任务数据完全解耦；
+    - 滚动保留最近 24 小时数据，过期自动清理；
+    - 正式测试任务 (14小时+全量探索或回归压测) 永久保留在 performance_metrics 中绝对不清理。
+    """
+    __tablename__ = "ambient_metrics"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    app_name = Column(String(64), nullable=False, index=True)
+    timestamp = Column(DateTime, default=datetime.datetime.utcnow, index=True)
+    page_scope = Column(String(256), nullable=True)
+
+    # Chromium / DOM / 事件监听器 / V8 JS 堆内存 / WebRTC FPS
+    dom_count = Column(Integer, default=0)
+    listeners_count = Column(Integer, default=0)
+    js_heap_mb = Column(Float, default=0.0)
+    js_heap_total_mb = Column(Float, default=0.0)
+    echarts_instances = Column(Integer, default=0)
+    canvas_count = Column(Integer, default=0)
+    video_instances = Column(Integer, default=0)
+    webrtc_fps = Column(Float, nullable=True)
+
+    # Electron / Chromium 渲染端
+    chrome_pid = Column(Integer, nullable=True)
+    chrome_cpu_percent = Column(Float, nullable=True)
+    chrome_memory_mb = Column(Float, nullable=True)
+
+    # 伴生 UE5 引擎 (Working Set 物理内存 + 专用提交量 Commit)
+    ue_pid = Column(Integer, nullable=True)
+    ue_cpu_percent = Column(Float, nullable=True)
+    ue_memory_mb = Column(Float, nullable=True)
+    ue_commit_mb = Column(Float, nullable=True)
+
+    # 宿主机整体内存与提交水位
+    host_ram_load_percent = Column(Float, nullable=True)
+    host_commit_load_percent = Column(Float, nullable=True)
+    host_commit_avail_gb = Column(Float, nullable=True)
+
+    # 显卡 3D 与 VRAM
+    gpu_usage_percent = Column(Float, nullable=True)
+    gpu_memory_mb = Column(Float, nullable=True)
+
+
 class PresetTaskRecord(Base):
     """预设巡检任务模板持久化表 (支持在前端增删改查并保存用户自定义预设)"""
     __tablename__ = "preset_task_records"

@@ -244,24 +244,40 @@ def on_startup():
 
 
 
-    # 4. 自动滚动清理过期历史性能数据 (默认保留 7 天，防止 SQLite 数据库膨胀)
+    # 4. 滚动清理超过 24 小时的环境实时心电图数据 (正式测试任务数据永久保全，绝不自动清理)
 
     try:
 
-        deleted = performance_monitor.cleanup_expired_metrics(retention_days=7)
+        deleted = performance_monitor.cleanup_expired_ambient_metrics(hours=24)
 
         if deleted > 0:
 
-            logger.info(f"🧹 冷启动数据治理：自动清理了 {deleted} 条超过 7 天的历史性能打点")
+            logger.info(f"🧹 冷启动数据治理：自动清理了 {deleted} 条超过 24 小时的环境实时心电图打点")
 
     except Exception as e:
 
-        logger.debug(f"滚动清理性能时序异常 (可忽略): {e}")
+        logger.debug(f"滚动清理环境时序异常 (可忽略): {e}")
+
+
+
+    # 5. 启动后台常驻多项目环境监控守护引擎 (按天瑞/寨湾/李屋塘多项目独立采样，滚动维持24小时时序)
+
+    try:
+
+        performance_monitor.start_ambient_monitoring(interval_sec=4.0)
+
+    except Exception as e:
+
+        logger.warning(f"启动环境守护监控异常: {e}")
 
 @app.on_event("shutdown")
 async def on_shutdown():
     """关机/热重载生命周期钩子：主动关闭所有活跃 WebSocket 长连接与后台守护，杜绝 uvicorn reload 死锁"""
     logger.info("🛑 [Shutdown] 正在释放所有活跃 WebSocket 连接与后台监控守护...")
+    try:
+        performance_monitor.stop_ambient_monitoring()
+    except Exception as se:
+        logger.debug(f"停止环境守护异常: {se}")
     # 1. 主动断开所有 WebSocket 长连接，通知前端优雅重连
     for ws in list(active_websockets):
         try:
@@ -1805,6 +1821,66 @@ def get_live_performance_snapshot(
     snapshot = performance_monitor.collect_full_snapshot(app_name=app_name)
 
     return LivePerformanceSnapshotResponse(**snapshot)
+
+
+
+
+
+@app.get(
+
+    "/api/metrics/live/history",
+
+    tags=["4. 多核全栈性能监控"],
+
+    summary="获取指定矿山应用最近 24 小时内的环境实时心电图历史时序",
+
+    description="支持指定矿山应用（如 tianrui / zhaiwan），返回过去 15 分钟 ~ 24 小时的高保真连续时序数据。进入页面时瞬间灌满 ECharts 图表，彻底告别从零开始。"
+
+)
+
+def get_ambient_metrics_history(
+
+    app_name: str = Query(default="tianrui", description="矿山应用代码 (tianrui / zhaiwan / liwutong)"),
+
+    hours: float = Query(default=24.0, ge=0.1, le=48.0, description="回溯时长 (小时，默认24小时)"),
+
+    limit: int = Query(default=1000, ge=50, le=5000, description="最大返回点数"),
+
+    downsample: bool = Query(default=True, description="是否等间距降采样")
+
+):
+
+    return performance_monitor.get_ambient_history(
+
+        app_name=app_name,
+
+        hours=hours,
+
+        limit=limit,
+
+        downsample=downsample
+
+    )
+
+
+
+
+
+@app.get(
+
+    "/api/metrics/live/apps_status",
+
+    tags=["4. 多核全栈性能监控"],
+
+    summary="获取所有矿山应用的实时运行与内存状态列表",
+
+    description="返回各应用当前伴生 UE 是否在线、专用提交量(Commit)及物理内存，供前端展示状态微标。"
+
+)
+
+def get_all_apps_live_status():
+
+    return performance_monitor.get_all_apps_live_status()
 
 
 

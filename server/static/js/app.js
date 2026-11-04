@@ -102,6 +102,16 @@ const app = createApp({
 
     const activeTask = ref(null);
 
+    const liveSelectedApp = ref('tianrui');
+
+    const liveTimeSpan = ref('24h');
+
+    const liveAppsStatus = ref([
+      { app_name: 'tianrui', title: '四川天瑞', online: false, ue_pid: null, ue_commit_mb: 0, ue_memory_mb: 0 },
+      { app_name: 'zhaiwan', title: '寨湾矿山', online: false, ue_pid: null, ue_commit_mb: 0, ue_memory_mb: 0 },
+      { app_name: 'liwutong', title: '李屋塘矿山', online: false, ue_pid: null, ue_commit_mb: 0, ue_memory_mb: 0 }
+    ]);
+
 
 
     const taskForm = reactive({
@@ -256,11 +266,65 @@ const app = createApp({
 
 
 
+    function getSpanHours(span) {
+      if (span === '15m') return 0.25;
+      if (span === '1h') return 1.0;
+      if (span === '6h') return 6.0;
+      return 24.0;
+    }
+
+    async function fetchLiveAppsStatus() {
+      try {
+        const res = await fetch(`${apiBase}/api/metrics/live/apps_status`);
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data) && data.length > 0) {
+            liveAppsStatus.value = data;
+          }
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    async function loadLiveAmbientHistory(appName, spanHours = 24) {
+      if (!appName) appName = liveSelectedApp.value;
+      try {
+        const res = await fetch(`${apiBase}/api/metrics/live/history?app_name=${appName}&hours=${spanHours}&limit=1000`);
+        if (res.ok) {
+          const list = await res.json();
+          if (Array.isArray(list) && list.length > 0) {
+            liveHistory = list;
+            resetChartsData(list);
+            return;
+          }
+        }
+      } catch (e) {
+        console.warn('获取环境历史时序异常:', e);
+      }
+      if (activeTaskId.value === '__live__') {
+        initCharts(true);
+      }
+    }
+
+    async function changeLiveApp(appName) {
+      liveSelectedApp.value = appName;
+      await loadLiveAmbientHistory(appName, getSpanHours(liveTimeSpan.value));
+      await fetchLiveSnapshot();
+    }
+
+    async function changeLiveTimeSpan(span) {
+      liveTimeSpan.value = span;
+      await loadLiveAmbientHistory(liveSelectedApp.value, getSpanHours(span));
+    }
+
     async function fetchLiveSnapshot() {
 
       try {
 
-        const res = await fetch(`${apiBase}/api/metrics/live/snapshot?app_name=${taskForm.app_name}`);
+        const targetApp = (activeTaskId.value === '__live__') ? liveSelectedApp.value : taskForm.app_name;
+
+        const res = await fetch(`${apiBase}/api/metrics/live/snapshot?app_name=${targetApp}`);
 
         const data = await res.json();
 
@@ -298,7 +362,7 @@ const app = createApp({
 
         liveHistory.push(point);
 
-        if (liveHistory.length > 225) {
+        if (liveHistory.length > 17280) {
 
           liveHistory.shift();
 
@@ -310,9 +374,11 @@ const app = createApp({
 
         if (activeTaskId.value === '__live__') {
 
-          appendMetricToCharts(point);
+          appendMetricToCharts(point, 17280);
 
         }
+
+        fetchLiveAppsStatus();
 
       } catch (e) {
 
@@ -762,15 +828,8 @@ const app = createApp({
 
 
 
-      // 切换到 Live 模式：清空任务的历史数据，若当前已沉淀有实时点直接回溯渲染，否则干净从零开局
-
-      initCharts(true);
-
-      if (liveHistory.length > 0) {
-
-        resetChartsData(liveHistory);
-
-      }
+      // 切换到 Live 模式：优先向服务端拉取 24 小时真实历史切片，瞬间灌满图表
+      loadLiveAmbientHistory(liveSelectedApp.value, getSpanHours(liveTimeSpan.value));
 
     }
 
@@ -1192,7 +1251,7 @@ const app = createApp({
 
 
 
-    function appendMetricToCharts(m, maxPoints = 225) {
+    function appendMetricToCharts(m, maxPoints = 17280) {
 
       if (!domChart || !ueChart) return;
 
@@ -1548,6 +1607,10 @@ const app = createApp({
 
             loadHistoricalMetrics(activeTaskId.value);
 
+          } else if (activeTaskId.value === '__live__') {
+
+            loadLiveAmbientHistory(liveSelectedApp.value, getSpanHours(liveTimeSpan.value));
+
           }
 
         }
@@ -1700,6 +1763,10 @@ const app = createApp({
 
       fetchTasks();
 
+      fetchLiveAppsStatus();
+
+      loadLiveAmbientHistory(liveSelectedApp.value, getSpanHours(liveTimeSpan.value));
+
       fetchLiveSnapshot();
 
       fetchBugs();
@@ -1843,7 +1910,17 @@ const app = createApp({
 
       isSyncing,
 
-      triggerHotSync
+      triggerHotSync,
+
+      liveSelectedApp,
+
+      liveTimeSpan,
+
+      liveAppsStatus,
+
+      changeLiveApp,
+
+      changeLiveTimeSpan
 
     };
 
