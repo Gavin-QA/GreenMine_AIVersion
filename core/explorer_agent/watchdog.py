@@ -150,6 +150,28 @@ class StepWatchdog:
                         should_rescue = True
                         desc_to_report = self._step_desc
 
+            # 通用防 OOM 暴毙熔断巡检 (每秒非侵入采样系统级内存)
+            try:
+                from utils.system_guard import SystemMemoryGuard
+                sys_mem = SystemMemoryGuard.sample_all_memory()
+                host_load = sys_mem.get("host_load_percent", 0)
+                comp_mb = sys_mem.get("companion_mem_mb", 0.0)
+                comp_name = sys_mem.get("companion_name") or "UE伴生进程"
+
+                # 宿主机内存负荷 >= 92% 或 单个伴生引擎 >= 10GB 时启动紧急熔断脱困
+                if host_load >= 92 or comp_mb >= 10240.0:
+                    logger.critical(
+                        f"\n{'='*70}\n"
+                        f"🚨 [Watchdog OOM Emergency] 宿主机内存面临雪崩溢出危机！\n"
+                        f"   宿主机使用率: {host_load}% (警戒线 92%) | 剩余: {sys_mem.get('host_avail_mb', 0)}MB\n"
+                        f"   伴生引擎: [{comp_name}] 独占物理内存: {comp_mb:.1f}MB (警戒线 10240MB)\n"
+                        f"   为防止宿主机蓝屏宕机，看门狗正在执行紧急自愈保护与进程回收...\n"
+                        f"{'='*70}"
+                    )
+                    self._rescue_blocked_process()
+            except Exception:
+                pass
+
             if should_rescue:
                 logger.critical(
                     f"\n{'='*70}\n"

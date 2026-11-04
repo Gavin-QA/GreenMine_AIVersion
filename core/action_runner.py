@@ -809,6 +809,9 @@ class ActionRunner:
         max_dom_nodes = int(step.get("max_dom_nodes", 50000))
         max_listener_growth = int(step.get("max_listener_growth", 5000))
 
+        max_companion_mb = float(step.get("max_companion_mb", 6144.0))
+        max_host_load_percent = float(step.get("max_host_load_percent", 90.0))
+
         passed, summary, _ = self.driver.check_memory_leak(
             label=label,
             max_heap_mb=max_heap_mb,
@@ -816,6 +819,8 @@ class ActionRunner:
             max_growth_ratio=max_growth_ratio,
             max_dom_nodes=max_dom_nodes,
             max_listener_growth=max_listener_growth,
+            max_companion_mb=max_companion_mb,
+            max_host_load_percent=max_host_load_percent,
             trigger_gc=trigger_gc
         )
         if not passed:

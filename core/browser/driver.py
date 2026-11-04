@@ -1057,6 +1057,13 @@ class ElectronDriver(NetworkMonitorMixin, DomExtractorMixin, ScreenshotMixin, Ch
         dom_nodes = int(metrics_map.get("Nodes") or dom_stats.get("dom_nodes") or 0)
         js_listeners = int(metrics_map.get("JSEventListeners") or 0)
 
+        # 通用宿主机与伴生引擎系统级物理内存采样 (完全动态解耦，零项目硬编码)
+        try:
+            from utils.system_guard import SystemMemoryGuard
+            sys_mem = SystemMemoryGuard.sample_all_memory()
+        except Exception:
+            sys_mem = {}
+
         snapshot = {
             "label": label or "sample",
             "page_scope": getattr(self, "current_page_scope", "_global_shared"),
@@ -1069,6 +1076,12 @@ class ElectronDriver(NetworkMonitorMixin, DomExtractorMixin, ScreenshotMixin, Ch
             "video_count": int(dom_stats.get("video_count") or 0),
             "iframe_count": int(dom_stats.get("iframe_count") or 0),
             "echarts_instances": int(dom_stats.get("echarts_instances") or 0),
+            "host_load_percent": sys_mem.get("host_load_percent", 0),
+            "host_avail_mb": sys_mem.get("host_avail_mb", 0.0),
+            "companion_name": sys_mem.get("companion_name"),
+            "companion_mem_mb": sys_mem.get("companion_mem_mb", 0.0),
+            "launcher_name": sys_mem.get("launcher_name"),
+            "launcher_mem_mb": sys_mem.get("launcher_mem_mb", 0.0),
         }
         return snapshot
 
@@ -1104,6 +1117,8 @@ class ElectronDriver(NetworkMonitorMixin, DomExtractorMixin, ScreenshotMixin, Ch
         max_growth_ratio: float = 2.5,
         max_dom_nodes: int = 50000,
         max_listener_growth: int = 5000,
+        max_companion_mb: float = 6144.0,
+        max_host_load_percent: float = 90.0,
         trigger_gc: bool = True
     ) -> Tuple[bool, str, Dict[str, Any]]:
         """
@@ -1148,6 +1163,16 @@ class ElectronDriver(NetworkMonitorMixin, DomExtractorMixin, ScreenshotMixin, Ch
         if listener_growth > max_listener_growth:
             breaches.append(f"全局 JS 事件监听器严重泄漏未解绑 (净增 +{listener_growth} 个 > 阈值 +{max_listener_growth}, 当前 {curr_listeners})")
 
+        # 检查外部伴生引擎 (UE 等 C++ 进程) 与宿主机内存
+        curr_comp_mb = float(curr.get("companion_mem_mb", 0.0))
+        comp_name = curr.get("companion_name") or "伴生引擎进程"
+        host_load = int(curr.get("host_load_percent", 0))
+
+        if curr_comp_mb > max_companion_mb:
+            breaches.append(f"伴生引擎 [{comp_name}] 物理内存超限 ({curr_comp_mb:.1f}MB > 警戒线 {max_companion_mb:.1f}MB)")
+        if host_load > max_host_load_percent:
+            breaches.append(f"宿主机物理内存严重告急 ({host_load}% > 警戒线 {max_host_load_percent:.0f}%, 剩余 {curr.get('host_avail_mb', 0)}MB)")
+
         webgl_crashes = self.probe_webgl_context_health() if hasattr(self, "probe_webgl_context_health") else []
         for wc in webgl_crashes:
             breaches.append(str(wc.get("msg") or "WebGL 显存上下文丢失崩溃"))
@@ -1158,6 +1183,10 @@ class ElectronDriver(NetworkMonitorMixin, DomExtractorMixin, ScreenshotMixin, Ch
             f"Listeners: {base_listeners} -> {curr_listeners} (Δ={listener_growth:+d}) | "
             f"ECharts={curr.get('echarts_instances', 0)}, Canvas={curr.get('canvas_count', 0)}, Video={curr.get('video_count', 0)}"
         )
+        if comp_name and curr_comp_mb > 0:
+            metrics_brief += f" | {comp_name}={curr_comp_mb:.1f}MB"
+        if host_load > 0:
+            metrics_brief += f" | HostRAM={host_load}%" 
         if is_monotonic_rising:
             metrics_brief += f" | ⚠️ 最近4次采样呈单调持续上涨趋势 {recent_heaps}"
 
