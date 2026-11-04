@@ -197,6 +197,9 @@ app.add_middleware(
 
 )
 
+# 全局活跃 WebSocket 连接池（用于 shutdown/reload 时主动断开，彻底杜绝 uvicorn 卡死）
+active_websockets: set = set()
+
 
 
 
@@ -254,6 +257,30 @@ def on_startup():
     except Exception as e:
 
         logger.debug(f"滚动清理性能时序异常 (可忽略): {e}")
+
+@app.on_event("shutdown")
+async def on_shutdown():
+    """关机/热重载生命周期钩子：主动关闭所有活跃 WebSocket 长连接与后台守护，杜绝 uvicorn reload 死锁"""
+    logger.info("🛑 [Shutdown] 正在释放所有活跃 WebSocket 连接与后台监控守护...")
+    # 1. 主动断开所有 WebSocket 长连接，通知前端优雅重连
+    for ws in list(active_websockets):
+        try:
+            await ws.close(code=1001, reason="Server shutting down or reloading")
+        except Exception:
+            pass
+    active_websockets.clear()
+    platform_subscribers.clear()
+
+    # 2. 安全停止所有性能时序采集守护线程
+    try:
+        from .performance_monitor import performance_monitor
+        with performance_monitor._lock:
+            for task_id, stop_event in list(performance_monitor._stop_events.items()):
+                stop_event.set()
+    except Exception:
+        pass
+    logger.info("✨ [Shutdown] 所有长连接与守护线程释放完毕，服务退出/重载就绪！")
+
 
 
 
@@ -1332,6 +1359,7 @@ async def websocket_task_logs(websocket: WebSocket, task_id: str):
     """
 
     await websocket.accept()
+    active_websockets.add(websocket)
 
     queue = task_manager.subscribe_logs(task_id)
 
@@ -1361,6 +1389,7 @@ async def websocket_task_logs(websocket: WebSocket, task_id: str):
 
     finally:
 
+        active_websockets.discard(websocket)
         task_manager.unsubscribe_logs(task_id, queue)
 
 
@@ -2058,6 +2087,7 @@ async def websocket_task_metrics(websocket: WebSocket, task_id: str):
     """
 
     await websocket.accept()
+    active_websockets.add(websocket)
 
     queue = performance_monitor.subscribe_metrics(task_id)
 
@@ -2079,6 +2109,7 @@ async def websocket_task_metrics(websocket: WebSocket, task_id: str):
 
     finally:
 
+        active_websockets.discard(websocket)
         performance_monitor.unsubscribe_metrics(task_id, queue)
 
 
@@ -2128,6 +2159,7 @@ async def websocket_platform(websocket: WebSocket):
     """全平台全局多端实时数据同步 WebSocket 通道"""
 
     await websocket.accept()
+    active_websockets.add(websocket)
 
     platform_subscribers.add(websocket)
 
@@ -2147,6 +2179,7 @@ async def websocket_platform(websocket: WebSocket):
 
     finally:
 
+        active_websockets.discard(websocket)
         platform_subscribers.discard(websocket)
 
 

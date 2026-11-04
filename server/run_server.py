@@ -13,6 +13,6 @@ if __name__ == "__main__":
     logging.info("🚀 启动 Electron AI Vision Testing Platform 服务 (启用热重载)...")
     try:
         reload_dirs = [str(PROJECT_ROOT / "server"), str(PROJECT_ROOT / "utils")]
-        uvicorn.run("server.main:app", host="127.0.0.1", port=8000, reload=True, reload_dirs=reload_dirs, log_level="info")
+        uvicorn.run("server.main:app", host="127.0.0.1", port=8000, reload=True, reload_dirs=reload_dirs, timeout_graceful_shutdown=2, log_level="info")
     except KeyboardInterrupt:
         print("\n🛑 收到退出信号，平台服务已优雅退出。")
