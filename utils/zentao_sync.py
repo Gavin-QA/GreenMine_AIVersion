@@ -613,7 +613,34 @@ def format_bug_details_html(
     return "".join(html_parts), shot_file
 
 
-def update_bug_records(bug_id: str, zentao_id: str, global_file: Optional[Path], run_files: List[Path], assignee: Optional[str] = None) -> bool:
+def rebuild_run_reports(run_files: List[Path]):
+    """异步或同步重新渲染受缺陷变更影响的运行报告及统一大盘"""
+    if not run_files:
+        return
+    affected_run_dirs = set(rf.parent.parent for rf in run_files if rf.parent.name == "bugs")
+    for rd in affected_run_dirs:
+        try:
+            from utils.report_generator import ReportGenerator
+            ReportGenerator(rd).generate_html(disable_push=True, update_hub=False)
+            logger.info(f"🎨 已重新渲染历史报告: {rd.name}/report.html")
+        except Exception as re_err:
+            logger.warning(f"刷新 {rd.name}/report.html 失败: {re_err}")
+    try:
+        from utils.report_hub import ReportHub
+        ReportHub().build_index_html()
+        logger.info("✨ 已重新生成统一巡检门户总大盘")
+    except Exception as hub_err:
+        logger.debug(f"刷新大盘异常: {hub_err}")
+
+
+def update_bug_records(
+    bug_id: str,
+    zentao_id: str,
+    global_file: Optional[Path],
+    run_files: List[Path],
+    assignee: Optional[str] = None,
+    sync_reports: bool = True
+) -> bool:
     """将禅道 ID、指派人 和已提单状态同步持久化写入所有目标文件"""
     zentao_id_str = str(zentao_id).strip()
     updated = False
@@ -658,20 +685,8 @@ def update_bug_records(bug_id: str, zentao_id: str, global_file: Optional[Path],
             logger.error(f"更新运行单据 {rf} 失败: {e}")
 
     # 3. 自动重新渲染受影响运行目录的 report.html 并更新大盘
-    if updated:
-        affected_run_dirs = set(rf.parent.parent for rf in run_files if rf.parent.name == "bugs")
-        for rd in affected_run_dirs:
-            try:
-                from utils.report_generator import ReportGenerator
-                ReportGenerator(rd).generate_html(disable_push=True, update_hub=False)
-                logger.info(f"🎨 已自动重新渲染报告: {rd.name}/report.html")
-            except Exception as re_err:
-                logger.warning(f"刷新 {rd.name}/report.html 失败: {re_err}")
-        try:
-            from utils.report_hub import ReportHub
-            ReportHub().build_index_html()
-        except Exception:
-            pass
+    if updated and sync_reports:
+        rebuild_run_reports(run_files)
 
     return updated
 

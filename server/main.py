@@ -19,6 +19,7 @@ from typing import List, Optional
 
 
 from fastapi import (
+    BackgroundTasks,
 
     FastAPI,
 
@@ -1557,13 +1558,10 @@ def update_bug(
 )
 
 def sync_bug_to_zentao(
-
     bug_id: str = FastPath(..., description="待提交的全局缺陷编号，如 BUG-20261030-001"),
-
     assignee: Optional[str] = Query(default=None, description="可选手动覆盖指派责任人姓名 (不填则根据 AI 分流自动指派)"),
-
+    background_tasks: BackgroundTasks = None,
     db: Session = Depends(get_db)
-
 ):
 
     bug = db.query(BugRecord).filter(BugRecord.id == bug_id).first()
@@ -1694,13 +1692,14 @@ def sync_bug_to_zentao(
 
         # 同步回填本地 JSON 库
 
-        from utils.zentao_sync import update_bug_records
-
+        from utils.zentao_sync import update_bug_records, rebuild_run_reports
         _, g_file, r_files = find_bug_in_databases(bug_id)
+        # 禁用耗时的同步渲染离线 HTML 报告 (sync_reports=False)，实现 1 秒级极速响应返回
+        update_bug_records(bug_id, z_id, g_file, r_files, assignee=assignee_name, sync_reports=False)
 
-        update_bug_records(bug_id, z_id, g_file, r_files, assignee=assignee_name)
-
-
+        # 异步后台任务：默默渲染历史报告与大盘，绝不卡死前端 Web 界面
+        if background_tasks and r_files:
+            background_tasks.add_task(rebuild_run_reports, r_files)
 
         return {
 
