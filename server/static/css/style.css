@@ -30,6 +30,10 @@ body {
 }
 
 /* 布局结构 */
+[v-cloak] {
+  display: none !important;
+}
+
 #app {
   display: flex;
   width: 100vw;

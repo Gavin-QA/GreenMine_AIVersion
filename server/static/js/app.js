@@ -1432,20 +1432,6 @@ const app = createApp({
       }
     }
 
-        } else {
-
-          alert('提单失败: ' + (data.detail || '未知异常'));
-
-        }
-
-      } catch (e) {
-
-        alert('同步禅道网络异常: ' + e);
-
-      }
-
-    }
-
 
 
     async function triggerHotSync() {

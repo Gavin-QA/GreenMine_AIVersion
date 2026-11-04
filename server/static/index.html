@@ -22,7 +22,7 @@
 
 <body>
 
-  <div id="app">
+  <div id="app" v-cloak>
 
     <!-- 侧边导航栏 -->
 
@@ -1290,14 +1290,7 @@
 
     </main>
 
-  </div>
-
-
-
-  <script src="/static/js/app.js"></script>
-
-
-    <!-- 全局现代 Toast 通知层 -->
+<!-- 全局现代 Toast 通知层 -->
     <div class="toast-container" v-if="toasts && toasts.length">
       <div v-for="t in toasts" :key="t.id" :class="['toast-item', 'toast-' + t.type]">
         <div class="toast-icon">
@@ -1312,6 +1305,15 @@
         <button class="toast-close" @click="removeToast(t.id)">&times;</button>
       </div>
     </div>
+
+  </div>
+
+
+
+  <script src="/static/js/app.js"></script>
+
+
+    
 
 </body>
 
