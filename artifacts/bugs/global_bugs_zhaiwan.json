@@ -2797,7 +2797,7 @@
     ],
     "last_recurrence_step": 1066,
     "zentao_id": "1159",
-    "assignee": "Unassigned",
+    "assignee": "梅本霞",
     "analysis_notes": ""
   },
   {
@@ -3433,7 +3433,7 @@
     "step": "[CLICK] 交互目标: '左侧业务面板中【地质勘探报告】分类下的第一条报告条目【寨湾矿段采样点素描图】' (页面路径: 资源管理 -> 勘探报告)",
     "actual": "[page_error] crypto.randomUUID is not a function",
     "app": "zhaiwan",
-    "assignee": "陈贻雄",
+    "assignee": "童佳宝",
     "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/explore_20261103_183408/bugs/BUG-20261030-001_080838.png",
     "action_type": "CLICK",
     "target_element": "左侧业务面板中【地质勘探报告】分类下的第一条报告条目【寨湾矿段采样点素描图】",
@@ -3446,7 +3446,7 @@
     ],
     "analysis_notes": "🔍【核心根因与多机差异复盘排查报告】\n1. 异常本质与案发代码：\n   - 报错位置：se-launcher-zhaiwan 启动器内置 WebRTC 数据通道组件（app.asar 中 sendClientEvent 方法）。\n   - 案发源码：\n     sendClientEvent(t) { this.dc ? (t.event_id = t.event_id || crypto.randomUUID(), this.dc.send(JSON.stringify(t)), this.appendEvent(t)) : console.error(\"Failed to send mess\") }\n   - 报错堆栈：[page_error] TypeError: crypto.randomUUID is not a function。\n\n2. 为什么仅在本机复现，另外两台电脑无法复现？（版本对比铁证）：\n   - 启动器版本差异：本机已升级至 2026-10-30 发布的【1.4.2644】版本（se-launcher-zhaiwan-Windows-1.4.2644-Setup.exe，体积由 139MB 增至 178MB）。\n   - 历史版本（1.4.2630 / 1.4.2632）的 WebRTC 事件通道代码中并未使用 crypto.randomUUID()，因此未升级的机器绝对不会触发。\n   - 1.4.2644 新版在重构 WebRTC 事件结构时引入了该 API，但未考虑非安全上下文环境，属于新版本引入的代码兼容性倒退（Regression Bug）。\n\n3. 为什么人工测试难以察觉：\n   - 依据 W3C / MDN 规范，crypto.randomUUID() 仅在安全上下文（HTTPS 或 localhost）下暴露；在通过普通 HTTP IP（如 http://221.234.48.197:8808）访问时，Chromium 会静默将该方法置为 undefined。\n   - 报错发生在后台异步数据包发送阶段，界面不弹红框报错也不闪退，仅在 DevTools Console 中静默抛出 PageError，人工肉眼极难察觉，而自动化 CDP 探针能够 100% 精准捕获。\n\n4. 启动器开发修复方案：\n   - 在启动器 WebRTC 数据通道发送模块中增加兼容兜底，严禁裸调：\n     const eventId = t.event_id || ((typeof crypto !== \"undefined\" && typeof crypto.randomUUID === \"function\") ? crypto.randomUUID() : (Date.now().toString(36) + Math.random().toString(36).slice(2)));",
     "last_recurrence_step": 1794,
-    "zentao_id": "1188",
+    "zentao_id": "1199",
     "remark": "已定位为 1.4.2644 新版启动器 WebRTC 数据通道 sendClientEvent 裸调 crypto.randomUUID 引发的兼容性倒退缺陷，准备另提单给启动器开发组。"
   },
   {
