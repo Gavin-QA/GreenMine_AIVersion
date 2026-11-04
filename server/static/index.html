@@ -240,21 +240,27 @@
 
               class="kpi-card green" 
 
-              :title="`Windows 任务管理器等价视点: ${liveSnapshot.ue_cpu_percent || 0}% (占全机总算力)\n多核累计物理算力: ${liveSnapshot.ue_cpu_raw_percent || 0}% (相当于跑满 ${((liveSnapshot.ue_cpu_raw_percent || 0) / 100).toFixed(2)} 个核心，基于本机 ${liveSnapshot.cpu_cores || 12} 逻辑核心)`"
+              :title="`Windows 任务管理器全景视点:\n物理内存 (RAM/WorkingSet): ${liveSnapshot.ue_memory_mb || 0} MB\n专用提交量 (Private Commit): ${liveSnapshot.ue_commit_mb ? (liveSnapshot.ue_commit_mb / 1024).toFixed(2) + ' GB (' + liveSnapshot.ue_commit_mb + ' MB)' : '0 MB'}\n整机虚拟提交负荷: ${liveSnapshot.host_commit_load_percent || 0}% (防 OOM 核心指标)\n整机物理内存负荷: ${liveSnapshot.host_ram_load_percent || 0}%\nCPU 占用: ${liveSnapshot.ue_cpu_percent || 0}% (${liveSnapshot.cpu_cores || 12}核对齐)`"
 
               style="cursor: help;"
 
             >
 
-              <div class="kpi-title">伴生 UE5 进程</div>
+              <div class="kpi-title">伴生 UE5 (Commit / RAM)</div>
 
-              <div class="kpi-val" style="color: #00e676;">{{ liveSnapshot.ue_memory_mb || 0 }} <span style="font-size: 14px;">MB</span></div>
+              <div class="kpi-val" style="color: #00e676;">
+
+                <span v-if="liveSnapshot.ue_commit_mb" style="color: #ff9100;">{{ (liveSnapshot.ue_commit_mb / 1024).toFixed(1) }} <span style="font-size: 13px;">GB Commit</span></span>
+
+                <span v-else>{{ liveSnapshot.ue_memory_mb || 0 }} <span style="font-size: 14px;">MB</span></span>
+
+                <span style="font-size: 12px; color: #a0aec0; margin-left: 6px;">/ {{ liveSnapshot.ue_memory_mb || 0 }}M RAM</span>
+
+              </div>
 
               <div class="kpi-sub">
 
-                CPU 占用: {{ liveSnapshot.ue_cpu_percent || 0 }}% 
-
-                <span style="font-size: 11px; opacity: 0.8; text-decoration: underline dotted;">({{ liveSnapshot.cpu_cores || 12 }}核对齐) ℹ️</span>
+                CPU: {{ liveSnapshot.ue_cpu_percent || 0 }}% | 宿主机Commit: {{ liveSnapshot.host_commit_load_percent || 0 }}%
 
               </div>
 

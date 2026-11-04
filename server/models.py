@@ -129,6 +129,11 @@ class PerformanceMetric(Base):
     ue_pid = Column(Integer, nullable=True)
     ue_cpu_percent = Column(Float, nullable=True)
     ue_memory_mb = Column(Float, nullable=True)
+    ue_commit_mb = Column(Float, nullable=True)  # 专用虚拟提交量 (Private Bytes / Commit)
+
+    # 宿主机整机内存与虚拟提交水位
+    host_ram_load_percent = Column(Float, nullable=True)
+    host_commit_load_percent = Column(Float, nullable=True)
     
     # 显卡 3D 渲染与 VRAM 显存指标
     gpu_usage_percent = Column(Float, nullable=True)

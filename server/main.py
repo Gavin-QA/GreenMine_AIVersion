@@ -1982,6 +1982,10 @@ def get_task_metrics_summary(
 
     ue_mems = [r.ue_memory_mb for r in records if r.ue_memory_mb is not None]
 
+    ue_commits = [r.ue_commit_mb for r in records if r.ue_commit_mb is not None]
+
+    host_commits = [r.host_commit_load_percent for r in records if r.host_commit_load_percent is not None]
+
     chrome_cpus = [r.chrome_cpu_percent for r in records if r.chrome_cpu_percent is not None]
 
     chrome_mems = [r.chrome_memory_mb for r in records if r.chrome_memory_mb is not None]
@@ -2006,6 +2010,10 @@ def get_task_metrics_summary(
 
     latest_heap = heaps[-1] if heaps else 0.0
 
+    peak_ue_commit = max(ue_commits) if ue_commits else None
+
+    peak_host_commit = max(host_commits) if host_commits else None
+
 
 
     if peak_dom > 50000:
@@ -2023,6 +2031,14 @@ def get_task_metrics_summary(
     if fps_list and min(fps_list) < 15.0:
 
         alerts.append(f"⚠️ WebRTC 像素流出现明显掉帧！最低帧率仅 {min(fps_list)} FPS")
+
+    if peak_ue_commit and peak_ue_commit > 12288.0:
+
+        alerts.append(f"⚠️ UE5 引擎专用提交量 (Commit) 严重膨胀！峰值达到 {round(peak_ue_commit / 1024, 2)} GB (健康阈值: 小于 12 GB)")
+
+    if peak_host_commit and peak_host_commit > 85.0:
+
+        alerts.append(f"⚠️ 宿主机专用虚拟提交负荷过高！峰值达到 {peak_host_commit}% (OOM 崩溃风险预警)")
 
 
 
@@ -2061,6 +2077,10 @@ def get_task_metrics_summary(
         avg_ue_cpu_percent=round(sum(ue_cpus) / len(ue_cpus), 1) if ue_cpus else None,
 
         peak_ue_memory_mb=max(ue_mems) if ue_mems else None,
+
+        peak_ue_commit_mb=peak_ue_commit,
+
+        peak_host_commit_load_percent=peak_host_commit,
 
         peak_gpu_usage_percent=max(gpus) if gpus else None,
 

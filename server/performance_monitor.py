@@ -11,6 +11,7 @@ import psutil
 import requests
 
 from config.settings import settings
+from utils.system_guard import SystemMemoryGuard
 from .database import SessionLocal
 from .models import PerformanceMetric, TaskRun
 
@@ -100,7 +101,7 @@ class PerformanceMonitor:
                     break
 
         if not candidates:
-            return {"ue_pid": None, "ue_cpu_percent": None, "ue_memory_mb": None}
+            return {"ue_pid": None, "ue_cpu_percent": None, "ue_cpu_raw_percent": None, "ue_memory_mb": None, "ue_commit_mb": None}
 
         # 选出内存最大的为主 UE 进程 (UE5 Shipping 或 Launcher)
         main_ue = None
@@ -115,7 +116,7 @@ class PerformanceMonitor:
                 continue
 
         if not main_ue:
-            return {"ue_pid": None, "ue_cpu_percent": None, "ue_memory_mb": None}
+            return {"ue_pid": None, "ue_cpu_percent": None, "ue_cpu_raw_percent": None, "ue_memory_mb": None, "ue_commit_mb": None}
 
         # 缓存 Process 实例以保证 cpu_percent 准确非阻塞计算
         with self._lock:
@@ -131,6 +132,10 @@ class PerformanceMonitor:
 
             stats = self._get_process_cpu_mem(cached)
 
+        # 穿透采集底层专用提交量 (Private Bytes / Commit)，精准捕获虚拟内存泄漏
+        detailed_mem = SystemMemoryGuard.get_process_detailed_memory(main_ue.pid)
+        ue_commit_mb = detailed_mem.get("private_mb", 0.0)
+
         logical_cores = psutil.cpu_count(logical=True) or 1
         raw_cpu = stats["cpu"]
         normalized_cpu = round(raw_cpu / logical_cores, 2) if raw_cpu is not None else None
@@ -140,6 +145,7 @@ class PerformanceMonitor:
             "ue_cpu_percent": normalized_cpu,
             "ue_cpu_raw_percent": round(raw_cpu, 2) if raw_cpu is not None else None,
             "ue_memory_mb": stats["mem_mb"],
+            "ue_commit_mb": ue_commit_mb,
             "cpu_cores": logical_cores
         }
 
@@ -358,14 +364,30 @@ class PerformanceMonitor:
             logger.debug(f"[PerformanceMonitor] CDP 通信跳过或目标离线: {e}")
             return empty_res
 
+    def collect_host_memory_metrics(self) -> Dict[str, Any]:
+        """采集 Windows 宿主机物理内存与专用虚拟提交量 (Commit) 整体负荷水位"""
+        host_mem = SystemMemoryGuard.get_host_memory_status()
+        if not host_mem.get("available"):
+            return {
+                "host_ram_load_percent": None,
+                "host_commit_load_percent": None,
+                "host_commit_avail_gb": None,
+            }
+        return {
+            "host_ram_load_percent": float(host_mem.get("load_percent", 0)),
+            "host_commit_load_percent": float(host_mem.get("commit_load_percent", 0)),
+            "host_commit_avail_gb": float(host_mem.get("commit_avail_gb", 0.0)),
+        }
+
     def collect_full_snapshot(self, app_name: str = "zhaiwan") -> Dict[str, Any]:
-        """采集一次跨核全栈性能切片 (UE + Chrome + CDP + GPU)"""
+        """采集一次跨核全栈性能切片 (UE + Chrome + CDP + GPU + Host Commit)"""
         now = datetime.datetime.utcnow()
         logical_cores = psutil.cpu_count(logical=True) or 1
         ue_data = self.collect_ue_metrics(app_name)
         chrome_data = self.collect_chrome_process_metrics(app_name)
         gpu_data = self.collect_gpu_metrics()
         cdp_data = self.collect_cdp_metrics(app_name)
+        host_mem_data = self.collect_host_memory_metrics()
 
         return {
             "app_name": app_name,
@@ -391,6 +413,10 @@ class PerformanceMonitor:
             "ue_cpu_percent": ue_data.get("ue_cpu_percent"),
             "ue_cpu_raw_percent": ue_data.get("ue_cpu_raw_percent"),
             "ue_memory_mb": ue_data.get("ue_memory_mb"),
+            "ue_commit_mb": ue_data.get("ue_commit_mb"),
+            "host_ram_load_percent": host_mem_data.get("host_ram_load_percent"),
+            "host_commit_load_percent": host_mem_data.get("host_commit_load_percent"),
+            "host_commit_avail_gb": host_mem_data.get("host_commit_avail_gb"),
             "gpu_usage_percent": gpu_data.get("gpu_usage_percent"),
             "gpu_memory_mb": gpu_data.get("gpu_memory_mb")
         }
@@ -466,6 +492,9 @@ class PerformanceMonitor:
                         ue_pid=snapshot["ue_pid"],
                         ue_cpu_percent=snapshot["ue_cpu_percent"],
                         ue_memory_mb=snapshot["ue_memory_mb"],
+                        ue_commit_mb=snapshot.get("ue_commit_mb"),
+                        host_ram_load_percent=snapshot.get("host_ram_load_percent"),
+                        host_commit_load_percent=snapshot.get("host_commit_load_percent"),
                         gpu_usage_percent=snapshot["gpu_usage_percent"],
                         gpu_memory_mb=snapshot["gpu_memory_mb"]
                     )
@@ -492,6 +521,9 @@ class PerformanceMonitor:
                         "ue_pid": metric.ue_pid,
                         "ue_cpu_percent": metric.ue_cpu_percent,
                         "ue_memory_mb": metric.ue_memory_mb,
+                        "ue_commit_mb": metric.ue_commit_mb,
+                        "host_ram_load_percent": metric.host_ram_load_percent,
+                        "host_commit_load_percent": metric.host_commit_load_percent,
                         "gpu_usage_percent": metric.gpu_usage_percent,
                         "gpu_memory_mb": metric.gpu_memory_mb
                     }

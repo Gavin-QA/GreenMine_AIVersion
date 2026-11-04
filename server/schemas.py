@@ -165,6 +165,11 @@ class PerformanceMetricResponse(BaseModel):
     ue_pid: Optional[int] = Field(default=None, description="伴生 UE5 引擎主进程 PID")
     ue_cpu_percent: Optional[float] = Field(default=None, description="伴生 UE5 引擎进程 CPU 占用百分比")
     ue_memory_mb: Optional[float] = Field(default=None, description="伴生 UE5 引擎进程物理常驻内存占用 (RSS / Working Set, 单位: MB)")
+    ue_commit_mb: Optional[float] = Field(default=None, description="伴生 UE5 引擎进程专用虚拟提交量 (Private Bytes / Commit, 单位: MB)")
+    
+    # 宿主机系统整体内存水位
+    host_ram_load_percent: Optional[float] = Field(default=None, description="宿主机物理内存使用率百分比")
+    host_commit_load_percent: Optional[float] = Field(default=None, description="宿主机虚拟内存提交量使用率百分比")
     
     # 独立 GPU 显卡开销
     gpu_usage_percent: Optional[float] = Field(default=None, description="独立显卡 GPU 3D 渲染核心负载占用百分比")
@@ -201,6 +206,10 @@ class LivePerformanceSnapshotResponse(BaseModel):
     ue_cpu_percent: Optional[float] = Field(default=None, description="UE5 进程归一化 CPU (%)，对齐任务管理器单进程视角")
     ue_cpu_raw_percent: Optional[float] = Field(default=None, description="UE5 进程多核累计原始算力占用率 (%)")
     ue_memory_mb: Optional[float] = Field(default=None, description="UE5 进程物理内存 (MB)")
+    ue_commit_mb: Optional[float] = Field(default=None, description="UE5 进程专用虚拟提交量 (Commit, 单位: MB)")
+    host_ram_load_percent: Optional[float] = Field(default=None, description="整机物理内存使用率 (%)")
+    host_commit_load_percent: Optional[float] = Field(default=None, description="整机虚拟内存提交率 (%)")
+    host_commit_avail_gb: Optional[float] = Field(default=None, description="整机剩余可用虚拟提交量 (GB)")
     cpu_cores: int = Field(default=12, description="本机系统逻辑处理器核心总数")
     gpu_usage_percent: Optional[float] = Field(default=None, description="GPU 3D 核心占用率 (%)")
     gpu_memory_mb: Optional[float] = Field(default=None, description="GPU 显存占用 (MB)")
@@ -229,6 +238,8 @@ class PerformanceSummaryResponse(BaseModel):
     peak_ue_cpu_percent: Optional[float] = Field(default=None, description="UE5 引擎最高 CPU 占用率 (%)")
     avg_ue_cpu_percent: Optional[float] = Field(default=None, description="UE5 引擎全周期平均 CPU 占用率 (%)")
     peak_ue_memory_mb: Optional[float] = Field(default=None, description="UE5 引擎最高物理内存占用 (MB)")
+    peak_ue_commit_mb: Optional[float] = Field(default=None, description="UE5 引擎最高专用虚拟提交量 (MB)")
+    peak_host_commit_load_percent: Optional[float] = Field(default=None, description="宿主机最高虚拟提交量负荷率 (%)")
     peak_gpu_usage_percent: Optional[float] = Field(default=None, description="独立显卡最高 3D 渲染核心负载 (%)")
     peak_gpu_memory_mb: Optional[float] = Field(default=None, description="独立显卡最高专用显存占用 (MB)")
     health_alerts: List[str] = Field(

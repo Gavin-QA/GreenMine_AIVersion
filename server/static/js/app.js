@@ -74,6 +74,12 @@ const app = createApp({
 
       ue_memory_mb: 0,
 
+      ue_commit_mb: 0,
+
+      host_ram_load_percent: 0,
+
+      host_commit_load_percent: 0,
+
       ue_cpu_percent: 0,
 
       ue_cpu_raw_percent: 0,
@@ -269,6 +275,12 @@ const app = createApp({
           ue_cpu_percent: data.ue_cpu_percent || 0,
 
           ue_memory_mb: data.ue_memory_mb || 0,
+
+          ue_commit_mb: data.ue_commit_mb || 0,
+
+          host_ram_load_percent: data.host_ram_load_percent || 0,
+
+          host_commit_load_percent: data.host_commit_load_percent || 0,
 
           webrtc_fps: (data.webrtc_fps !== null && data.webrtc_fps !== undefined) ? data.webrtc_fps : (data.gpu_usage_percent || 0)
 
@@ -906,6 +918,8 @@ const app = createApp({
 
     let ueMemData = [];
 
+    let ueCommitData = [];
+
     let webrtcFpsData = [];
 
 
@@ -953,6 +967,8 @@ const app = createApp({
         ueCpuData = [];
 
         ueMemData = [];
+
+        ueCommitData = [];
 
         webrtcFpsData = [];
 
@@ -1060,7 +1076,9 @@ const app = createApp({
 
             { name: 'UE5 CPU (%)', type: 'line', smooth: true, data: [], itemStyle: { color: '#ff5252' } },
 
-            { name: 'UE5 内存 (MB)', type: 'line', smooth: true, data: [], itemStyle: { color: '#00e676' } },
+            { name: 'UE5 RAM物理 (MB)', type: 'line', smooth: true, data: [], itemStyle: { color: '#00e676' } },
+
+            { name: 'UE5 Commit提交 (MB)', type: 'line', smooth: true, data: [], itemStyle: { color: '#ff9100' } },
 
             { name: 'WebRTC FPS / GPU (%)', type: 'line', yAxisIndex: 1, smooth: true, data: [], itemStyle: { color: '#3a7bd5' } }
 
@@ -1116,6 +1134,8 @@ const app = createApp({
 
       ueMemData = list.map(m => m.ue_memory_mb || 0);
 
+      ueCommitData = list.map(m => m.ue_commit_mb || 0);
+
       webrtcFpsData = list.map(m => m.webrtc_fps || 0);
 
 
@@ -1134,7 +1154,7 @@ const app = createApp({
 
         xAxis: { data: chartTimes },
 
-        series: [{ data: ueCpuData }, { data: ueMemData }, { data: webrtcFpsData }]
+        series: [{ data: ueCpuData }, { data: ueMemData }, { data: ueCommitData }, { data: webrtcFpsData }]
 
       });
 
@@ -1160,6 +1180,8 @@ const app = createApp({
 
       ueMemData.push(m.ue_memory_mb || 0);
 
+      ueCommitData.push(m.ue_commit_mb || 0);
+
       webrtcFpsData.push(m.webrtc_fps || 0);
 
 
@@ -1179,6 +1201,8 @@ const app = createApp({
         ueCpuData.shift();
 
         ueMemData.shift();
+
+        ueCommitData.shift();
 
         webrtcFpsData.shift();
 
@@ -1200,7 +1224,7 @@ const app = createApp({
 
         xAxis: { data: chartTimes },
 
-        series: [{ data: ueCpuData }, { data: ueMemData }, { data: webrtcFpsData }]
+        series: [{ data: ueCpuData }, { data: ueMemData }, { data: ueCommitData }, { data: webrtcFpsData }]
 
       });
 

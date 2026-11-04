@@ -97,6 +97,9 @@ def init_db():
             ("chrome_pid", "INTEGER"),
             ("chrome_cpu_percent", "FLOAT"),
             ("chrome_memory_mb", "FLOAT"),
+            ("ue_commit_mb", "FLOAT"),
+            ("host_ram_load_percent", "FLOAT"),
+            ("host_commit_load_percent", "FLOAT"),
         ]
         with engine.begin() as conn:
             for col_name, col_ddl in expected_migrations:
