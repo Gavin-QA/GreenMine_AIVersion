@@ -1,0 +1,18 @@
+[
+  {
+    "id": "BUG-20261104-001",
+    "zentao_id": "1201",
+    "app": "tianrui",
+    "title": "【性能严重缺陷/OOM宕机】天瑞大屏巡检模块切换设备模型(viewFlyToModel)未做资源卸载，单次切换泄漏1.5~2GB虚拟内存(Commit)，累计撑满44.8GB导致宿主机死机",
+    "severity": 1,
+    "priority": 1,
+    "status": "已提单",
+    "date": "2026-11-04",
+    "assignee": "周书鹏",
+    "assignee_account": "zhoushupeng",
+    "module": "巡检系统 / viewFlyToModel",
+    "error_log": "[OOM] UE Commit Memory Leaked 44.8GB across viewFlyToModel calls",
+    "analysis_notes": "三维资产在 viewFlyToModel 漫游切换中未卸载，单次泄漏1.5~2GB Commit，导致宿主机页面文件写满暴毙",
+    "created_at": "2026-11-04T14:13:42.346744"
+  }
+]
