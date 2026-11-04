@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-server/sync_service.py —— 磁盘自动化产物与 SQLite 数据库多端热同步服务
+server/sync_service.py —— 磁盘自动化产物与 SQLite 数据库多端极速热同步服务
 
 核心职责：
-1. 自动感知 reports/runs/ 目录下新增或变更的测试任务，全量或增量入库至 TaskRun；
+1. 自动感知 reports/runs/ 目录下新增或变更的测试任务，极速增量入库至 TaskRun（已入库历史批次直接毫秒级跳过，杜绝重复解析）；
 2. 自动同步 artifacts/bugs/global_bugs_*.json 的最新复现频次、运行批次 run_id、责任人与 AI 诊断报告至 BugRecord；
 3. 支持轻量化文件时间戳防抖热同步（Hot Sync），用户通宵夜跑后无需重启服务，刷新页面或点击同步即可秒级呈现最新结果。
 """
@@ -40,12 +40,12 @@ def get_filesystem_fingerprint() -> Dict[str, float]:
             except Exception:
                 pass
 
-    # 2. 运行报告根目录
+    # 2. 运行报告根目录及最新运行目录
     if RUNS_DIR.exists():
         try:
             fingerprints[str(RUNS_DIR.resolve())] = RUNS_DIR.stat().st_mtime
-            # 抽样探测最近 3 个 run 目录的 mtime
-            sub_folders = sorted(get_all_run_folders(), key=lambda p: p.stat().st_mtime, reverse=True)[:5]
+            # 仅抽样探测最近 3 个 run 目录的 mtime
+            sub_folders = sorted(get_all_run_folders(), key=lambda p: p.stat().st_mtime, reverse=True)[:3]
             for sf in sub_folders:
                 fingerprints[str(sf.resolve())] = sf.stat().st_mtime
         except Exception:
@@ -55,22 +55,27 @@ def get_filesystem_fingerprint() -> Dict[str, float]:
 
 
 def sync_all_task_runs(db: Session) -> int:
-    """全量/增量同步测试运行目录到 TaskRun 表"""
+    """全量/增量同步测试运行目录到 TaskRun 表 (极速索引跳过模式)"""
     from utils.report_generator import ReportGenerator
 
     synced_count = 0
     run_folders = get_all_run_folders()
+    existing_tasks = {t.id: t for t in db.query(TaskRun).all()}
 
     for f in run_folders:
         try:
+            run_id = f.name
+            task_id = f"task_{run_id}"
+            existing = existing_tasks.get(task_id)
+
+            # ⚡ 核心极速优化：如果历史任务已入库且已有执行步数，直接毫秒级跳过，绝不重复解析磁盘大报告！
+            if existing and (existing.total_steps or 0) > 0 and existing.duration and existing.duration != "未知":
+                continue
+
             try:
                 rel_p = f.relative_to(RUNS_DIR).as_posix()
             except Exception:
                 rel_p = f.name
-
-            # 提取 run_id
-            run_id = f.name
-            task_id = f"task_{run_id}"
 
             generator = ReportGenerator(f)
             data = generator.parse_run_data()
@@ -87,7 +92,6 @@ def sync_all_task_runs(db: Session) -> int:
             if not start_dt:
                 start_dt = datetime.datetime.fromtimestamp(f.stat().st_mtime)
 
-            existing = db.query(TaskRun).filter(TaskRun.id == task_id).first()
             if not existing:
                 t_rec = TaskRun(
                     id=task_id,
@@ -109,6 +113,7 @@ def sync_all_task_runs(db: Session) -> int:
                     yaml_steps_count=kpi.get("yaml_steps_count", 0)
                 )
                 db.add(t_rec)
+                existing_tasks[task_id] = t_rec
                 synced_count += 1
             else:
                 # 若任务已有但关键统计数据发生变动（如夜跑完成产生了最终 kpi），进行增量刷新
@@ -130,13 +135,13 @@ def sync_all_task_runs(db: Session) -> int:
 
 
 def sync_all_bugs(db: Session) -> int:
-    """全量/增量同步 global_bugs_*.json 到 BugRecord 表"""
+    """全量/增量同步 global_bugs_*.json 到 BugRecord 表 (内存批量匹配)"""
     synced_count = 0
     if not GLOBAL_BUGS_DIR.exists():
         return 0
 
-    # 获取所有 task_id 集合供外键快速校验
     existing_tasks = {t.id for t in db.query(TaskRun.id).all()}
+    existing_bugs = {b.id: b for b in db.query(BugRecord).all()}
 
     for bug_file in GLOBAL_BUGS_DIR.glob("global_bugs*.json"):
         try:
@@ -153,7 +158,6 @@ def sync_all_bugs(db: Session) -> int:
 
             raw_run_id = rb.get("run_id") or ""
             target_task_id = f"task_{raw_run_id}" if raw_run_id else None
-            # 若 task_id 对应的任务尚未入库，安全置空以防外键冲突
             assigned_task_id = target_task_id if target_task_id in existing_tasks else None
 
             # 解析日期
@@ -184,7 +188,7 @@ def sync_all_bugs(db: Session) -> int:
             actual_text = rb.get("details", {}).get("actual") if isinstance(rb.get("details"), dict) else rb.get("actual")
             screenshot_val = rb.get("crash_screenshot") or rb.get("screenshot")
 
-            exist = db.query(BugRecord).filter(BugRecord.id == b_id).first()
+            exist = existing_bugs.get(b_id)
             if not exist:
                 b_rec = BugRecord(
                     id=b_id,
@@ -206,9 +210,9 @@ def sync_all_bugs(db: Session) -> int:
                     last_seen=last_seen_dt
                 )
                 db.add(b_rec)
+                existing_bugs[b_id] = b_rec
                 synced_count += 1
             else:
-                # 增量刷新：若最新复现频次增加、状态更新或补充了 AI 分析，同步写回数据库
                 changed = False
                 if occurrences_val > (exist.occurrences or 0):
                     exist.occurrences = occurrences_val
@@ -248,7 +252,7 @@ def sync_all_bugs(db: Session) -> int:
     return synced_count
 
 
-def perform_hot_sync(db: Session, force: bool = False, min_interval_sec: float = 8.0) -> Dict[str, Any]:
+def perform_hot_sync(db: Session, force: bool = False, min_interval_sec: float = 15.0) -> Dict[str, Any]:
     """
     轻量化热感知同步入口：
     仅在文件实际变动或 force=True 且满足最小防抖间隔时执行增量扫描，零无用开销。
@@ -262,7 +266,6 @@ def perform_hot_sync(db: Session, force: bool = False, min_interval_sec: float =
     with _sync_lock:
         latest_fingerprints = get_filesystem_fingerprint()
         
-        # 对比指纹
         has_changes = False
         if force or not _cached_mtimes:
             has_changes = True
@@ -276,17 +279,19 @@ def perform_hot_sync(db: Session, force: bool = False, min_interval_sec: float =
             _last_sync_timestamp = now
             return {"synced": False, "reason": "up_to_date"}
 
-        logger.info("🔄 [Hot Sync] 检测到磁盘测试产物或全局缺陷库变更，开始增量同步入库...")
+        t0 = time.time()
         new_tasks = sync_all_task_runs(db)
         new_bugs = sync_all_bugs(db)
 
         _cached_mtimes = latest_fingerprints
         _last_sync_timestamp = now
+        elapsed = round(time.time() - t0, 3)
 
-        logger.info(f"✨ [Hot Sync] 增量同步完成！更新/新增任务: {new_tasks} 项，更新/新增缺陷: {new_bugs} 条。")
+        logger.info(f"✨ [Hot Sync] 增量同步完成 (耗时 {elapsed}s)！更新/新增任务: {new_tasks} 项，更新/新增缺陷: {new_bugs} 条。")
         return {
             "synced": True,
             "new_tasks": new_tasks,
             "new_bugs": new_bugs,
+            "elapsed": elapsed,
             "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
