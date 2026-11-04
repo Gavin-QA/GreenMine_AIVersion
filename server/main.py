@@ -1646,36 +1646,34 @@ def sync_bug_to_zentao(
 
 
 
+        # 预上传案发快照至禅道 (彻底避免富文本图片丢失)
+        shot_path = bug.screenshot_path
+        uploaded_info = None
+        if shot_path:
+            shot_file = Path(shot_path)
+            if shot_file.exists():
+                uploaded_info = zentao.upload_file(shot_file)
+
+        uploaded_url = uploaded_info.get("url") if uploaded_info else None
+        uploaded_file_ids = [uploaded_info["id"]] if (uploaded_info and "id" in uploaded_info) else []
+
         steps_html, _ = format_bug_details_html(
-
             bug=raw_bug_dict,
-
             app_key=app_key,
-
             assignee_name=assignee_name,
-
-            assignee_account=assignee_account
-
+            assignee_account=assignee_account,
+            uploaded_image_url=uploaded_url,
         )
 
-
-
         res = zentao.submit_bug(
-
             product_id=product_id,
-
             title=f"【AI自动化·{app_chinese}】[{bug.id}] {bug.title}",
-
             steps_html=steps_html,
-
             severity=3 if bug.severity == "High" else 2,
-
             assigned_to=assignee_account,
-
             project_id=project_id,
-
-            execution_id=execution_id
-
+            execution_id=execution_id,
+            files=uploaded_file_ids if uploaded_file_ids else None,
         )
 
         z_id = str(res.get("id"))
