@@ -17,24 +17,15 @@ from pathlib import Path
 from typing import List, Optional
 
 
-
 from fastapi import (
     BackgroundTasks,
-
     FastAPI,
-
     Depends,
-
     HTTPException,
-
     Query,
-
     Path as FastPath,
-
     WebSocket,
-
-    WebSocketDisconnect
-
+    WebSocketDisconnect,
 )
 
 from fastapi.middleware.cors import CORSMiddleware
@@ -46,33 +37,21 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
 
-
 from .database import get_db, init_db
 
 from .models import TaskRun, BugRecord, PerformanceMetric, PresetTaskRecord
 
 from .schemas import (
-
     TaskCreate,
-
     TaskResponse,
-
     BugResponse,
-
     BugUpdate,
-
     PerformanceMetricResponse,
-
     PerformanceSummaryResponse,
-
     LivePerformanceSnapshotResponse,
-
     ConfigOptionsResponse,
-
     PresetTaskResponse,
-
-    PresetTaskCreate
-
+    PresetTaskCreate,
 )
 
 from .task_manager import task_manager
@@ -80,69 +59,42 @@ from .task_manager import task_manager
 from .performance_monitor import performance_monitor
 
 
-
 CURRENT_DIR = Path(__file__).resolve().parent
 
 PROJECT_ROOT = CURRENT_DIR.parent
 
 
-
 logging.basicConfig(
-
-    level=logging.INFO,
-
-    format="%(asctime)s [%(levelname)s] [%(name)s] %(message)s"
-
+    level=logging.INFO, format="%(asctime)s [%(levelname)s] [%(name)s] %(message)s"
 )
 
 logger = logging.getLogger("server.api")
 
 
-
 # Swagger 规范元数据定义
 
 tags_metadata = [
-
     {
-
         "name": "1. 平台基础与选项",
-
         "description": "健康心跳检查、前端免敲命令表单所需的应用、模式与预置提示词模板字典",
-
     },
-
     {
-
         "name": "2. 巡检任务生命周期调度",
-
         "description": "巡检任务创建、查询列表、一键拉起异步子进程、优雅停机终止、控制台实时日志与 WebSocket 流",
-
     },
-
     {
-
         "name": "3. 缺陷治理与禅道同步",
-
         "description": "全局缺陷资产检索、错误现场与 AI 智能初诊排查详情、一键自动提单至公司禅道项目系统",
-
     },
-
     {
-
         "name": "4. 多核全栈性能监控",
-
         "description": "UE5 引擎、Chromium 渲染进程树、CDP DOM/堆内存/WebRTC 帧率、独立显卡 GPU 显存的实时探针与时序指标",
-
     },
-
 ]
 
 
-
 app = FastAPI(
-
     title="⚡ Electron AI Vision 智能巡检与多核性能中枢平台 API",
-
     description="""
 
 ## 平台定位与核心架构
@@ -168,64 +120,42 @@ app = FastAPI(
 * **多通道实时通信**：提供 WebSocket 实时日志流推送与实时性能数据流。
 
     """,
-
     version="1.2.0",
-
     openapi_tags=tags_metadata,
-
     docs_url="/docs",
-
-    redoc_url="/redoc"
-
+    redoc_url="/redoc",
 )
-
 
 
 # 允许跨域请求 (为前后端分离与大屏仪表盘服务)
 
 app.add_middleware(
-
     CORSMiddleware,
-
     allow_origins=["*"],
-
     allow_credentials=True,
-
     allow_methods=["*"],
-
     allow_headers=["*"],
-
 )
 
 # 全局活跃 WebSocket 连接池（用于 shutdown/reload 时主动断开，彻底杜绝 uvicorn 卡死）
 active_websockets: set = set()
 
 
-
-
-
 @app.on_event("startup")
-
 def on_startup():
-
     """服务冷启动生命周期钩子：冷启动自动物理快照、初始化数据库结构并自动同步已有全局缺陷库"""
 
     from .database import backup_database
 
     backup_database(max_backups=5)
 
-
-
     logger.info("⚡ 正在初始化数据库引擎与表结构 (含自动平滑迁移)...")
 
     init_db()
 
-    
-
     # 3. 自动全量扫描磁盘运行报告与缺陷库并同步入库 (冷启动强制同步)
 
     try:
-
         from .database import SessionLocal
 
         from .sync_service import perform_hot_sync
@@ -239,36 +169,29 @@ def on_startup():
         logger.info(f"✨ 已自动同步本地历史巡检报告与全局缺陷库入库！({sync_res})")
 
     except Exception as te:
-
         logger.debug(f"冷启动增量同步历史运行异常 (可忽略): {te}")
-
-
 
     # 4. 滚动清理超过 24 小时的环境实时心电图数据 (正式测试任务数据永久保全，绝不自动清理)
 
     try:
-
         deleted = performance_monitor.cleanup_expired_ambient_metrics(hours=24)
 
         if deleted > 0:
-
-            logger.info(f"🧹 冷启动数据治理：自动清理了 {deleted} 条超过 24 小时的环境实时心电图打点")
+            logger.info(
+                f"🧹 冷启动数据治理：自动清理了 {deleted} 条超过 24 小时的环境实时心电图打点"
+            )
 
     except Exception as e:
-
         logger.debug(f"滚动清理环境时序异常 (可忽略): {e}")
-
-
 
     # 5. 启动后台常驻多项目环境监控守护引擎 (按天瑞/寨湾/李屋塘多项目独立采样，滚动维持24小时时序)
 
     try:
-
         performance_monitor.start_ambient_monitoring(interval_sec=4.0)
 
     except Exception as e:
-
         logger.warning(f"启动环境守护监控异常: {e}")
+
 
 @app.on_event("shutdown")
 async def on_shutdown():
@@ -290,6 +213,7 @@ async def on_shutdown():
     # 2. 安全停止所有性能时序采集守护线程
     try:
         from .performance_monitor import performance_monitor
+
         with performance_monitor._lock:
             for task_id, stop_event in list(performance_monitor._stop_events.items()):
                 stop_event.set()
@@ -298,82 +222,55 @@ async def on_shutdown():
     logger.info("✨ [Shutdown] 所有长连接与守护线程释放完毕，服务退出/重载就绪！")
 
 
-
-
-
-
 # 静态文件挂载：平台前端 UI 静态资源与测试产物报告截图
 
 STATIC_DIR = CURRENT_DIR / "static"
 
 if STATIC_DIR.exists():
-
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-
 
 
 REPORTS_DIR = PROJECT_ROOT / "reports"
 
 if REPORTS_DIR.exists():
-
     app.mount("/reports", StaticFiles(directory=str(REPORTS_DIR)), name="reports")
-
 
 
 ARTIFACTS_DIR = PROJECT_ROOT / "artifacts"
 
 if ARTIFACTS_DIR.exists():
-
     app.mount("/artifacts", StaticFiles(directory=str(ARTIFACTS_DIR)), name="artifacts")
 
 
-
-
-
 @app.get("/report-hub", include_in_schema=False)
-
 @app.get("/reports-hub", include_in_schema=False)
-
 def redirect_to_report_hub():
-
     """统一重定向至自动化巡检全量大盘门户首页"""
 
     index_file = REPORTS_DIR / "runs" / "index.html"
 
     if not index_file.exists():
-
         try:
-
             from utils.report_hub import ReportHub
 
             ReportHub().build_index_html()
 
         except Exception as e:
-
             logger.warning(f"自动构建大盘首页警告: {e}")
 
     return RedirectResponse(url="/reports/runs/index.html", status_code=302)
 
 
-
-
-
 @app.get("/", include_in_schema=False)
-
 def serve_index():
-
     """Web 控制台首页面入口"""
 
     index_file = STATIC_DIR / "index.html"
 
     if index_file.exists():
-
         return FileResponse(str(index_file))
 
     return {"message": "Vision Platform API Server Running"}
-
-
-
 
 
 # =============================================================================
@@ -383,31 +280,18 @@ def serve_index():
 # =============================================================================
 
 
-
 @app.post(
-
     "/api/update_bug_status",
-
     tags=["3. 缺陷治理与禅道同步"],
-
     summary="大盘门户统一接口：更新缺陷生命周期状态",
-
-    description="统一更新缺陷状态，同步更新全局缺陷库、运行目录与平台数据库。"
-
+    description="统一更新缺陷状态，同步更新全局缺陷库、运行目录与平台数据库。",
 )
-
 @app.post(
-
     "/api/update_bug_detail",
-
     tags=["3. 缺陷治理与禅道同步"],
-
     summary="大盘门户统一接口：更新缺陷详细字段与排查说明",
-
-    description="统一更新责任人、严重度、排查批注或回填禅道单号，同步更新全局缺陷库、运行目录与平台数据库。"
-
+    description="统一更新责任人、严重度、排查批注或回填禅道单号，同步更新全局缺陷库、运行目录与平台数据库。",
 )
-
 async def update_bug_compatible_api(data: dict):
 
     from utils.bug_updater import update_bug_record
@@ -415,13 +299,11 @@ async def update_bug_compatible_api(data: dict):
     result = update_bug_record(data)
 
     if not result.get("success"):
-
-        raise HTTPException(status_code=400, detail=result.get("error", "更新缺陷记录失败"))
+        raise HTTPException(
+            status_code=400, detail=result.get("error", "更新缺陷记录失败")
+        )
 
     return result
-
-
-
 
 
 # =============================================================================
@@ -431,135 +313,107 @@ async def update_bug_compatible_api(data: dict):
 # =============================================================================
 
 
-
 @app.get(
-
     "/api/health",
-
     tags=["1. 平台基础与选项"],
-
     summary="平台健康心跳检查",
-
-    description="检测后端平台服务核心服务、数据库会话与运行时间戳是否处于正常就绪状态。"
-
+    description="检测后端平台服务核心服务、数据库会话与运行时间戳是否处于正常就绪状态。",
 )
-
 def health_check():
 
     return {
-
         "status": "healthy",
-
         "service": "Electron AI Vision Platform",
-
-        "timestamp": datetime.datetime.utcnow().isoformat()
-
+        "timestamp": datetime.datetime.utcnow().isoformat(),
     }
 
 
-
-
-
 @app.get(
-
     "/api/config/options",
-
     response_model=ConfigOptionsResponse,
-
     tags=["1. 平台基础与选项"],
-
     summary="获取前端表单可选项与提示词模板库",
-
-    description="为前端工作台提供一键选择的矿山应用、测试模式列表、开箱即用的高阶探索 Prompt 模板库以及禅道鉴权配置状态。"
-
+    description="为前端工作台提供一键选择的矿山应用、测试模式列表、开箱即用的高阶探索 Prompt 模板库以及禅道鉴权配置状态。",
 )
-
 def get_config_options():
 
     apps = [
-
-        {"key": "zhaiwan", "name": "寨湾矿山 (Zhaiwan)", "desc": "包含中央 UE5 像素流三维矿山与两侧 2D 业务看板"},
-
-        {"key": "liwutong", "name": "里伍铜矿山 (Liwutong)", "desc": "数字孪生采矿与智能选矿平台"},
-
-        {"key": "tianrui", "name": "四川天瑞矿山 (Tianrui)", "desc": "四川天瑞大屏数字孪生系统"}
-
+        {
+            "key": "zhaiwan",
+            "name": "寨湾矿山 (Zhaiwan)",
+            "desc": "包含中央 UE5 像素流三维矿山与两侧 2D 业务看板",
+        },
+        {
+            "key": "liwutong",
+            "name": "里伍铜矿山 (Liwutong)",
+            "desc": "数字孪生采矿与智能选矿平台",
+        },
+        {
+            "key": "tianrui",
+            "name": "四川天瑞矿山 (Tianrui)",
+            "desc": "四川天瑞大屏数字孪生系统",
+        },
     ]
 
     modes = [
-
-        {"key": "explore", "name": "自主探索模式 (Explorer)", "desc": "Planner-Worker 双核黑客模式，自主规划链路挖掘深层 Crash"},
-
-        {"key": "smoke", "name": "全量页面冒烟体检 (Smoke Tour)", "desc": "极速单次遍历当前系统全部业务菜单，验证两级跳转与基础健康度"},
-
-        {"key": "case", "name": "YAML 确定性用例回放", "desc": "精确重现已通过静态合规检验的 YAML 业务流程"},
-
-        {"key": "all", "name": "批量回归全套用例", "desc": "遍历运行 test_cases/ 目录下全部 YAML 用例"}
-
+        {
+            "key": "explore",
+            "name": "自主探索模式 (Explorer)",
+            "desc": "Planner-Worker 双核黑客模式，自主规划链路挖掘深层 Crash",
+        },
+        {
+            "key": "smoke",
+            "name": "全量页面冒烟体检 (Smoke Tour)",
+            "desc": "极速单次遍历当前系统全部业务菜单，验证两级跳转与基础健康度",
+        },
+        {
+            "key": "case",
+            "name": "YAML 确定性用例回放",
+            "desc": "精确重现已通过静态合规检验的 YAML 业务流程",
+        },
+        {
+            "key": "all",
+            "name": "批量回归全套用例",
+            "desc": "遍历运行 test_cases/ 目录下全部 YAML 用例",
+        },
     ]
 
     templates = [
-
         {
-
             "title": "全系统页面冒烟体检 (推荐)",
-
-            "prompt": "执行全系统全量页面冒烟体检：请自适应悬停与点击顶部导航栏，系统性遍历当前应用全部一级菜单与所有下属二级业务页面。\n在到达每个子页面后，请重点执行三维健康度体检：\n1. 页面加载与渲染：检查页面主体框架与业务面板是否完整渲染就绪，是否存在白屏、大面积黑屏或核心组件未渲染；\n2. 网络接口通信：静默校验页面加载及初载触发的网络请求，排查是否存在 5xx 服务端异常、404 资源丢失或接口超时；\n3. 控制台运行健康：嗅探控制台是否存在未捕获的严重 JavaScript 运行时报错（如 TypeError、Vue 渲染期崩溃、WebGL 上下文丢失）。\n\n每个页面完成健康核验后即平滑推进至下一个菜单，无需在单一页面深陷无休止的复杂表单穷举，确保自适应覆盖当前系统的每一个业务模块！"
-
+            "prompt": "执行全系统全量页面冒烟体检：请自适应悬停与点击顶部导航栏，系统性遍历当前应用全部一级菜单与所有下属二级业务页面。\n在到达每个子页面后，请重点执行三维健康度体检：\n1. 页面加载与渲染：检查页面主体框架与业务面板是否完整渲染就绪，是否存在白屏、大面积黑屏或核心组件未渲染；\n2. 网络接口通信：静默校验页面加载及初载触发的网络请求，排查是否存在 5xx 服务端异常、404 资源丢失或接口超时；\n3. 控制台运行健康：嗅探控制台是否存在未捕获的严重 JavaScript 运行时报错（如 TypeError、Vue 渲染期崩溃、WebGL 上下文丢失）。\n\n每个页面完成健康核验后即平滑推进至下一个菜单，无需在单一页面深陷无休止的复杂表单穷举，确保自适应覆盖当前系统的每一个业务模块！",
         },
-
         {
-
             "title": "三维数字孪生视界抗压攻坚",
-
-            "prompt": "全面探测中央 3D 矿山数字孪生模型健康度：重点进入三维视口页面，执行轨道视角全向旋转 (rotate_3d) 与镜头深度推进拉远 (zoom)，并发起三维视口晃动抗压测试 (canvas_stress_drag)，深度排查 UE5 像素流是否有花屏、断流、模型破面或 WebGL 上下文丢失！"
-
+            "prompt": "全面探测中央 3D 矿山数字孪生模型健康度：重点进入三维视口页面，执行轨道视角全向旋转 (rotate_3d) 与镜头深度推进拉远 (zoom)，并发起三维视口晃动抗压测试 (canvas_stress_drag)，深度排查 UE5 像素流是否有花屏、断流、模型破面或 WebGL 上下文丢失！",
         },
-
         {
-
             "title": "未测盲区定向突击",
-
-            "prompt": "全面攻克未探索盲区：重点深入遍历【设备管理】与【安全管理】下的各个子模块，优先测试各页面中的 2D 指标看板、折线图日/月/年维度切换、列表明细与操作弹窗，深入挖掘未知Bug与接口异常，避开已探索完备的模块。"
-
-        }
-
+            "prompt": "全面攻克未探索盲区：重点深入遍历【设备管理】与【安全管理】下的各个子模块，优先测试各页面中的 2D 指标看板、折线图日/月/年维度切换、列表明细与操作弹窗，深入挖掘未知Bug与接口异常，避开已探索完备的模块。",
+        },
     ]
-
-    
 
     # 检查禅道是否具备配置与动态基地址
 
     from config.settings import settings
 
-    zentao_ok = bool(os.getenv("ZENTAO_PASSWORD") or getattr(settings, "zentao_password", None))
+    zentao_ok = bool(
+        os.getenv("ZENTAO_PASSWORD") or getattr(settings, "zentao_password", None)
+    )
 
     zentao_url = getattr(settings, "zentao_url", "http://192.140.163.129:8080")
 
     if zentao_url:
-
         zentao_url = zentao_url.rstrip("/")
 
-
-
     return ConfigOptionsResponse(
-
         apps=apps,
-
         modes=modes,
-
         prompt_templates=templates,
-
         zentao_configured=zentao_ok,
-
         zentao_base_url=zentao_url,
-
-        report_hub_url="/report-hub"
-
+        report_hub_url="/report-hub",
     )
-
-
-
 
 
 # =============================================================================
@@ -569,213 +423,116 @@ def get_config_options():
 # =============================================================================
 
 
-
 DEFAULT_PRESET_TASKS = [
-
     {
-
         "id": "preset_zhaiwan_explore_full",
-
         "title": "【寨湾】全栈地毯式扫荡巡检",
-
         "app_name": "zhaiwan",
-
         "mode": "explore",
-
         "badge": "推荐",
-
         "max_steps": 2000,
-
         "max_times": 600,
-
         "reset_memory": True,
-
         "ignore_errors": True,
-
         "case_path": None,
-
         "macro_objective": "执行全系统全量页面冒烟体检：请自适应悬停与点击顶部导航栏，系统性遍历当前应用全部一级菜单与所有下属二级业务页面。\n在到达每个子页面后，请重点执行三维健康度体检：\n1. 页面加载与渲染：检查页面主体框架与业务面板是否完整渲染就绪，是否存在白屏、大面积黑屏或核心组件未渲染；\n2. 网络接口通信：静默校验页面加载及初载触发的网络请求，排查是否存在 5xx 服务端异常、404 资源丢失或接口超时；\n3. 控制台运行健康：嗅探控制台是否存在未捕获的严重 JavaScript 运行时报错（如 TypeError、Vue 渲染期崩溃、WebGL 上下文丢失）。\n\n每个页面完成健康核验后即平滑推进至下一个菜单，无需在单一页面深陷无休止的复杂表单穷举，确保自适应覆盖当前系统的每一个业务模块！",
-
-        "description": "系统性遍历全部业务页面，三维体检页面白屏加载、底层接口通信与控制台无声报错。"
-
+        "description": "系统性遍历全部业务页面，三维体检页面白屏加载、底层接口通信与控制台无声报错。",
     },
-
     {
-
         "id": "preset_zhaiwan_3d_stress",
-
         "title": "【寨湾】中央 3D 视界与像素流抗压专项",
-
         "app_name": "zhaiwan",
-
         "mode": "explore",
-
         "badge": "抗压",
-
         "max_steps": 1000,
-
         "max_times": 300,
-
         "reset_memory": True,
-
         "ignore_errors": True,
-
         "case_path": None,
-
         "macro_objective": "全面探测中央 3D 矿山数字孪生模型健康度：重点进入三维视口页面，执行轨道视角全向旋转 (rotate_3d) 与镜头深度推进拉远 (zoom)，并发起三维视口晃动抗压测试 (canvas_stress_drag)，深度排查 UE5 像素流是否有花屏、断流、模型破面或 WebGL 上下文丢失！",
-
-        "description": "重点进入中央三维视口执行轨道旋转、镜头推拉与高频甩动，深度压测 UE5 伴生进程与 WebRTC 掉帧风险。"
-
+        "description": "重点进入中央三维视口执行轨道旋转、镜头推拉与高频甩动，深度压测 UE5 伴生进程与 WebRTC 掉帧风险。",
     },
-
     {
-
         "id": "preset_zhaiwan_smoke_tour",
-
         "title": "【寨湾】二级菜单极速全量冒烟体检",
-
         "app_name": "zhaiwan",
-
         "mode": "smoke",
-
         "badge": "冒烟",
-
         "max_steps": 1500,
-
         "max_times": 150,
-
         "reset_memory": True,
-
         "ignore_errors": True,
-
         "case_path": None,
-
         "macro_objective": "全量页面极速冒烟体检：自适应快速遍历当前系统全部业务菜单，校验两级路由跳转、页面白屏及核心接口通信健康度。",
-
-        "description": "轻量级高频冒烟，快速校验全部菜单路由跳转、页面框架是否白屏以及核心接口通信健康度。"
-
+        "description": "轻量级高频冒烟，快速校验全部菜单路由跳转、页面框架是否白屏以及核心接口通信健康度。",
     },
-
     {
-
         "id": "preset_zhaiwan_home_yaml",
-
         "title": "【寨湾】首页业务深度确定性回归 (YAML)",
-
         "app_name": "zhaiwan",
-
         "mode": "case",
-
         "badge": "回归",
-
         "max_steps": 500,
-
         "max_times": 200,
-
         "reset_memory": False,
-
         "ignore_errors": True,
-
         "case_path": "test_cases/test_home_mine_intro.yaml",
-
         "macro_objective": "精确重现已通过静态合规检验的 YAML 业务流程：首页矿山简介深度巡检",
-
-        "description": "精确执行已固化的标准自动化回归脚本，100% 确定性复现关键业务链路并核对 API。"
-
+        "description": "精确执行已固化的标准自动化回归脚本，100% 确定性复现关键业务链路并核对 API。",
     },
-
     {
-
         "id": "preset_liwutong_explore",
-
         "title": "【里伍铜】数字孪生采矿与选矿自主探索",
-
         "app_name": "liwutong",
-
         "mode": "explore",
-
         "badge": "探索",
-
         "max_steps": 150,
-
         "max_times": 45,
-
         "reset_memory": False,
-
         "ignore_errors": True,
-
         "case_path": None,
-
         "macro_objective": "全面扫荡李屋塘矿山各业务模块：深入探测选矿看板、采场可视化与设备一张图，挖掘未覆盖盲区中的数据不一致与前端崩溃 Bug！",
-
-        "description": "李屋塘矿山全业务板块探测，深入验证选矿流程、指标卡片与报警处置流程。"
-
-    }
-
+        "description": "李屋塘矿山全业务板块探测，深入验证选矿流程、指标卡片与报警处置流程。",
+    },
 ]
 
 
-
-
-
 @app.get(
-
     "/api/tasks/presets",
-
     response_model=List[PresetTaskResponse],
-
     tags=["1. 平台基础与选项"],
-
     summary="获取预置的标准巡检任务库 (系统预设 + 用户自定义预设)",
-
-    description="提供系统默认验证的常用巡检任务模板，以及用户在界面中自行保存/编辑的个性化预设方案。"
-
+    description="提供系统默认验证的常用巡检任务模板，以及用户在界面中自行保存/编辑的个性化预设方案。",
 )
-
 def get_preset_tasks(db: Session = Depends(get_db)):
 
     # 1. 确保系统预设已装载到数据库中并与代码保持实时同步
 
     for p in DEFAULT_PRESET_TASKS:
-
-        exist = db.query(PresetTaskRecord).filter(PresetTaskRecord.id == p["id"]).first()
+        exist = (
+            db.query(PresetTaskRecord).filter(PresetTaskRecord.id == p["id"]).first()
+        )
 
         if not exist:
-
             rec = PresetTaskRecord(
-
                 id=p["id"],
-
                 title=p["title"],
-
                 app_name=p["app_name"],
-
                 mode=p["mode"],
-
                 badge=p["badge"],
-
                 description=p.get("description"),
-
                 macro_objective=p["macro_objective"],
-
                 max_steps=p["max_steps"],
-
                 max_times=p["max_times"],
-
                 reset_memory=p.get("reset_memory", False),
-
                 ignore_errors=p.get("ignore_errors", True),
-
                 case_path=p.get("case_path"),
-
-                is_system=True
-
+                is_system=True,
             )
 
             db.add(rec)
 
         elif exist.is_system:
-
             # 允许用户在源码 DEFAULT_PRESET_TASKS 中直接修改，并自动热同步至数据库
 
             exist.title = p["title"]
@@ -802,42 +559,24 @@ def get_preset_tasks(db: Session = Depends(get_db)):
 
     db.commit()
 
-
-
     # 2. 查询全部预设（系统预设优先，用户自定义按更新时间倒序）
 
-    return db.query(PresetTaskRecord).order_by(
-
-        PresetTaskRecord.is_system.desc(),
-
-        PresetTaskRecord.updated_at.desc()
-
-    ).all()
-
-
-
+    return (
+        db.query(PresetTaskRecord)
+        .order_by(PresetTaskRecord.is_system.desc(), PresetTaskRecord.updated_at.desc())
+        .all()
+    )
 
 
 @app.post(
-
     "/api/tasks/presets",
-
     response_model=PresetTaskResponse,
-
     tags=["1. 平台基础与选项"],
-
     summary="保存或更新预设巡检任务模板",
-
-    description="支持将前端表单微调后的配置持久化保存为预设，方便日后一键拉起或再次微调；若传入已有 id 则覆盖更新。"
-
+    description="支持将前端表单微调后的配置持久化保存为预设，方便日后一键拉起或再次微调；若传入已有 id 则覆盖更新。",
 )
-
 def save_or_update_preset_task(
-
-    payload: PresetTaskCreate,
-
-    db: Session = Depends(get_db)
-
+    payload: PresetTaskCreate, db: Session = Depends(get_db)
 ):
 
     now = datetime.datetime.now()
@@ -845,15 +584,13 @@ def save_or_update_preset_task(
     preset_id = payload.id
 
     if not preset_id:
-
         preset_id = f"preset_user_{now.strftime('%Y%m%d_%H%M%S')}"
 
-
-
-    existing = db.query(PresetTaskRecord).filter(PresetTaskRecord.id == preset_id).first()
+    existing = (
+        db.query(PresetTaskRecord).filter(PresetTaskRecord.id == preset_id).first()
+    )
 
     if existing:
-
         existing.title = payload.title
 
         existing.app_name = payload.app_name
@@ -862,7 +599,10 @@ def save_or_update_preset_task(
 
         existing.badge = payload.badge or "自定义"
 
-        existing.description = payload.description or f"用户自定义任务: {payload.mode}模式 / {payload.max_steps}步"
+        existing.description = (
+            payload.description
+            or f"用户自定义任务: {payload.mode}模式 / {payload.max_steps}步"
+        )
 
         existing.macro_objective = payload.macro_objective
 
@@ -885,39 +625,23 @@ def save_or_update_preset_task(
         return existing
 
     else:
-
         new_preset = PresetTaskRecord(
-
             id=preset_id,
-
             title=payload.title,
-
             app_name=payload.app_name,
-
             mode=payload.mode,
-
             badge=payload.badge or "自定义",
-
-            description=payload.description or f"用户自定义任务: {payload.mode}模式 / {payload.max_steps}步",
-
+            description=payload.description
+            or f"用户自定义任务: {payload.mode}模式 / {payload.max_steps}步",
             macro_objective=payload.macro_objective,
-
             max_steps=payload.max_steps,
-
             max_times=payload.max_times,
-
             reset_memory=payload.reset_memory,
-
             ignore_errors=payload.ignore_errors,
-
             case_path=payload.case_path,
-
             is_system=False,
-
             created_at=now,
-
-            updated_at=now
-
+            updated_at=now,
         )
 
         db.add(new_preset)
@@ -929,40 +653,28 @@ def save_or_update_preset_task(
         return new_preset
 
 
-
-
-
 @app.delete(
-
     "/api/tasks/presets/{preset_id}",
-
     tags=["1. 平台基础与选项"],
-
     summary="删除自定义预设任务模板",
-
-    description="删除用户创建的个性化预设模板 (系统内置预设禁止删除)。"
-
+    description="删除用户创建的个性化预设模板 (系统内置预设禁止删除)。",
 )
-
 def delete_preset_task(
-
     preset_id: str = FastPath(..., description="预设模板 ID"),
-
-    db: Session = Depends(get_db)
-
+    db: Session = Depends(get_db),
 ):
 
-    existing = db.query(PresetTaskRecord).filter(PresetTaskRecord.id == preset_id).first()
+    existing = (
+        db.query(PresetTaskRecord).filter(PresetTaskRecord.id == preset_id).first()
+    )
 
     if not existing:
-
         raise HTTPException(status_code=404, detail="预设未找到")
 
     if existing.is_system:
-
-        raise HTTPException(status_code=403, detail="系统内置预设禁止删除，可载入后另存为新预设")
-
-
+        raise HTTPException(
+            status_code=403, detail="系统内置预设禁止删除，可载入后另存为新预设"
+        )
 
     db.delete(existing)
 
@@ -971,39 +683,28 @@ def delete_preset_task(
     return {"code": 200, "message": "预设删除成功", "preset_id": preset_id}
 
 
-
-
-
 @app.post(
-
     "/api/tasks/presets/{preset_id}/launch",
-
     response_model=TaskResponse,
-
     tags=["2. 巡检任务生命周期调度"],
-
     summary="按预设模板一键快速拉起巡检任务",
-
-    description="根据预设模板 ID 直接创建巡检任务并在后台立即异步拉起，无需手动填写表单。"
-
+    description="根据预设模板 ID 直接创建巡检任务并在后台立即异步拉起，无需手动填写表单。",
 )
-
 def launch_preset_task(
-
     preset_id: str = FastPath(..., description="预设任务模板 ID"),
-
-    db: Session = Depends(get_db)
-
+    db: Session = Depends(get_db),
 ):
 
-    target_preset = db.query(PresetTaskRecord).filter(PresetTaskRecord.id == preset_id).first()
+    target_preset = (
+        db.query(PresetTaskRecord).filter(PresetTaskRecord.id == preset_id).first()
+    )
 
     if not target_preset:
-
-        target_preset = next((p for p in DEFAULT_PRESET_TASKS if p["id"] == preset_id), None)
+        target_preset = next(
+            (p for p in DEFAULT_PRESET_TASKS if p["id"] == preset_id), None
+        )
 
         if not target_preset:
-
             raise HTTPException(status_code=404, detail="Preset not found")
 
         # 兼容 dict 访问
@@ -1027,7 +728,6 @@ def launch_preset_task(
         p_case = target_preset["case_path"]
 
     else:
-
         p_title = target_preset.title
 
         p_app = target_preset.app_name
@@ -1046,42 +746,24 @@ def launch_preset_task(
 
         p_case = target_preset.case_path
 
-
-
     now = datetime.datetime.now()
 
     task_id = f"task_{now.strftime('%Y%m%d_%H%M%S')}"
 
-
-
     task = TaskRun(
-
         id=task_id,
-
         name=f"{p_title} ({now.strftime('%H:%M:%S')})",
-
         app_name=p_app,
-
         mode=p_mode,
-
         status="pending",
-
         macro_objective=p_obj,
-
         max_steps=p_steps,
-
         max_times=p_times,
-
         reset_memory=p_reset,
-
         ignore_errors=p_ignore,
-
         case_path=p_case,
-
         explore_context=f"docs/explore_rules_{p_app}.md",
-
-        start_time=now
-
+        start_time=now,
     )
 
     db.add(task)
@@ -1090,24 +772,16 @@ def launch_preset_task(
 
     db.refresh(task)
 
-
-
     # 立即触发启动
 
     success = task_manager.start_task(task_id)
 
     if not success:
-
         raise HTTPException(status_code=500, detail="拉起预设任务失败，请检查运行环境")
-
-
 
     db.refresh(task)
 
     return task
-
-
-
 
 
 # =============================================================================
@@ -1117,57 +791,33 @@ def launch_preset_task(
 # =============================================================================
 
 
-
 @app.post(
-
     "/api/tasks",
-
     response_model=TaskResponse,
-
     tags=["2. 巡检任务生命周期调度"],
-
     summary="新建巡检任务",
-
-    description="接收前端选项表单，持久化生成新的巡检任务定义记录并分配唯一 `task_id`，初始状态为 `pending`。"
-
+    description="接收前端选项表单，持久化生成新的巡检任务定义记录并分配唯一 `task_id`，初始状态为 `pending`。",
 )
-
 def create_task(payload: TaskCreate, db: Session = Depends(get_db)):
 
     now = datetime.datetime.now()
 
     task_id = f"task_{now.strftime('%Y%m%d_%H%M%S')}"
 
-
-
     task = TaskRun(
-
         id=task_id,
-
         name=payload.name or f"自动化巡检 - {payload.app_name}",
-
         app_name=payload.app_name,
-
         mode=payload.mode,
-
         status="pending",
-
         macro_objective=payload.macro_objective,
-
         max_steps=payload.max_steps,
-
         max_times=payload.max_times,
-
         reset_memory=payload.reset_memory,
-
         ignore_errors=payload.ignore_errors,
-
         explore_context=payload.explore_context,
-
         case_path=payload.case_path,
-
-        start_time=now
-
+        start_time=now,
     )
 
     db.add(task)
@@ -1179,39 +829,28 @@ def create_task(payload: TaskCreate, db: Session = Depends(get_db)):
     return task
 
 
-
-
-
 @app.get(
-
     "/api/tasks",
-
     response_model=List[TaskResponse],
-
     tags=["2. 巡检任务生命周期调度"],
-
     summary="分页查询巡检任务列表",
-
-    description="支持按状态（`running`、`completed` 等）筛选，返回任务的覆盖率、执行步数与缺陷汇总等 KPI 指标。"
-
+    description="支持按状态（`running`、`completed` 等）筛选，返回任务的覆盖率、执行步数与缺陷汇总等 KPI 指标。",
 )
-
 def list_tasks(
-
-    status: Optional[str] = Query(default=None, description="任务状态过滤 (pending/running/completed/stopped/failed)"),
-
+    status: Optional[str] = Query(
+        default=None,
+        description="任务状态过滤 (pending/running/completed/stopped/failed)",
+    ),
     limit: int = Query(default=50, ge=1, le=200, description="单页最大拉取记录条数"),
-
     offset: int = Query(default=0, ge=0, description="分页偏移量"),
-
-    sync: bool = Query(default=False, description="是否在查询前从磁盘执行增量热同步(默认False保障极速响应)"),
-
-    db: Session = Depends(get_db)
-
+    sync: bool = Query(
+        default=False,
+        description="是否在查询前从磁盘执行增量热同步(默认False保障极速响应)",
+    ),
+    db: Session = Depends(get_db),
 ):
 
     if sync:
-
         from .sync_service import perform_hot_sync
 
         perform_hot_sync(db, force=False)
@@ -1219,143 +858,92 @@ def list_tasks(
     q = db.query(TaskRun).order_by(TaskRun.start_time.desc())
 
     if status:
-
         q = q.filter(TaskRun.status == status)
 
     return q.offset(offset).limit(limit).all()
 
 
-
-
-
 @app.get(
-
     "/api/tasks/{task_id}",
-
     response_model=TaskResponse,
-
     tags=["2. 巡检任务生命周期调度"],
-
     summary="获取指定任务详情",
-
-    description="获取指定任务当前的运行进展、子进程 PID、结束时间、产物报告链接以及最终 KPI。"
-
+    description="获取指定任务当前的运行进展、子进程 PID、结束时间、产物报告链接以及最终 KPI。",
 )
-
 def get_task(
-
     task_id: str = FastPath(..., description="任务唯一标识码，如 task_20261102_153022"),
-
-    db: Session = Depends(get_db)
-
+    db: Session = Depends(get_db),
 ):
 
     task = db.query(TaskRun).filter(TaskRun.id == task_id).first()
 
     if not task:
-
         raise HTTPException(status_code=404, detail="Task not found")
 
     return task
 
 
-
-
-
 @app.post(
-
     "/api/tasks/{task_id}/start",
-
     tags=["2. 巡检任务生命周期调度"],
-
     summary="一键触发启动指定巡检任务",
-
-    description="从数据库装载配置，组装参数拉起后台 Python 子进程，并自动挂载启动伴生性能采样守护线程与日志缓冲监听。"
-
+    description="从数据库装载配置，组装参数拉起后台 Python 子进程，并自动挂载启动伴生性能采样守护线程与日志缓冲监听。",
 )
-
 def start_task_execution(
-
     task_id: str = FastPath(..., description="待启动的任务全局识别码"),
-
-    db: Session = Depends(get_db)
-
+    db: Session = Depends(get_db),
 ):
 
     task = db.query(TaskRun).filter(TaskRun.id == task_id).first()
 
     if not task:
-
         raise HTTPException(status_code=404, detail="Task not found")
 
-
-
     if task.status == "running":
-
-        return {"code": 200, "message": "任务已经在运行中", "task_id": task_id, "pid": task.pid}
-
-
+        return {
+            "code": 200,
+            "message": "任务已经在运行中",
+            "task_id": task_id,
+            "pid": task.pid,
+        }
 
     success = task_manager.start_task(task_id)
 
     if not success:
-
-        raise HTTPException(status_code=500, detail="拉起任务进程失败，请检查运行环境或日志")
+        raise HTTPException(
+            status_code=500, detail="拉起任务进程失败，请检查运行环境或日志"
+        )
 
     return {"code": 200, "message": "任务启动成功", "task_id": task_id}
 
 
-
-
-
 @app.post(
-
     "/api/tasks/{task_id}/stop",
-
     tags=["2. 巡检任务生命周期调度"],
-
     summary="一键优雅终止正在运行的任务",
-
-    description="向目标 Electron 应用广播原生 WM_CLOSE 退出信号，并递归优雅终止子进程树，同时停止性能采集线程并回填终态产物。"
-
+    description="向目标 Electron 应用广播原生 WM_CLOSE 退出信号，并递归优雅终止子进程树，同时停止性能采集线程并回填终态产物。",
 )
-
 def stop_task_execution(
-
-    task_id: str = FastPath(..., description="待停止的任务全局识别码")
-
+    task_id: str = FastPath(..., description="待停止的任务全局识别码"),
 ):
 
     stopped = task_manager.stop_task(task_id)
 
     if not stopped:
-
         return {"code": 200, "message": "任务未在运行或已处于终态", "task_id": task_id}
 
     return {"code": 200, "message": "任务已安全终止并归档", "task_id": task_id}
 
 
-
-
-
 @app.get(
-
     "/api/tasks/{task_id}/logs",
-
     tags=["2. 巡检任务生命周期调度"],
-
     summary="拉取任务控制台日志切片",
-
-    description="获取指定任务最近在控制台输出的日志文本切片（默认最近 150 行）。"
-
+    description="获取指定任务最近在控制台输出的日志文本切片（默认最近 150 行）。",
 )
-
 def get_task_logs(
-
     task_id: str = FastPath(..., description="任务识别码"),
-
-    tail: int = Query(default=150, ge=10, le=3000, description="读取最近日志行数")
-
+    tail: int = Query(default=150, ge=10, le=3000, description="读取最近日志行数"),
 ):
 
     logs = task_manager.get_logs(task_id, tail=tail)
@@ -1363,13 +951,8 @@ def get_task_logs(
     return {"task_id": task_id, "count": len(logs), "logs": logs}
 
 
-
-
-
 @app.websocket("/ws/tasks/{task_id}/logs")
-
 async def websocket_task_logs(websocket: WebSocket, task_id: str):
-
     """
 
     WebSocket 实时终端控制台日志推流频道
@@ -1384,36 +967,25 @@ async def websocket_task_logs(websocket: WebSocket, task_id: str):
     queue = task_manager.subscribe_logs(task_id)
 
     try:
-
         recent = task_manager.get_logs(task_id, tail=50)
 
         for line in recent:
-
             await websocket.send_text(line)
 
-
-
         while True:
-
             line = await queue.get()
 
             await websocket.send_text(line)
 
     except (WebSocketDisconnect, asyncio.CancelledError):
-
         pass
 
     except Exception as e:
-
         logger.debug(f"[WS-Logs] 任务 [{task_id}] 推流通道安全关闭: {e}")
 
     finally:
-
         active_websockets.discard(websocket)
         task_manager.unsubscribe_logs(task_id, queue)
-
-
-
 
 
 # =============================================================================
@@ -1423,45 +995,39 @@ async def websocket_task_logs(websocket: WebSocket, task_id: str):
 # =============================================================================
 
 
-
 @app.get(
-
     "/api/bugs",
-
     response_model=List[BugResponse],
-
     tags=["3. 缺陷治理与禅道同步"],
-
     summary="多条件检索全局缺陷资产库",
-
-    description="支持按状态（激活/已提单）、严重度（High/Medium/Low）、责任人（陈贻雄/梅本霞）以及模糊关键词全文检索系统缺陷。"
-
+    description="支持按状态（激活/已提单）、严重度（High/Medium/Low）、责任人（陈贻雄/梅本霞）以及模糊关键词全文检索系统缺陷。",
 )
-
 def list_bugs(
-
-    status: Optional[str] = Query(default=None, description="缺陷状态过滤 (激活/已提单/误报/已解决)"),
-
-    assignee: Optional[str] = Query(default=None, description="责任人过滤 (如 陈贻雄 / 梅本霞)"),
-
-    severity: Optional[str] = Query(default=None, description="严重度过滤 (High/Medium/Low)"),
-
-    occurrences_range: Optional[str] = Query(default=None, description="频次区间过滤 (1-2 / 3-9 / 10+)"),
-
-    search: Optional[str] = Query(default=None, description="编号、标题、报错文本或禅道单号的全局模糊检索"),
-
-    sync: bool = Query(default=False, description="是否在查询前从磁盘执行增量热同步(默认False保障毫秒级极速响应)"),
-
+    status: Optional[str] = Query(
+        default=None, description="缺陷状态过滤 (激活/已提单/误报/已解决)"
+    ),
+    assignee: Optional[str] = Query(
+        default=None, description="责任人过滤 (如 陈贻雄 / 梅本霞)"
+    ),
+    severity: Optional[str] = Query(
+        default=None, description="严重度过滤 (High/Medium/Low)"
+    ),
+    occurrences_range: Optional[str] = Query(
+        default=None, description="频次区间过滤 (1-2 / 3-9 / 10+)"
+    ),
+    search: Optional[str] = Query(
+        default=None, description="编号、标题、报错文本或禅道单号的全局模糊检索"
+    ),
+    sync: bool = Query(
+        default=False,
+        description="是否在查询前从磁盘执行增量热同步(默认False保障毫秒级极速响应)",
+    ),
     limit: int = Query(default=200, ge=1, le=500, description="最大返回条数"),
-
     offset: int = Query(default=0, ge=0, description="偏移量"),
-
-    db: Session = Depends(get_db)
-
+    db: Session = Depends(get_db),
 ):
 
     if sync:
-
         from .sync_service import perform_hot_sync
 
         perform_hot_sync(db, force=False)
@@ -1469,142 +1035,101 @@ def list_bugs(
     q = db.query(BugRecord).order_by(BugRecord.last_seen.desc())
 
     if status:
-
         q = q.filter(BugRecord.status == status)
 
     if assignee:
-
         q = q.filter(BugRecord.assignee.like(f"%{assignee}%"))
 
     if severity:
-
         q = q.filter(BugRecord.severity == severity)
 
     if occurrences_range == "1-2":
-
         q = q.filter(BugRecord.occurrences >= 1, BugRecord.occurrences <= 2)
 
     elif occurrences_range == "3-9":
-
         q = q.filter(BugRecord.occurrences >= 3, BugRecord.occurrences <= 9)
 
     elif occurrences_range == "10+":
-
         q = q.filter(BugRecord.occurrences >= 10)
 
     if search:
-
         search_kw = search.strip()
 
         if search_kw:
-
             q = q.filter(
-
-                (BugRecord.id.like(f"%{search_kw}%")) |
-
-                (BugRecord.title.like(f"%{search_kw}%")) |
-
-                (BugRecord.zentao_id.like(f"%{search_kw}%")) |
-
-                (BugRecord.target_element.like(f"%{search_kw}%")) |
-
-                (BugRecord.actual_error.like(f"%{search_kw}%"))
-
+                (BugRecord.id.like(f"%{search_kw}%"))
+                | (BugRecord.title.like(f"%{search_kw}%"))
+                | (BugRecord.zentao_id.like(f"%{search_kw}%"))
+                | (BugRecord.target_element.like(f"%{search_kw}%"))
+                | (BugRecord.actual_error.like(f"%{search_kw}%"))
             )
 
     return q.offset(offset).limit(limit).all()
 
 
-
-
-
 @app.put(
-
     "/api/bugs/{bug_id}",
-
     response_model=BugResponse,
-
     tags=["3. 缺陷治理与禅道同步"],
-
     summary="编辑更新缺陷属性 (多端一致性同步写回)",
-
-    description="支持在线修改缺陷标题、责任人、严重度、状态、关联禅道单号以及 AI 初诊排查指引，并自动同步到全局 JSON、单次运行报告 JSON 及数据库。"
-
+    description="支持在线修改缺陷标题、责任人、严重度、状态、关联禅道单号以及 AI 初诊排查指引，并自动同步到全局 JSON、单次运行报告 JSON 及数据库。",
 )
-
 def update_bug(
-
     bug_id: str = FastPath(..., description="待修改的缺陷编号，如 BUG-20261101-002"),
-
     payload: BugUpdate = ...,
-
-    db: Session = Depends(get_db)
-
+    db: Session = Depends(get_db),
 ):
 
     bug = db.query(BugRecord).filter(BugRecord.id == bug_id).first()
 
     if not bug:
-
-        raise HTTPException(status_code=404, detail=f"未找到编号为 '{bug_id}' 的缺陷记录")
-
-
+        raise HTTPException(
+            status_code=404, detail=f"未找到编号为 '{bug_id}' 的缺陷记录"
+        )
 
     from utils.bug_updater import update_bug_record
-
-
 
     update_dict = {"bug_id": bug_id}
 
     if payload.title is not None:
-
         bug.title = payload.title
 
         update_dict["title"] = payload.title
 
     if payload.severity is not None:
-
         bug.severity = payload.severity
 
         update_dict["severity"] = payload.severity
 
     if payload.status is not None:
-
         bug.status = payload.status
 
         update_dict["status"] = payload.status
 
     if payload.assignee is not None:
-
         bug.assignee = payload.assignee
 
         update_dict["assignee"] = payload.assignee
 
     if payload.zentao_id is not None:
-
         bug.zentao_id = payload.zentao_id.strip() if payload.zentao_id else None
 
         update_dict["zentao_id"] = bug.zentao_id
 
     if payload.analysis_notes is not None:
-
         bug.analysis_notes = payload.analysis_notes
 
         update_dict["analysis_notes"] = payload.analysis_notes
 
     if payload.remark is not None:
-
         bug.remark = payload.remark
 
         update_dict["remark"] = payload.remark
 
     if payload.ui_path is not None:
-
         bug.ui_path = payload.ui_path
 
         update_dict["ui_path"] = payload.ui_path
-
-
 
     # 调用统一底座写回 JSON 库
 
@@ -1617,65 +1142,55 @@ def update_bug(
     return bug
 
 
-
-
-
 @app.post(
-
     "/api/bugs/{bug_id}/sync_zentao",
-
     tags=["3. 缺陷治理与禅道同步"],
-
     summary="在 Web 控制台一键将缺陷提交至禅道",
-
-    description="自动解析缺陷详情、生成富文本案发排查说明，调用禅道 REST API 自动提交 Bug，并自动分流责任人（前端陈贻雄/后端梅本霞），回填禅道单号。"
-
+    description="自动解析缺陷详情、生成富文本案发排查说明，调用禅道 REST API 自动提交 Bug，并自动分流责任人（前端陈贻雄/后端梅本霞），回填禅道单号。",
 )
-
 def sync_bug_to_zentao(
-    bug_id: str = FastPath(..., description="待提交的全局缺陷编号，如 BUG-20261030-001"),
-    assignee: Optional[str] = Query(default=None, description="可选手动覆盖指派责任人姓名 (不填则根据 AI 分流自动指派)"),
+    bug_id: str = FastPath(
+        ..., description="待提交的全局缺陷编号，如 BUG-20261030-001"
+    ),
+    assignee: Optional[str] = Query(
+        default=None,
+        description="可选手动覆盖指派责任人姓名 (不填则根据 AI 分流自动指派)",
+    ),
     background_tasks: BackgroundTasks = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
 
     bug = db.query(BugRecord).filter(BugRecord.id == bug_id).first()
 
     if not bug:
-
         raise HTTPException(status_code=404, detail="Bug not found")
 
-
-
     try:
-
-        from utils.zentao_sync import ZenTaoClient, format_bug_details_html, find_bug_in_databases, resolve_bug_assignee
+        from utils.zentao_sync import (
+            ZenTaoClient,
+            format_bug_details_html,
+            find_bug_in_databases,
+            resolve_bug_assignee,
+        )
 
         from config.settings import settings
 
-
-
         zentao = ZenTaoClient()
-
-
 
         # 1. 动态智能判定该 Bug 所属矿山应用
 
         app_key = "zhaiwan"
 
         if bug.task and bug.task.app_name:
-
             app_key = bug.task.app_name
 
         elif bug.screenshot_path and "liwutong" in bug.screenshot_path.lower():
-
             app_key = "liwutong"
 
-        elif bug.ui_path and ("里伍" in bug.ui_path or "liwutong" in bug.ui_path.lower()):
-
+        elif bug.ui_path and (
+            "里伍" in bug.ui_path or "liwutong" in bug.ui_path.lower()
+        ):
             app_key = "liwutong"
-
-
 
         # 2. 读取对应矿山应用专属的禅道产品/项目/迭代归属三元组
 
@@ -1689,35 +1204,22 @@ def sync_bug_to_zentao(
 
         app_chinese = "里伍铜矿" if app_key == "liwutong" else "寨湾矿山"
 
-
-
         target_assignee = assignee or bug.assignee or "陈贻雄"
 
-        assignee_name, assignee_account, _ = resolve_bug_assignee({"assignee": target_assignee}, override=target_assignee)
-
-
+        assignee_name, assignee_account, _ = resolve_bug_assignee(
+            {"assignee": target_assignee}, override=target_assignee
+        )
 
         raw_bug_dict = {
-
             "id": bug.id,
-
             "title": bug.title,
-
             "ui_path": bug.ui_path,
-
             "target_element": bug.target_element,
-
             "actual": bug.actual_error,
-
             "analysis_notes": bug.analysis_notes,
-
             "crash_screenshot": bug.screenshot_path,
-
-            "occurrences": bug.occurrences
-
+            "occurrences": bug.occurrences,
         }
-
-
 
         # 预上传案发快照至禅道 (彻底避免富文本图片丢失)
         shot_path = bug.screenshot_path
@@ -1728,7 +1230,9 @@ def sync_bug_to_zentao(
                 uploaded_info = zentao.upload_file(shot_file)
 
         uploaded_url = uploaded_info.get("url") if uploaded_info else None
-        uploaded_file_ids = [uploaded_info["id"]] if (uploaded_info and "id" in uploaded_info) else []
+        uploaded_file_ids = (
+            [uploaded_info["id"]] if (uploaded_info and "id" in uploaded_info) else []
+        )
 
         steps_html, _ = format_bug_details_html(
             bug=raw_bug_dict,
@@ -1751,8 +1255,6 @@ def sync_bug_to_zentao(
 
         z_id = str(res.get("id"))
 
-
-
         # 更新本地数据库
 
         bug.zentao_id = z_id
@@ -1763,43 +1265,32 @@ def sync_bug_to_zentao(
 
         db.commit()
 
-
-
         # 同步回填本地 JSON 库
 
         from utils.zentao_sync import update_bug_records, rebuild_run_reports
+
         _, g_file, r_files = find_bug_in_databases(bug_id)
         # 禁用耗时的同步渲染离线 HTML 报告 (sync_reports=False)，实现 1 秒级极速响应返回
-        update_bug_records(bug_id, z_id, g_file, r_files, assignee=assignee_name, sync_reports=False)
+        update_bug_records(
+            bug_id, z_id, g_file, r_files, assignee=assignee_name, sync_reports=False
+        )
 
         # 异步后台任务：默默渲染历史报告与大盘，绝不卡死前端 Web 界面
         if background_tasks and r_files:
             background_tasks.add_task(rebuild_run_reports, r_files)
 
         return {
-
             "code": 200,
-
             "message": "禅道提交成功",
-
             "bug_id": bug.id,
-
             "zentao_id": z_id,
-
-            "zentao_url": f"{zentao.url}/index.php?m=bug&f=view&bugID={z_id}"
-
+            "zentao_url": f"{zentao.url}/index.php?m=bug&f=view&bugID={z_id}",
         }
 
-
-
     except Exception as e:
-
         logger.error(f"同步缺陷 {bug_id} 到禅道异常: {e}")
 
         raise HTTPException(status_code=500, detail=f"提单失败: {e}")
-
-
-
 
 
 # =============================================================================
@@ -1809,25 +1300,17 @@ def sync_bug_to_zentao(
 # =============================================================================
 
 
-
 @app.get(
-
     "/api/metrics/live/snapshot",
-
     response_model=LivePerformanceSnapshotResponse,
-
     tags=["4. 多核全栈性能监控"],
-
     summary="即时采集当前大屏物理环境性能快照",
-
-    description="无需启动任何测试任务，即时对本机运行的 UE5 引擎、Chromium CDP 协议端口以及 NVIDIA GPU 进行只读探针采样并返回即时切片。"
-
+    description="无需启动任何测试任务，即时对本机运行的 UE5 引擎、Chromium CDP 协议端口以及 NVIDIA GPU 进行只读探针采样并返回即时切片。",
 )
-
 def get_live_performance_snapshot(
-
-    app_name: str = Query(default="zhaiwan", description="矿山应用系统代号 (zhaiwan / liwutong)")
-
+    app_name: str = Query(
+        default="zhaiwan", description="矿山应用系统代号 (zhaiwan / liwutong)"
+    ),
 ):
 
     snapshot = performance_monitor.collect_full_snapshot(app_name=app_name)
@@ -1835,123 +1318,82 @@ def get_live_performance_snapshot(
     return LivePerformanceSnapshotResponse(**snapshot)
 
 
-
-
-
 @app.get(
-
     "/api/metrics/live/history",
-
     tags=["4. 多核全栈性能监控"],
-
     summary="获取指定矿山应用最近 24 小时内的环境实时心电图历史时序",
-
-    description="支持指定矿山应用（如 tianrui / zhaiwan），返回过去 15 分钟 ~ 24 小时的高保真连续时序数据。进入页面时瞬间灌满 ECharts 图表，彻底告别从零开始。"
-
+    description="支持指定矿山应用（如 tianrui / zhaiwan），返回过去 15 分钟 ~ 24 小时的高保真连续时序数据。进入页面时瞬间灌满 ECharts 图表，彻底告别从零开始。",
 )
-
 def get_ambient_metrics_history(
-
-    app_name: str = Query(default="tianrui", description="矿山应用代码 (tianrui / zhaiwan / liwutong)"),
-
-    hours: float = Query(default=24.0, ge=0.1, le=48.0, description="回溯时长 (小时，默认24小时)"),
-
+    app_name: str = Query(
+        default="tianrui", description="矿山应用代码 (tianrui / zhaiwan / liwutong)"
+    ),
+    hours: float = Query(
+        default=24.0, ge=0.1, le=48.0, description="回溯时长 (小时，默认24小时)"
+    ),
     limit: int = Query(default=1000, ge=50, le=5000, description="最大返回点数"),
-
-    downsample: bool = Query(default=True, description="是否等间距降采样")
-
+    downsample: bool = Query(default=True, description="是否等间距降采样"),
 ):
 
     return performance_monitor.get_ambient_history(
-
-        app_name=app_name,
-
-        hours=hours,
-
-        limit=limit,
-
-        downsample=downsample
-
+        app_name=app_name, hours=hours, limit=limit, downsample=downsample
     )
 
 
-
-
-
 @app.get(
-
     "/api/metrics/live/apps_status",
-
     tags=["4. 多核全栈性能监控"],
-
     summary="获取所有矿山应用的实时运行与内存状态列表",
-
-    description="返回各应用当前伴生 UE 是否在线、专用提交量(Commit)及物理内存，供前端展示状态微标。"
-
+    description="返回各应用当前伴生 UE 是否在线、专用提交量(Commit)及物理内存，供前端展示状态微标。",
 )
-
 def get_all_apps_live_status():
 
     return performance_monitor.get_all_apps_live_status()
 
 
-
-
-
 @app.get(
-
     "/api/metrics/{task_id}",
-
     response_model=List[PerformanceMetricResponse],
-
     tags=["4. 多核全栈性能监控"],
-
     summary="获取任务的时序性能指标数据列表 (支持自适应等间距智能降采样与全周期保真)",
-
-    description="返回指定任务运行期间采集的所有性能时序打点。当点数超过 limit 时自动启用均匀等间距降采样算法，确保起点与终点 100% 完整覆盖，完美支撑数小时乃至通宵压测的全量 ECharts 渲染与 DataZoom 缩放。"
-
+    description="返回指定任务运行期间采集的所有性能时序打点。当点数超过 limit 时自动启用均匀等间距降采样算法，确保起点与终点 100% 完整覆盖，完美支撑数小时乃至通宵压测的全量 ECharts 渲染与 DataZoom 缩放。",
 )
-
 def get_task_metrics(
-
     task_id: str = FastPath(..., description="巡检任务全局标识码"),
-
     limit: int = Query(default=1000, ge=10, le=5000, description="最大返回时序点数量"),
-
-    downsample: bool = Query(default=True, description="超出 limit 时是否进行自适应等间距降采样保留全周期跨度"),
-
-    db: Session = Depends(get_db)
-
+    downsample: bool = Query(
+        default=True,
+        description="超出 limit 时是否进行自适应等间距降采样保留全周期跨度",
+    ),
+    db: Session = Depends(get_db),
 ):
 
-    query = db.query(PerformanceMetric).filter(
-
-        PerformanceMetric.task_id == task_id
-
-    ).order_by(PerformanceMetric.timestamp.asc())
-
-
+    query = (
+        db.query(PerformanceMetric)
+        .filter(PerformanceMetric.task_id == task_id)
+        .order_by(PerformanceMetric.timestamp.asc())
+    )
 
     total_count = query.count()
-
-
 
     # 若尚未入库，尝试从历史 reports/runs/**/memory_timeline.json 中自动回填历史数据
 
     if total_count == 0:
-
         task = db.query(TaskRun).filter(TaskRun.id == task_id).first()
 
         if task and task.run_dir:
-
-            tl_path = PROJECT_ROOT / "reports" / "runs" / task.run_dir / "screenshots" / "memory_timeline.json"
+            tl_path = (
+                PROJECT_ROOT
+                / "reports"
+                / "runs"
+                / task.run_dir
+                / "screenshots"
+                / "memory_timeline.json"
+            )
 
             if tl_path.exists():
-
                 try:
-
                     with open(tl_path, "r", encoding="utf-8") as f:
-
                         data = json.load(f)
 
                     timeline = data.get("timeline", [])
@@ -1959,33 +1401,20 @@ def get_task_metrics(
                     new_records = []
 
                     for item in timeline:
-
                         ts = datetime.datetime.fromtimestamp(item.get("timestamp", 0))
 
                         pm = PerformanceMetric(
-
                             task_id=task_id,
-
                             timestamp=ts,
-
                             step_number=None,
-
                             page_scope=item.get("page_scope"),
-
                             dom_count=item.get("dom_nodes", 0),
-
                             listeners_count=item.get("js_event_listeners", 0),
-
                             js_heap_mb=item.get("js_heap_used_mb", 0.0),
-
                             js_heap_total_mb=item.get("js_heap_total_mb", 0.0),
-
                             echarts_instances=item.get("echarts_instances", 0),
-
                             canvas_count=item.get("canvas_count", 0),
-
-                            video_instances=item.get("video_count", 0)
-
+                            video_instances=item.get("video_count", 0),
                         )
 
                         db.add(pm)
@@ -1994,30 +1423,23 @@ def get_task_metrics(
 
                     db.commit()
 
-                    query = db.query(PerformanceMetric).filter(
-
-                        PerformanceMetric.task_id == task_id
-
-                    ).order_by(PerformanceMetric.timestamp.asc())
+                    query = (
+                        db.query(PerformanceMetric)
+                        .filter(PerformanceMetric.task_id == task_id)
+                        .order_by(PerformanceMetric.timestamp.asc())
+                    )
 
                     total_count = len(new_records)
 
                 except Exception as e:
-
                     logger.debug(f"回填历史 memory_timeline.json 异常: {e}")
 
-
-
     if total_count == 0:
-
         return []
-
-
 
     # 智能等间距降采样：如果数据点数量超过 limit，保留起点、终点和中间均匀分布的点，确保跨度 100% 完整
 
     if downsample and total_count > limit:
-
         all_records = query.all()
 
         step = (total_count - 1) / (limit - 1)
@@ -2030,49 +1452,30 @@ def get_task_metrics(
 
         return [all_records[i] for i in sorted(sampled_indices) if i < total_count]
 
-
-
     return query.limit(limit).all()
 
 
-
-
-
 @app.get(
-
     "/api/metrics/{task_id}/summary",
-
     response_model=PerformanceSummaryResponse,
-
     tags=["4. 多核全栈性能监控"],
-
     summary="聚合计算任务全生命周期性能峰值与健康预警",
-
-    description="自动聚合 DOM 峰值、平均值、JSHeap 峰值、UE5 内存峰值与 WebRTC 最低谷底掉帧点，并输出智能性能告警建议（如 DOM 泄漏爆炸预警）。"
-
+    description="自动聚合 DOM 峰值、平均值、JSHeap 峰值、UE5 内存峰值与 WebRTC 最低谷底掉帧点，并输出智能性能告警建议（如 DOM 泄漏爆炸预警）。",
 )
-
 def get_task_metrics_summary(
-
     task_id: str = FastPath(..., description="巡检任务识别码"),
-
-    db: Session = Depends(get_db)
-
+    db: Session = Depends(get_db),
 ):
 
-    records = db.query(PerformanceMetric).filter(
-
-        PerformanceMetric.task_id == task_id
-
-    ).order_by(PerformanceMetric.timestamp.asc()).all()
-
-
+    records = (
+        db.query(PerformanceMetric)
+        .filter(PerformanceMetric.task_id == task_id)
+        .order_by(PerformanceMetric.timestamp.asc())
+        .all()
+    )
 
     if not records:
-
         return PerformanceSummaryResponse(task_id=task_id, sample_count=0)
-
-
 
     count = len(records)
 
@@ -2090,17 +1493,23 @@ def get_task_metrics_summary(
 
     ue_commits = [r.ue_commit_mb for r in records if r.ue_commit_mb is not None]
 
-    host_commits = [r.host_commit_load_percent for r in records if r.host_commit_load_percent is not None]
+    host_commits = [
+        r.host_commit_load_percent
+        for r in records
+        if r.host_commit_load_percent is not None
+    ]
 
-    chrome_cpus = [r.chrome_cpu_percent for r in records if r.chrome_cpu_percent is not None]
+    chrome_cpus = [
+        r.chrome_cpu_percent for r in records if r.chrome_cpu_percent is not None
+    ]
 
-    chrome_mems = [r.chrome_memory_mb for r in records if r.chrome_memory_mb is not None]
+    chrome_mems = [
+        r.chrome_memory_mb for r in records if r.chrome_memory_mb is not None
+    ]
 
     gpus = [r.gpu_usage_percent for r in records if r.gpu_usage_percent is not None]
 
     gpu_mems = [r.gpu_memory_mb for r in records if r.gpu_memory_mb is not None]
-
-
 
     alerts: List[str] = []
 
@@ -2120,90 +1529,60 @@ def get_task_metrics_summary(
 
     peak_host_commit = max(host_commits) if host_commits else None
 
-
-
     if peak_dom > 50000:
-
-        alerts.append(f"⚠️ DOM 节点数发生严重泄漏膨胀！峰值达到 {peak_dom} 个节点（健康阈值: <30,000）")
+        alerts.append(
+            f"⚠️ DOM 节点数发生严重泄漏膨胀！峰值达到 {peak_dom} 个节点（健康阈值: <30,000）"
+        )
 
     if peak_listeners > 10000:
-
-        alerts.append(f"⚠️ JS 事件监听器累积过多！峰值达到 {peak_listeners} 个，可能未注销事件销毁钩子")
+        alerts.append(
+            f"⚠️ JS 事件监听器累积过多！峰值达到 {peak_listeners} 个，可能未注销事件销毁钩子"
+        )
 
     if peak_heap > 800.0:
-
         alerts.append(f"⚠️ Chromium V8 堆内存超标！峰值达到 {peak_heap} MB")
 
     if fps_list and min(fps_list) < 15.0:
-
         alerts.append(f"⚠️ WebRTC 像素流出现明显掉帧！最低帧率仅 {min(fps_list)} FPS")
 
     if peak_ue_commit and peak_ue_commit > 12288.0:
-
-        alerts.append(f"⚠️ UE5 引擎专用提交量 (Commit) 严重膨胀！峰值达到 {round(peak_ue_commit / 1024, 2)} GB (健康阈值: 小于 12 GB)")
+        alerts.append(
+            f"⚠️ UE5 引擎专用提交量 (Commit) 严重膨胀！峰值达到 {round(peak_ue_commit / 1024, 2)} GB (健康阈值: 小于 12 GB)"
+        )
 
     if peak_host_commit and peak_host_commit > 85.0:
-
-        alerts.append(f"⚠️ 宿主机专用虚拟提交负荷过高！峰值达到 {peak_host_commit}% (OOM 崩溃风险预警)")
-
-
+        alerts.append(
+            f"⚠️ 宿主机专用虚拟提交负荷过高！峰值达到 {peak_host_commit}% (OOM 崩溃风险预警)"
+        )
 
     return PerformanceSummaryResponse(
-
         task_id=task_id,
-
         sample_count=count,
-
         peak_dom_count=peak_dom,
-
         avg_dom_count=round(sum(doms) / len(doms), 1) if doms else 0.0,
-
         latest_dom_count=latest_dom,
-
         peak_listeners_count=peak_listeners,
-
         latest_listeners_count=latest_listeners,
-
         peak_js_heap_mb=peak_heap,
-
         avg_js_heap_mb=round(sum(heaps) / len(heaps), 2) if heaps else 0.0,
-
         latest_js_heap_mb=latest_heap,
-
         avg_webrtc_fps=round(sum(fps_list) / len(fps_list), 1) if fps_list else None,
-
         min_webrtc_fps=min(fps_list) if fps_list else None,
-
         peak_chrome_cpu_percent=max(chrome_cpus) if chrome_cpus else None,
-
         peak_chrome_memory_mb=max(chrome_mems) if chrome_mems else None,
-
         peak_ue_cpu_percent=max(ue_cpus) if ue_cpus else None,
-
         avg_ue_cpu_percent=round(sum(ue_cpus) / len(ue_cpus), 1) if ue_cpus else None,
-
         peak_ue_memory_mb=max(ue_mems) if ue_mems else None,
-
         peak_ue_commit_mb=peak_ue_commit,
-
         peak_host_commit_load_percent=peak_host_commit,
-
         peak_gpu_usage_percent=max(gpus) if gpus else None,
-
         peak_gpu_memory_mb=max(gpu_mems) if gpu_mems else None,
-
-        health_alerts=alerts
-
+        health_alerts=alerts,
     )
 
 
-
-
-
 @app.websocket("/ws/tasks/{task_id}/metrics")
-
 async def websocket_task_metrics(websocket: WebSocket, task_id: str):
-
     """
 
     WebSocket 实时时序性能推流频道
@@ -2218,46 +1597,31 @@ async def websocket_task_metrics(websocket: WebSocket, task_id: str):
     queue = performance_monitor.subscribe_metrics(task_id)
 
     try:
-
         while True:
-
             metric_dict = await queue.get()
 
             await websocket.send_json(metric_dict)
 
     except (WebSocketDisconnect, asyncio.CancelledError):
-
         pass
 
     except Exception as e:
-
         logger.debug(f"[WS-Metrics] 任务 [{task_id}] 性能推流通道安全关闭: {e}")
 
     finally:
-
         active_websockets.discard(websocket)
         performance_monitor.unsubscribe_metrics(task_id, queue)
-
-
-
 
 
 platform_subscribers: set = set()
 
 
-
 @app.post(
-
     "/api/sync/hot",
-
     tags=["1. 平台全局总览与控制"],
-
     summary="强制从磁盘热同步最新运行批次与缺陷",
-
-    description="主动扫描 reports/runs/ 运行目录和 artifacts/bugs/ 缺陷库，增量写入数据库并实时广播更新。"
-
+    description="主动扫描 reports/runs/ 运行目录和 artifacts/bugs/ 缺陷库，增量写入数据库并实时广播更新。",
 )
-
 async def trigger_hot_sync_endpoint(db: Session = Depends(get_db)):
 
     from .sync_service import perform_hot_sync
@@ -2277,11 +1641,8 @@ async def trigger_hot_sync_endpoint(db: Session = Depends(get_db)):
     return res
 
 
-
 @app.websocket("/ws/platform")
-
 async def websocket_platform(websocket: WebSocket):
-
     """全平台全局多端实时数据同步 WebSocket 通道"""
 
     await websocket.accept()
@@ -2290,62 +1651,40 @@ async def websocket_platform(websocket: WebSocket):
     platform_subscribers.add(websocket)
 
     try:
-
         while True:
-
             data = await websocket.receive_text()
 
             if data == "ping":
-
                 await websocket.send_text("pong")
 
     except (WebSocketDisconnect, asyncio.CancelledError):
-
         pass
 
     finally:
-
         active_websockets.discard(websocket)
         platform_subscribers.discard(websocket)
 
 
-
-
-
 @app.post(
-
     "/api/metrics/cleanup",
-
     tags=["4. 多核全栈性能监控"],
-
     summary="手动触发滚动清理历史过期性能打点数据",
-
-    description="支持指定保留天数（默认 7 天），滚动清理超期性能打点，释放存储空间保障极速读写。"
-
+    description="支持指定保留天数（默认 7 天），滚动清理超期性能打点，释放存储空间保障极速读写。",
 )
-
 def trigger_metrics_cleanup(
-
-    retention_days: int = Query(default=7, ge=1, le=90, description="性能时序数据保留天数")
-
+    retention_days: int = Query(
+        default=7, ge=1, le=90, description="性能时序数据保留天数"
+    ),
 ):
 
     deleted = performance_monitor.cleanup_expired_metrics(retention_days=retention_days)
 
     return {
-
         "code": 200,
-
         "message": f"成功清理 {deleted} 条超过 {retention_days} 天的历史性能时序数据",
-
         "deleted_count": deleted,
-
-        "retention_days": retention_days
-
+        "retention_days": retention_days,
     }
-
-
-
 
 
 # =============================================================================
@@ -2355,39 +1694,25 @@ def trigger_metrics_cleanup(
 # =============================================================================
 
 
-
 @app.get(
-
     "/api/tasks/{task_id}/apis",
-
     tags=["2. 巡检任务生命周期调度"],
-
     summary="获取巡检任务捕获解析的业务 API 接口清单",
-
-    description="自动解析底层网络监听池与单次报告中的 `api_registry.json`，将前端交互触发的全部后端接口分类呈现为 OpenAPI / Postman 风格契约清单。"
-
+    description="自动解析底层网络监听池与单次报告中的 `api_registry.json`，将前端交互触发的全部后端接口分类呈现为 OpenAPI / Postman 风格契约清单。",
 )
-
 def get_task_apis(
-
     task_id: str = FastPath(..., description="巡检任务标识码"),
-
-    db: Session = Depends(get_db)
-
+    db: Session = Depends(get_db),
 ):
 
     task = db.query(TaskRun).filter(TaskRun.id == task_id).first()
 
     if not task:
-
         raise HTTPException(status_code=404, detail="Task not found")
-
-
 
     run_dir = task.run_dir
 
     if not run_dir:
-
         # 尝试查找最新的 run 目录
 
         from utils.paths import get_all_run_folders
@@ -2395,52 +1720,49 @@ def get_task_apis(
         runs = get_all_run_folders(app_name=task.app_name)
 
         if runs:
-
             run_dir = f"{task.app_name}/{runs[0].name}"
 
-
-
     if not run_dir:
+        return {
+            "task_id": task_id,
+            "summary": {},
+            "page_scopes": {},
+            "global_flat_apis": [],
+        }
 
-        return {"task_id": task_id, "summary": {}, "page_scopes": {}, "global_flat_apis": []}
-
-
-
-    api_path = PROJECT_ROOT / "reports" / "runs" / run_dir / "screenshots" / "api_registry.json"
+    api_path = (
+        PROJECT_ROOT
+        / "reports"
+        / "runs"
+        / run_dir
+        / "screenshots"
+        / "api_registry.json"
+    )
 
     if not api_path.exists():
-
         api_path = PROJECT_ROOT / "reports" / "runs" / run_dir / "api_registry.json"
 
-
-
     if not api_path.exists():
-
-        return {"task_id": task_id, "summary": {}, "page_scopes": {}, "global_flat_apis": []}
-
-
+        return {
+            "task_id": task_id,
+            "summary": {},
+            "page_scopes": {},
+            "global_flat_apis": [],
+        }
 
     try:
-
         with open(api_path, "r", encoding="utf-8") as f:
-
             api_data = json.load(f)
 
         return {
-
             "task_id": task_id,
-
             "run_dir": run_dir,
-
             "summary": api_data.get("summary", {}),
-
             "page_scopes": api_data.get("page_scopes", {}),
-
-            "global_flat_apis": api_data.get("global_flat_apis", api_data.get("summary", {}).get("endpoints", []))
-
+            "global_flat_apis": api_data.get(
+                "global_flat_apis", api_data.get("summary", {}).get("endpoints", [])
+            ),
         }
 
     except Exception as e:
-
         raise HTTPException(status_code=500, detail=f"解析已测接口清单失败: {e}")
-
