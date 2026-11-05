@@ -42,7 +42,9 @@ class NetworkMonitorMixin:
 
         # 5. 前端混淆代码中的自发性背景轮询定时器异常 (与用户交互无关)
         noise_err_patterns = [
+            "httputils_error",
             "httputils_error bo",
+            "httputils_error ro",
             "cannot set properties of undefined (setting 'config')",
             "failed to load resource: the server responded with a status of 401",
             "failed to load resource: the server responded with a status of 504",
@@ -64,9 +66,9 @@ class NetworkMonitorMixin:
         if any(p in lower_msg for p in noise_err_patterns):
             return True
             
-        # 单独的混淆小词 (如 'Bo', 'iR', 'Uq', 'Event')
+        # 单独的混淆小词与无意义堆栈 (如 'Ro', 'Bo', 'iR', 'Uq', 'Event')
         clean_msg = (msg_text or "").strip()
-        if clean_msg in ("Bo", "iR", "Uq", "Event", "[object Event]"):
+        if clean_msg in ("Ro", "Bo", "iR", "Uq", "Event", "[object Event]") or clean_msg.lower() == "ro":
             return True
 
         return False

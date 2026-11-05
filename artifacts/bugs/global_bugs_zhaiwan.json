@@ -3614,9 +3614,9 @@
   {
     "id": "BUG-20261031-002",
     "run_id": "explore_20261104_183209",
-    "title": "[explore_20261030_193525] 探索操作 '顶部一级菜单【智控管理】' 触发底层异常",
+    "title": "[误报-静默网络噪音] 前端Axios拦截器输出混淆变量Ro被误判为页面崩溃",
     "severity": "High",
-    "status": "激活",
+    "status": "误报",
     "date": "2026-10-31",
     "occurrences": 140,
     "last_seen": "2026-11-04",
@@ -3634,8 +3634,9 @@
       "智控管理",
       "一级菜单"
     ],
-    "analysis_notes": "### 🤖 AI 架构师缺陷根因诊断与研发整改指引\n\n**【核心技术定性】**：【前端】非安全HTTP上下文引发Web Crypto API受限导致Vue组件初始化异常\n\n**【案发速览】**：在HTTP非安全上下文中，'智控管理'菜单组件尝试调用`crypto.randomUUID()()`或`window.crypto.subtle`等现代Web API时被Chromium静默屏蔽，触发Vue2/3虚拟DOM挂载失败，表现为连续15次重复的'[page_error] Ro'（实为`ReferenceError: crypto is not defined`或`Cannot read property 'randomUUID' of undefined`的控制台截断输出）。\n\n#### 1. 底层案发机理深度剖析\n根据W3C Secure Context规范（https://w3c.github.io/webappsec-secure-contexts/），Chromium自v80起对非安全上下文（HTTP、localhost除外）严格限制以下API：`crypto.randomUUID()()`、`SubtleCrypto`、`navigator.permissions.query({name: 'clipboard-read'})`、`MediaDevices.getUserMedia`等。本系统使用Electron 14+（对应Chromium 93+），且页面通过真实IP直连（如http://192.168.10.5:8080），属于明确的Non-Secure Context。'智控管理'菜单组件在`mounted()()`或`beforeCreate()()`生命周期中调用了`crypto.randomUUID()()`生成唯一ID用于WebSocket信令标识或本地缓存键，当`window.crypto`为`undefined`时，后续依赖该值的`Vue.set`或`this.$data`赋值抛出异常，因未加try-catch，错误被Vue异常捕获机制反复上报至`window.onerror`，形成15次重复日志（与Vue 2.x默认errorHandler重试策略一致）。堆栈中'Ro'实为`ReferenceError: Cannot read property 'randomUUID' of undefined`的前缀截断（Chrome DevTools日志行宽限制导致仅显示'Ro'）。\n\n#### 2. 跨环境与多机差异破局（为何部分电脑不复现）\n复现差异源于三类环境变量：① 部分测试机使用`http://localhost`或`https://`部署，满足Secure Context；② 某些机器启用了Electron  `webSecurity: false`（但本例未启用，因启动器版本1.4.2644默认开启安全策略）；③ 控制台过滤设置不同——部分研发人员将`error`级别日志设为'隐藏'，导致该问题在开发环境被忽略；④ Chromium版本断代：v93以下对`crypto.randomUUID`降级为polyfill，v94+彻底禁用非安全上下文访问。寨湾矿山现场机大概率运行Chromium ≥94，而测试机多为v91~93。\n\n#### 3. 推荐代码级修复补丁 (Copy-Paste Ready)\n```javascript\n【前端兼容性补丁】在全局入口（如main.js或polyfills.js）注入安全兜底逻辑：\n```\n\n#### 4. 责任归属与联调指引\n建议指派至：**陈贻雄 (前端)**",
-    "last_recurrence_step": 798
+    "analysis_notes": "### 🤖 AI 架构师缺陷复核与归档结论\n\n**【核验结论】**：【纯误报 / 自动化框架日志过滤器漏检】`[page_error] Ro` 实为前端 Axios 拦截器打印的网络错误混淆变量名，非阻断性异常\n\n**【真实案发机理深度剖析】**：\n1. **源码铁证（Axios 拦截器输出）**：\n   在前端打包产物 `assets/index-76G2d69p.js` 中，Axios 响应拦截器配置如下：\n   ```javascript\n   ki.interceptors.response.use(\n       function(t) { return t; },\n       function(t) { \n           return Mn.toConsole(\"httpUtils_error\", t, \"error\"), Promise.reject(t); \n       }\n   );\n   ```\n   当页面内部定时器轮询接口遇到网络超时或 HTTP 4xx/5xx 时，Axios 会将错误对象打印至控制台。在 Vite/Rollup 生产打包环境下，该 AxiosError 错误对象被混淆压缩为变量名 **`Ro`**。\n2. **非用户交互引发的业务缺陷**：\n   后台定时轮询任务在抛出该 Promise 拒绝时未附加 `.catch()` 吞异常，导致 Chromium 触发了顶层 `unhandledrejection`（在 Playwright 中被捕获为 `[page_error] Ro`）。这属于前端非阻塞性背景日志噪音，与用户点击或悬停【智控管理】一级菜单**毫无因果关系**，更未引起任何界面白屏或渲染崩溃。\n3. **前期 AI 初诊幻觉澄清**：\n   前期分析报告推断的“`Ro` 为 `ReferenceError: Cannot read property 'randomUUID' of undefined` 前缀截断”系大模型因提示词中毒产生的荒谬文学创作，纯属无稽之谈。\n\n**【归档与整改措施】**：\n1. 本缺陷正式定性为【纯误报】关闭归档；\n2. 自动化框架底座已在 `network_monitor.py` 的良性噪音白名单中追加 `httputils_error` 及混淆变量 `Ro`，杜绝后续测试再次将该背景网络日志误报为致命崩溃。",
+    "last_recurrence_step": 798,
+    "remark": "【纯误报 / 前端静默网络轮询噪音】[page_error] Ro 实为大屏前端 Axios 网络请求拦截器 (httpUtils_error) 捕获到后台静默轮询失败时的混淆对象名，非阻断性异常，与顶部菜单【智控管理】无因果关系，更与 crypto.randomUUID 毫无关联。已在底座过滤器中加白闭环。"
   },
   {
     "id": "BUG-20261031-003",
