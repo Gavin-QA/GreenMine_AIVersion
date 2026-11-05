@@ -1204,13 +1204,17 @@ def list_tasks(
 
     offset: int = Query(default=0, ge=0, description="分页偏移量"),
 
+    sync: bool = Query(default=False, description="是否在查询前从磁盘执行增量热同步(默认False保障极速响应)"),
+
     db: Session = Depends(get_db)
 
 ):
 
-    from .sync_service import perform_hot_sync
+    if sync:
 
-    perform_hot_sync(db, force=False)
+        from .sync_service import perform_hot_sync
+
+        perform_hot_sync(db, force=False)
 
     q = db.query(TaskRun).order_by(TaskRun.start_time.desc())
 
@@ -1446,6 +1450,8 @@ def list_bugs(
 
     search: Optional[str] = Query(default=None, description="编号、标题、报错文本或禅道单号的全局模糊检索"),
 
+    sync: bool = Query(default=False, description="是否在查询前从磁盘执行增量热同步(默认False保障毫秒级极速响应)"),
+
     limit: int = Query(default=200, ge=1, le=500, description="最大返回条数"),
 
     offset: int = Query(default=0, ge=0, description="偏移量"),
@@ -1454,9 +1460,11 @@ def list_bugs(
 
 ):
 
-    from .sync_service import perform_hot_sync
+    if sync:
 
-    perform_hot_sync(db, force=False)
+        from .sync_service import perform_hot_sync
+
+        perform_hot_sync(db, force=False)
 
     q = db.query(BugRecord).order_by(BugRecord.last_seen.desc())
 
@@ -1488,17 +1496,21 @@ def list_bugs(
 
         search_kw = search.strip()
 
-        q = q.filter(
+        if search_kw:
 
-            (BugRecord.id.like(f"%{search_kw}%")) |
+            q = q.filter(
 
-            (BugRecord.title.like(f"%{search_kw}%")) |
+                (BugRecord.id.like(f"%{search_kw}%")) |
 
-            (BugRecord.actual_error.like(f"%{search_kw}%")) |
+                (BugRecord.title.like(f"%{search_kw}%")) |
 
-            (BugRecord.zentao_id.like(f"%{search_kw}%"))
+                (BugRecord.zentao_id.like(f"%{search_kw}%")) |
 
-        )
+                (BugRecord.target_element.like(f"%{search_kw}%")) |
+
+                (BugRecord.actual_error.like(f"%{search_kw}%"))
+
+            )
 
     return q.offset(offset).limit(limit).all()
 

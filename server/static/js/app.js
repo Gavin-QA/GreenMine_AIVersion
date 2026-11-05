@@ -162,6 +162,12 @@ const app = createApp({
 
     const bugs = ref([]);
 
+    const isBugsLoading = ref(false);
+
+    let bugSearchTimer = null;
+
+    let bugAbortController = null;
+
     const bugSearch = ref('');
 
     const bugSeverityFilter = ref('');
@@ -418,11 +424,39 @@ const app = createApp({
 
 
 
-    async function fetchBugs() {
+    function onBugSearchInput() {
+
+      if (bugSearchTimer) clearTimeout(bugSearchTimer);
+
+      bugSearchTimer = setTimeout(() => {
+
+        fetchBugs();
+
+      }, 250);
+
+    }
+
+
+
+    async function fetchBugs(options = {}) {
 
       try {
 
+        if (bugAbortController) {
+
+          try { bugAbortController.abort(); } catch (_) {}
+
+        }
+
+        bugAbortController = new AbortController();
+
+
+
+        isBugsLoading.value = true;
+
         let url = `${apiBase}/api/bugs?limit=300`;
+
+        if (options && options.sync) url += `&sync=true`;
 
         if (bugSeverityFilter.value) url += `&severity=${encodeURIComponent(bugSeverityFilter.value)}`;
 
@@ -432,15 +466,25 @@ const app = createApp({
 
         if (bugOccurrencesFilter.value) url += `&occurrences_range=${encodeURIComponent(bugOccurrencesFilter.value)}`;
 
-        if (bugSearch.value) url += `&search=${encodeURIComponent(bugSearch.value)}`;
+        if (bugSearch.value && bugSearch.value.trim()) url += `&search=${encodeURIComponent(bugSearch.value.trim())}`;
 
-        const res = await fetch(url);
+
+
+        const res = await fetch(url, { signal: bugAbortController.signal });
+
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
         bugs.value = await res.json();
 
       } catch (e) {
 
+        if (e.name === 'AbortError') return;
+
         console.error('获取缺陷列表失败:', e);
+
+      } finally {
+
+        isBugsLoading.value = false;
 
       }
 
@@ -449,6 +493,8 @@ const app = createApp({
 
 
     function resetBugFilters() {
+
+      if (bugSearchTimer) clearTimeout(bugSearchTimer);
 
       bugSearch.value = '';
 
@@ -1853,6 +1899,10 @@ const app = createApp({
       terminalLogs,
 
       bugs,
+
+      isBugsLoading,
+
+      onBugSearchInput,
 
       bugSearch,
 

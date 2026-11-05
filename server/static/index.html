@@ -928,13 +928,19 @@
 
                 <!-- 1. 全局关键字检索 (Bug编号、标题、报错堆栈、禅道单号) -->
 
-                <div style="flex: 1; min-width: 260px;">
+                <div style="flex: 1; min-width: 260px; position: relative;">
 
-                  <input type="text" class="form-control" style="width: 100%;" 
+                  <input type="text" class="form-control" style="width: 100%; padding-right: 30px;" 
 
                          placeholder="🔍 检索 Bug 编号 / 标题 / 报错堆栈 / 禅道单号..." 
 
-                         v-model="bugSearch" @input="fetchBugs">
+                         v-model="bugSearch" @input="onBugSearchInput" @keydown.enter="fetchBugs">
+
+                  <span v-if="isBugsLoading" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); font-size: 12px; color: #00d2ff;" title="正在快速过滤...">
+
+                    ⚡
+
+                  </span>
 
                 </div>
 
@@ -1054,7 +1060,27 @@
 
                 <tbody>
 
-                  <tr v-for="b in bugs" :key="b.id">
+                  <tr v-if="isBugsLoading && (!bugs || bugs.length === 0)">
+
+                    <td colspan="8" style="text-align: center; padding: 28px; color: #00d2ff;">
+
+                      ⚡ 正在极速检索缺陷资产...
+
+                    </td>
+
+                  </tr>
+
+                  <tr v-else-if="!bugs || bugs.length === 0">
+
+                    <td colspan="8" style="text-align: center; padding: 28px; color: var(--text-muted);">
+
+                      🔍 未检索到匹配的缺陷记录
+
+                    </td>
+
+                  </tr>
+
+                  <tr v-else v-for="b in bugs" :key="b.id">
 
                     <td style="font-family: monospace; font-weight: 600; color: #00d2ff;">{{ b.id }}</td>
 

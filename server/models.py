@@ -93,9 +93,9 @@ class BugRecord(Base):
     analysis_notes = Column(Text, nullable=True)
     remark = Column(Text, nullable=True) # 人工复核备注或关闭原因说明 (非必填)
     screenshot_path = Column(String(256), nullable=True)
-    occurrences = Column(Integer, default=1)
+    occurrences = Column(Integer, default=1, index=True)
     first_seen = Column(DateTime, default=datetime.datetime.utcnow)
-    last_seen = Column(DateTime, default=datetime.datetime.utcnow)
+    last_seen = Column(DateTime, default=datetime.datetime.utcnow, index=True)
 
     task = relationship("TaskRun", back_populates="bugs")
 
