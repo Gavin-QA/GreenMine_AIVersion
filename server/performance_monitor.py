@@ -832,7 +832,7 @@ class PerformanceMonitor:
         friendly_titles = {
             "tianrui": "四川天瑞",
             "zhaiwan": "寨湾矿山",
-            "liwutong": "李屋塘矿山"
+            "liwutong": "里伍铜矿山"
         }
         target_keys = ["tianrui", "zhaiwan", "liwutong"]
         for k in apps_cfg.keys():

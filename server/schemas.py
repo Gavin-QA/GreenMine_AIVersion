@@ -21,7 +21,7 @@ class TaskCreate(BaseModel):
     )
     app_name: str = Field(
         default="zhaiwan",
-        description="矿山应用系统代号 (zhaiwan: 寨湾矿山 / liwutong: 李屋塘矿山)",
+        description="矿山应用系统代号 (zhaiwan: 寨湾矿山 / liwutong: 里伍铜矿山)",
         examples=["zhaiwan"]
     )
     mode: str = Field(

@@ -184,7 +184,7 @@ def on_startup():
     except Exception as e:
         logger.debug(f"滚动清理环境时序异常 (可忽略): {e}")
 
-    # 5. 启动后台常驻多项目环境监控守护引擎 (按天瑞/寨湾/李屋塘多项目独立采样，滚动维持24小时时序)
+    # 5. 启动后台常驻多项目环境监控守护引擎 (按天瑞/寨湾/里伍铜多项目独立采样，滚动维持24小时时序)
 
     try:
         performance_monitor.start_ambient_monitoring(interval_sec=4.0)
@@ -491,8 +491,8 @@ DEFAULT_PRESET_TASKS = [
         "reset_memory": False,
         "ignore_errors": True,
         "case_path": None,
-        "macro_objective": "全面扫荡李屋塘矿山各业务模块：深入探测选矿看板、采场可视化与设备一张图，挖掘未覆盖盲区中的数据不一致与前端崩溃 Bug！",
-        "description": "李屋塘矿山全业务板块探测，深入验证选矿流程、指标卡片与报警处置流程。",
+        "macro_objective": "全面扫荡里伍铜矿山各业务模块：深入探测选矿看板、采场可视化与设备一张图，挖掘未覆盖盲区中的数据不一致与前端崩溃 Bug！",
+        "description": "里伍铜矿山全业务板块探测，深入验证选矿流程、指标卡片与报警处置流程。",
     },
 ]
 
