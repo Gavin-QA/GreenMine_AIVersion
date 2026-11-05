@@ -35,6 +35,8 @@ def update_bug_record(data: Dict[str, Any]) -> Dict[str, Any]:
     if not bug_id:
         return {"success": False, "error": "缺少必要的 bug_id 参数"}
 
+    new_title = data.get("title")
+    new_target_element = data.get("target_element")
     new_status = data.get("status")
     new_severity = normalize_severity(data.get("severity")) if "severity" in data else None
     new_assignee = data.get("assignee")
@@ -47,6 +49,10 @@ def update_bug_record(data: Dict[str, Any]) -> Dict[str, Any]:
     updated_targets: List[str] = []
 
     def _apply_updates(target_dict: dict):
+        if new_title is not None:
+            target_dict["title"] = new_title
+        if new_target_element is not None:
+            target_dict["target_element"] = new_target_element
         if new_status:
             target_dict["status"] = new_status
         if new_severity is not None:
@@ -108,6 +114,10 @@ def update_bug_record(data: Dict[str, Any]) -> Dict[str, Any]:
         db = SessionLocal()
         b_rec = db.query(BugRecord).filter(BugRecord.id == bug_id).first()
         if b_rec:
+            if new_title is not None:
+                b_rec.title = new_title
+            if new_target_element is not None:
+                b_rec.target_element = new_target_element
             if new_status:
                 b_rec.status = new_status
             if new_severity is not None:
