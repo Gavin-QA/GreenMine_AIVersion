@@ -78,3 +78,4 @@ for p in root.glob("reports/runs/**/BUG-20261030-004*.json"):
     update_json_file(p)
 
 print("All updates finished.")
+
