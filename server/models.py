@@ -82,6 +82,7 @@ class BugRecord(Base):
     id = Column(String(64), primary_key=True, index=True) # 如 BUG-20261030-002
     task_id = Column(String(64), ForeignKey("task_runs.id"), nullable=True, index=True)
     run_id = Column(String(64), nullable=True, index=True) # 如 explore_20261103_183408
+    app_name = Column(String(64), default="zhaiwan", index=True) # 归属应用代号 (zhaiwan, tianrui, liwutong)
     title = Column(String(256), index=True)
     severity = Column(String(32), default="Medium", index=True) # High, Medium, Low
     status = Column(String(32), default="激活", index=True) # 激活, 已提单, 误报, 已关闭
@@ -89,10 +90,14 @@ class BugRecord(Base):
     zentao_id = Column(String(32), nullable=True, index=True)
     ui_path = Column(String(256), nullable=True)
     target_element = Column(String(256), nullable=True)
+    step = Column(Text, nullable=True) # 案发执行步骤 prompt
+    action_type = Column(String(64), nullable=True) # 动作类型 (click, input, assert...)
+    tags = Column(Text, nullable=True) # JSON 序列化标签列表
     actual_error = Column(Text, nullable=True)
     analysis_notes = Column(Text, nullable=True)
     remark = Column(Text, nullable=True) # 人工复核备注或关闭原因说明 (非必填)
     screenshot_path = Column(String(256), nullable=True)
+    extra_data = Column(Text, nullable=True) # 扩展上下文 JSON (expected, details 等全量备份)
     occurrences = Column(Integer, default=1, index=True)
     first_seen = Column(DateTime, default=datetime.datetime.utcnow)
     last_seen = Column(DateTime, default=datetime.datetime.utcnow, index=True)

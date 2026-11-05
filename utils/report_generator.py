@@ -112,9 +112,31 @@ class ReportGenerator:
             except Exception as e:
                 logger.debug(f"加载应用缺陷库 {global_bugs_path.name} 失败: {e}")
 
+        # DB-First 自愈兜底：若本地文件丢失，从数据库提取全量缺陷字典并自动恢复
+        if not global_bugs_map:
+            try:
+                from utils.bug_db_sync import get_bugs_from_db, restore_global_bugs_file
+                db_all_bugs = get_bugs_from_db(app_name=active_app)
+                for gb in db_all_bugs:
+                    if "id" in gb:
+                        global_bugs_map[gb["id"]] = gb
+                if not global_bugs_path.exists() and db_all_bugs:
+                    restore_global_bugs_file(active_app)
+            except Exception as dbe:
+                logger.debug(f"从数据库补全全局缺陷大盘跳过: {dbe}")
+
         shots_dir = self.run_dir / "screenshots"
         bugs_dir = self.run_dir / "bugs"
         raw_bugs_list = []
+
+        # DB-First 自愈兜底：若本地 bugs 目录不存在或无 JSON 文件，自动从数据库恢复
+        if not bugs_dir.exists() or not list(bugs_dir.glob("*.json")):
+            try:
+                from utils.bug_db_sync import restore_run_bugs
+                restore_run_bugs(self.run_id, app_name=active_app)
+            except Exception as re_err:
+                logger.debug(f"自愈批次 Bug 文件跳过: {re_err}")
+
         if bugs_dir.exists():
             for bug_json in sorted(bugs_dir.glob("*.json")):
                 try:
