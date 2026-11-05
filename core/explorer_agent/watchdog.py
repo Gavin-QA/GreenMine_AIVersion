@@ -37,6 +37,7 @@ class StepWatchdog:
         self._triggered = False
         self._paused_depth = 0
         self._pause_start_time: Optional[float] = None
+        self._last_mem_log_time: float = 0.0
         self._owner_thread_id: int = threading.get_ident()
         self._lock = threading.Lock()
         self._thread: Optional[threading.Thread] = None
@@ -119,6 +120,9 @@ class StepWatchdog:
         current_tid = threading.get_ident()
         with cls._registry_lock:
             targets = [w for w in cls._active_instances if w._owner_thread_id == current_tid]
+            # 跨线程/全局兜底：若线程ID不匹配但存在活跃看门狗，全量挂起免死金牌
+            if not targets and cls._active_instances:
+                targets = list(cls._active_instances)
         for w in targets:
             w.pause()
         try:
@@ -150,27 +154,53 @@ class StepWatchdog:
                         should_rescue = True
                         desc_to_report = self._step_desc
 
-            # 通用防 OOM 暴毙熔断巡检 (每秒非侵入采样系统级内存)
+            # 系统级内存状态观察 (默认仅限流预警不强杀，严禁打断正常运行的长航任务)
             try:
                 from utils.system_guard import SystemMemoryGuard
                 sys_mem = SystemMemoryGuard.sample_all_memory()
                 host_load = sys_mem.get("host_load_percent", 0)
                 comp_mb = sys_mem.get("companion_mem_mb", 0.0)
                 comp_name = sys_mem.get("companion_name") or "UE伴生进程"
+                now = time.time()
 
-                # 宿主机内存负荷 >= 92% 或 单个伴生引擎 >= 10GB 时启动紧急熔断脱困
-                if host_load >= 92 or comp_mb >= 10240.0:
-                    logger.critical(
-                        f"\n{'='*70}\n"
-                        f"🚨 [Watchdog OOM Emergency] 宿主机内存面临雪崩溢出危机！\n"
-                        f"   宿主机使用率: {host_load}% (警戒线 92%) | 剩余: {sys_mem.get('host_avail_mb', 0)}MB\n"
-                        f"   伴生引擎: [{comp_name}] 独占物理内存: {comp_mb:.1f}MB (警戒线 10240MB)\n"
-                        f"   为防止宿主机蓝屏宕机，看门狗正在执行紧急自愈保护与进程回收...\n"
-                        f"{'='*70}"
-                    )
-                    self._rescue_blocked_process()
+                if host_load >= 90 or comp_mb >= 8192.0:
+                    if now - self._last_mem_log_time >= 60.0:
+                        self._last_mem_log_time = now
+                        logger.warning(
+                            f"⚠️ [Memory Notice] 宿主机内存负荷: {host_load}% (剩余 {sys_mem.get('host_avail_mb', 0)}MB) | "
+                            f"[{comp_name}] 独占: {comp_mb:.1f}MB (系统仍在运行中，看门狗被动观察，不执行主动熔断)"
+                        )
+
+                # 仅当显式开启 oom_kill_enabled 且处于极限崩溃边缘(>=98% 且可用<500MB)且非思考期才触发脱困
+                oom_kill_enabled = False
+                try:
+                    from config.settings import settings
+                    oom_kill_enabled = getattr(settings, "oom_kill_enabled", False)
+                except Exception:
+                    oom_kill_enabled = False
+
+                if oom_kill_enabled and (host_load >= 98 and sys_mem.get("host_avail_mb", 1000) < 500):
+                    with self._lock:
+                        is_thinking = (self._paused_depth > 0)
+                    if not is_thinking:
+                        logger.critical(
+                            f"\n{'='*70}\n"
+                            f"🚨 [Watchdog OOM Emergency] 宿主机内存耗尽濒临蓝屏！\n"
+                            f"   宿主机使用率: {host_load}% | 剩余: {sys_mem.get('host_avail_mb', 0)}MB\n"
+                            f"   伴生引擎: [{comp_name}] 独占: {comp_mb:.1f}MB\n"
+                            f"   触发用户配置的极限 OOM 熔断自愈...\n"
+                            f"{'='*70}"
+                        )
+                        self._rescue_blocked_process()
             except Exception:
                 pass
+
+            if should_rescue:
+                # 二次复核：若主线程在此期间进入大模型思考期，立即取消报警与强杀
+                with self._lock:
+                    if self._paused_depth > 0:
+                        self._triggered = False
+                        should_rescue = False
 
             if should_rescue:
                 logger.critical(
@@ -178,7 +208,7 @@ class StepWatchdog:
                     f"🚨 [Watchdog Alert] 单步执行超时严重报警！\n"
                     f"   步骤: '{desc_to_report}'\n"
                     f"   耗时已达: {elapsed:.1f}s (已超过警戒线: {self.timeout_sec:.0f}s)\n"
-                    f"   诊断: 判定被 Windows 系统原生模态弹窗、底座假死或网络调用阻塞挂起！\n"
+                    f"   诊断: 判定本地操作发生真实死锁或被 Windows 原生模态弹窗挂起！\n"
                     f"   正在启动全自动解冻脱困动作...\n"
                     f"{'='*70}"
                 )

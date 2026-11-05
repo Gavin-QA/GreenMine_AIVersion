@@ -101,6 +101,7 @@ explorer:
   max_tokens: 1024           # 视觉规划单次输出 Token 上限
   max_retries: 3             # 大模型通信异常自动重试次数
   step_timeout: 300           # Worker 单步操作最大超时保护(秒)，超时强杀僵死弹窗/进程并安全冷重启
+  oom_kill_enabled: false     # 看门狗是否因内存高负荷主动强杀(默认关闭，杜绝误杀，程序真死锁超时才熔断)
 
 llm:
   provider: "openai" # 使用 OpenAI 兼容模式

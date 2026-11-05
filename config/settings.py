@@ -101,6 +101,7 @@ class Settings:
         self.llm_max_tokens: int = int(os.getenv("LLM_MAX_TOKENS") or explorer_cfg.get("max_tokens", 1024))
         self.llm_max_retries: int = int(os.getenv("LLM_MAX_RETRIES") or explorer_cfg.get("max_retries", 3))
         self.step_timeout: float = float(os.getenv("STEP_TIMEOUT") or explorer_cfg.get("step_timeout", 90.0))
+        self.oom_kill_enabled: bool = os.getenv("OOM_KILL_ENABLED", "false").lower() == "true" if os.getenv("OOM_KILL_ENABLED") else bool(explorer_cfg.get("oom_kill_enabled", False))
 
         # 8. 日志与报告配置
         self.log_level: str = os.getenv("LOG_LEVEL", "INFO")
