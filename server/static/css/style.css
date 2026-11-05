@@ -609,3 +609,116 @@ textarea.form-control {
     opacity: 1;
   }
 }
+
+
+/* ==========================================================================
+   分页控制栏 (Pagination)
+   ========================================================================== */
+.pagination-container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 18px;
+  background: rgba(13, 20, 36, 0.95);
+  border-top: 1px solid var(--border-color);
+  border-bottom-left-radius: 8px;
+  border-bottom-right-radius: 8px;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.pagination-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.pagination-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.pagination-select {
+  background: #111a2e;
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+  padding: 5px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.pagination-select:focus {
+  border-color: #00d2ff;
+}
+
+.page-btn {
+  min-width: 30px;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: 4px;
+  border: 1px solid var(--border-color);
+  background: #111a2e;
+  color: var(--text-main);
+  font-size: 12px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.page-btn:hover:not(:disabled):not(.active):not(.ellipsis) {
+  border-color: #00d2ff;
+  color: #00d2ff;
+  background: rgba(0, 210, 255, 0.08);
+}
+
+.page-btn.active {
+  background: #00d2ff;
+  color: #050b14;
+  font-weight: 700;
+  border-color: #00d2ff;
+  box-shadow: 0 0 10px rgba(0, 210, 255, 0.35);
+}
+
+.page-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.page-btn.ellipsis {
+  border: none;
+  background: transparent;
+  cursor: default;
+  color: var(--text-muted);
+  min-width: 20px;
+}
+
+.page-jump-input {
+  width: 50px;
+  height: 28px;
+  text-align: center;
+  background: #111a2e;
+  border: 1px solid var(--border-color);
+  color: #00d2ff;
+  font-weight: 600;
+  border-radius: 4px;
+  font-size: 12px;
+  outline: none;
+  margin: 0 4px;
+}
+
+.page-jump-input:focus {
+  border-color: #00d2ff;
+}

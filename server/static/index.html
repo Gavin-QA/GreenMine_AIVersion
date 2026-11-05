@@ -824,7 +824,12 @@
 
                 <tbody>
 
-                  <tr v-for="t in tasks" :key="t.id">
+                  <tr v-if="!tasks || tasks.length === 0">
+                    <td colspan="8" style="text-align: center; padding: 28px; color: var(--text-muted);">
+                      📁 暂无历史巡检任务记录
+                    </td>
+                  </tr>
+                  <tr v-else v-for="t in paginatedTasks" :key="t.id">
 
                     <td>
 
@@ -872,6 +877,42 @@
 
               </table>
 
+            </div>
+
+            <!-- 任务列表分页工具栏 -->
+            <div class="pagination-container" v-if="tasks && tasks.length > 0">
+              <div class="pagination-left">
+                <span>共 <strong style="color: #00d2ff;">{{ tasks.length }}</strong> 个任务批次</span>
+                <span style="color: var(--border-color);">|</span>
+                <span>每页显示</span>
+                <select class="pagination-select" v-model.number="taskPageSize" @change="onTaskPageSizeChange">
+                  <option v-for="size in taskPageSizes" :key="size" :value="size">{{ size }} 条/页</option>
+                </select>
+              </div>
+
+              <div class="pagination-right">
+                <button class="page-btn" :disabled="taskPage <= 1" @click="setTaskPage(taskPage - 1)" title="上一页">
+                  &lt;
+                </button>
+
+                <template v-for="(p, idx) in getPageNumbers(taskPage, totalTaskPages)" :key="'tp-' + idx">
+                  <span v-if="p === '...'" class="page-btn ellipsis">...</span>
+                  <button v-else class="page-btn" :class="{ active: p === taskPage }" @click="setTaskPage(p)">
+                    {{ p }}
+                  </button>
+                </template>
+
+                <button class="page-btn" :disabled="taskPage >= totalTaskPages" @click="setTaskPage(taskPage + 1)" title="下一页">
+                  &gt;
+                </button>
+
+                <span style="margin: 0 4px; color: var(--text-muted);">第 {{ taskPage }} / {{ totalTaskPages }} 页</span>
+
+                <span style="margin-left: 6px;">跳至</span>
+                <input type="number" class="page-jump-input" min="1" :max="totalTaskPages" v-model.number="taskPageJump" @keydown.enter="jumpToTaskPage">
+                <span>页</span>
+                <button class="page-btn" style="padding: 0 10px; margin-left: 4px;" @click="jumpToTaskPage">确定</button>
+              </div>
             </div>
 
           </div>
@@ -950,7 +991,7 @@
 
                 <div style="width: 135px;">
 
-                  <select class="form-control" style="width: 100%;" v-model="bugSeverityFilter" @change="fetchBugs">
+                  <select class="form-control" style="width: 100%;" v-model="bugSeverityFilter" @change="fetchBugs({ resetPage: true })">
 
                     <option value="">⚡ 全部严重程度</option>
 
@@ -970,7 +1011,7 @@
 
                 <div style="width: 145px;">
 
-                  <select class="form-control" style="width: 100%;" v-model="bugAssigneeFilter" @change="fetchBugs">
+                  <select class="form-control" style="width: 100%;" v-model="bugAssigneeFilter" @change="fetchBugs({ resetPage: true })">
 
                     <option value="">👤 全部责任人</option>
 
@@ -988,7 +1029,7 @@
 
                 <div style="width: 130px;">
 
-                  <select class="form-control" style="width: 100%;" v-model="bugStatusFilter" @change="fetchBugs">
+                  <select class="form-control" style="width: 100%;" v-model="bugStatusFilter" @change="fetchBugs({ resetPage: true })">
 
                     <option value="">📌 全部状态</option>
 
@@ -1010,7 +1051,7 @@
 
                 <div style="width: 160px;">
 
-                  <select class="form-control" style="width: 100%;" v-model="bugOccurrencesFilter" @change="fetchBugs">
+                  <select class="form-control" style="width: 100%;" v-model="bugOccurrencesFilter" @change="fetchBugs({ resetPage: true })">
 
                     <option value="">🔄 全部频次</option>
 
@@ -1080,7 +1121,7 @@
 
                   </tr>
 
-                  <tr v-else v-for="b in bugs" :key="b.id">
+                  <tr v-else v-for="b in paginatedBugs" :key="b.id">
 
                     <td style="font-family: monospace; font-weight: 600; color: #00d2ff;">{{ b.id }}</td>
 
@@ -1164,6 +1205,42 @@
 
               </table>
 
+            </div>
+
+            <!-- 缺陷治理中枢分页工具栏 -->
+            <div class="pagination-container" v-if="bugs && bugs.length > 0">
+              <div class="pagination-left">
+                <span>共筛选出 <strong style="color: #00d2ff;">{{ bugs.length }}</strong> 条缺陷</span>
+                <span style="color: var(--border-color);">|</span>
+                <span>每页显示</span>
+                <select class="pagination-select" v-model.number="bugPageSize" @change="onBugPageSizeChange">
+                  <option v-for="size in bugPageSizes" :key="size" :value="size">{{ size }} 条/页</option>
+                </select>
+              </div>
+
+              <div class="pagination-right">
+                <button class="page-btn" :disabled="bugPage <= 1" @click="setBugPage(bugPage - 1)" title="上一页">
+                  &lt;
+                </button>
+
+                <template v-for="(p, idx) in getPageNumbers(bugPage, totalBugPages)" :key="'bp-' + idx">
+                  <span v-if="p === '...'" class="page-btn ellipsis">...</span>
+                  <button v-else class="page-btn" :class="{ active: p === bugPage }" @click="setBugPage(p)">
+                    {{ p }}
+                  </button>
+                </template>
+
+                <button class="page-btn" :disabled="bugPage >= totalBugPages" @click="setBugPage(bugPage + 1)" title="下一页">
+                  &gt;
+                </button>
+
+                <span style="margin: 0 4px; color: var(--text-muted);">第 {{ bugPage }} / {{ totalBugPages }} 页</span>
+
+                <span style="margin-left: 6px;">跳至</span>
+                <input type="number" class="page-jump-input" min="1" :max="totalBugPages" v-model.number="bugPageJump" @keydown.enter="jumpToBugPage">
+                <span>页</span>
+                <button class="page-btn" style="padding: 0 10px; margin-left: 4px;" @click="jumpToBugPage">确定</button>
+              </div>
             </div>
 
           </div>

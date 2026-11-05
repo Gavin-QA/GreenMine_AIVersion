@@ -1,4 +1,4 @@
-const { createApp, ref, reactive, onMounted, onUnmounted, nextTick, watch } = Vue;
+const { createApp, ref, reactive, computed, onMounted, onUnmounted, nextTick, watch } = Vue;
 
 
 
@@ -102,6 +102,42 @@ const app = createApp({
 
     const activeTask = ref(null);
 
+    // 任务列表分页
+    const taskPage = ref(1);
+    const taskPageSize = ref(10);
+    const taskPageSizes = [10, 20, 50];
+    const taskPageJump = ref(1);
+
+    const totalTaskPages = computed(() => {
+      const total = Math.ceil(tasks.value.length / taskPageSize.value);
+      return total > 0 ? total : 1;
+    });
+
+    const paginatedTasks = computed(() => {
+      const start = (taskPage.value - 1) * taskPageSize.value;
+      return tasks.value.slice(start, start + taskPageSize.value);
+    });
+
+    function setTaskPage(p) {
+      if (typeof p !== 'number') return;
+      if (p < 1) p = 1;
+      if (p > totalTaskPages.value) p = totalTaskPages.value;
+      taskPage.value = p;
+      taskPageJump.value = p;
+    }
+
+    function onTaskPageSizeChange() {
+      taskPage.value = 1;
+      taskPageJump.value = 1;
+    }
+
+    function jumpToTaskPage() {
+      let p = parseInt(taskPageJump.value, 10);
+      if (isNaN(p)) p = 1;
+      setTaskPage(p);
+    }
+
+
     const liveSelectedApp = ref('tianrui');
 
     const liveTimeSpan = ref('24h');
@@ -163,6 +199,57 @@ const app = createApp({
     const bugs = ref([]);
 
     const isBugsLoading = ref(false);
+
+    // 缺陷列表分页
+    const bugPage = ref(1);
+    const bugPageSize = ref(15);
+    const bugPageSizes = [10, 15, 30, 50];
+    const bugPageJump = ref(1);
+
+    const totalBugPages = computed(() => {
+      const total = Math.ceil(bugs.value.length / bugPageSize.value);
+      return total > 0 ? total : 1;
+    });
+
+    const paginatedBugs = computed(() => {
+      const start = (bugPage.value - 1) * bugPageSize.value;
+      return bugs.value.slice(start, start + bugPageSize.value);
+    });
+
+    function setBugPage(p) {
+      if (typeof p !== 'number') return;
+      if (p < 1) p = 1;
+      if (p > totalBugPages.value) p = totalBugPages.value;
+      bugPage.value = p;
+      bugPageJump.value = p;
+    }
+
+    function onBugPageSizeChange() {
+      bugPage.value = 1;
+      bugPageJump.value = 1;
+    }
+
+    function jumpToBugPage() {
+      let p = parseInt(bugPageJump.value, 10);
+      if (isNaN(p)) p = 1;
+      setBugPage(p);
+    }
+
+    // 通用页码按钮生成逻辑 (支持 1 ... 4 5 6 ... 10)
+    function getPageNumbers(current, total) {
+      if (!total || total <= 1) return [1];
+      if (total <= 7) {
+        return Array.from({ length: total }, (_, i) => i + 1);
+      }
+      if (current <= 4) {
+        return [1, 2, 3, 4, 5, '...', total];
+      }
+      if (current >= total - 3) {
+        return [1, '...', total - 4, total - 3, total - 2, total - 1, total];
+      }
+      return [1, '...', current - 1, current, current + 1, '...', total];
+    }
+
 
     let bugSearchTimer = null;
 
@@ -400,9 +487,13 @@ const app = createApp({
 
       try {
 
-        const res = await fetch(`${apiBase}/api/tasks?limit=50`);
+        const res = await fetch(`${apiBase}/api/tasks?limit=200`);
 
         tasks.value = await res.json();
+        if (taskPage.value > totalTaskPages.value) {
+          taskPage.value = totalTaskPages.value;
+          taskPageJump.value = totalTaskPages.value;
+        }
 
         if (!activeTaskId.value) {
 
@@ -429,9 +520,9 @@ const app = createApp({
       if (bugSearchTimer) clearTimeout(bugSearchTimer);
 
       bugSearchTimer = setTimeout(() => {
-
+        bugPage.value = 1;
+        bugPageJump.value = 1;
         fetchBugs();
-
       }, 250);
 
     }
@@ -441,6 +532,10 @@ const app = createApp({
     async function fetchBugs(options = {}) {
 
       try {
+        if (options && options.resetPage) {
+          bugPage.value = 1;
+          bugPageJump.value = 1;
+        }
 
         if (bugAbortController) {
 
@@ -475,6 +570,10 @@ const app = createApp({
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
         bugs.value = await res.json();
+        if (bugPage.value > totalBugPages.value) {
+          bugPage.value = totalBugPages.value;
+          bugPageJump.value = totalBugPages.value;
+        }
 
       } catch (e) {
 
@@ -505,7 +604,8 @@ const app = createApp({
       bugStatusFilter.value = '';
 
       bugOccurrencesFilter.value = '';
-
+      bugPage.value = 1;
+      bugPageJump.value = 1;
       fetchBugs();
 
     }
@@ -1876,6 +1976,31 @@ const app = createApp({
 
 
     return {
+
+      // 任务列表分页
+      taskPage,
+      taskPageSize,
+      taskPageSizes,
+      taskPageJump,
+      totalTaskPages,
+      paginatedTasks,
+      setTaskPage,
+      onTaskPageSizeChange,
+      jumpToTaskPage,
+
+      // 缺陷列表分页
+      bugPage,
+      bugPageSize,
+      bugPageSizes,
+      bugPageJump,
+      totalBugPages,
+      paginatedBugs,
+      setBugPage,
+      onBugPageSizeChange,
+      jumpToBugPage,
+
+      // 页码生成器
+      getPageNumbers,
       toasts,
       showToast,
       removeToast,
