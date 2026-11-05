@@ -3637,9 +3637,9 @@
   {
     "id": "BUG-20261031-003",
     "run_id": "explore_20261104_183209",
-    "title": "[explore_20261031_151626] UI数据与接口原始报文不匹配: '左侧【胶带数据】区域中的‘累计重量’指标卡片（显示273751.4 t）'",
+    "title": "[explore_20261104_183209] UI数据与接口原始报文不匹配: '左侧‘配电室概览’卡片中的‘每日用电量(kWh)’数值‘360.60’'",
     "severity": "Medium",
-    "status": "激活",
+    "status": "误报",
     "date": "2026-10-31",
     "occurrences": 7,
     "last_seen": "2026-11-04",
@@ -3649,15 +3649,17 @@
     "assignee": "陈贻雄",
     "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/explore_20261104_183209/bugs/BUG-20261031-003.png",
     "action_type": "HOVER",
-    "target_element": "核验: 验证当前悬停卡片中‘累计重量’数值273751.4 t与后台接口原始JSON是否一致",
-    "ui_path": "路径: 生产管理 -> 胶带运输监测",
+    "target_element": "左侧‘配电室概览’卡片中的‘每日用电量(kWh)’",
+    "ui_path": "智控管理 -> 智能供配电",
     "tags": [
       "HOVER",
       "路径: 生产管理",
       "胶带运输监测"
     ],
-    "analysis_notes": "### 🤖 AI 架构师缺陷根因诊断与研发整改指引\n\n**【核心技术定性】**：【前端】数据源错配导致UI渲染与接口契约断裂（非安全HTTP上下文加剧调试盲区）\n\n**【案发速览】**：前端在非安全HTTP上下文中错误复用实时设备状态接口（getFdbBeltBasicList）渲染历史累计指标‘累计重量’，而该接口根本不包含cumulativeWeight字段，数值273751.4 t为前端本地计算或缓存残留值，属典型数据源混淆型渲染缺陷。\n\n#### 1. 底层案发机理深度剖析\n1) 接口语义错配：getFdbBeltBasicList设计为返回设备最新瞬时状态（latestValue），其JSON结构仅含speed、current、vibration等实时量，无任何积分/累计类字段；2) 前端逻辑误判：组件（如BeltCumulativeCard.vue）未校验数据来源，直接将某设备的latestValue.value或localStorage缓存值（如上次会话遗留的273751.4）绑定至‘累计重量’卡片；3) 非安全上下文干扰：因页面通过HTTP直连IP访问（非HTTPS），Chromium禁用devtools中部分网络面板的原始响应体高亮与断点捕获能力（尤其涉及fetch/XHR的response.text()解析链路），导致测试人员无法在控制台直接比对原始JSON，加剧了‘数值存在但接口无字段’的认知偏差；4) Vue2响应式陷阱：若使用$set或直接赋值修改data对象，且未触发deep watch，可能导致旧值残留于DOM文本节点，即使接口返回空字段仍显示历史值。\n\n#### 2. 跨环境与多机差异破局（为何部分电脑不复现）\n该缺陷在HTTPS内网环境（如localhost:8080或Nginx反代HTTPS）下更易暴露——因Secure Context允许完整DevTools Network面板展开response payload，可立即发现接口无cumulativeWeight字段; 而当前HTTP IP直连环境触发Chromium的Non-Secure Context策略，Network面板中部分XHR响应被标记为'(blocked)'或仅显示status code，掩盖了真实数据缺失；另，部分开发机因启用chrome://flags/#block-insecure-private-network-requests等实验性策略，反而提前拦截了此类请求，造成‘部分电脑能跑’的假象。\n\n#### 3. 推荐代码级修复补丁 (Copy-Paste Ready)\n```javascript\n1) 前端修复（Vue组件层）：\n```\n\n#### 4. 责任归属与联调指引\n建议指派至：**陈贻雄 (前端)**",
-    "global_step": null
+    "analysis_notes": "### 🤖 AI 架构师缺陷复核与归档结论\n\n**【核验结论】**：【纯误报 / 自动校验漏检】UI 显示的每日用电量 360.60 kWh 与后端接口数据 100% 吻合\n\n**【真实数据链路】**：\n- **后端接口**：`fdbPowerSupplyBasic/getFdbPowerSupplyBasicList`\n- **字段路径**：`data.list[0].latestValueDetail.totalActiveEnergy.formatValue`\n- **原始返回值**：`\"360.60\"` (kWh)\n\n**【误报归因】**：\nAI 在执行 `Auto-API` 自动核验时，倒排索引仅检索了 `getPowerConsumptionStatistic` 等耗电统计接口，未能命中基础设备列表中的测控明细字段，误将接口未命中判定为 MISMATCH。经人工复核，前端数据绑定完全符合业务契约，正式归档为【误报】关闭。",
+    "global_step": null,
+    "task_id": "task_20261104_183208",
+    "remark": "【核验通过 / 误报关闭】前端显示的 360.60 kWh 与后端接口 fdbPowerSupplyBasic/getFdbPowerSupplyBasicList 的 data.list[0].latestValueDetail.totalActiveEnergy.formatValue 字段数值完全一致。该 Bug 属 AI 接口校验时倒排索引未命中该接口导致的纯误报。"
   },
   {
     "id": "BUG-20261031-004",
