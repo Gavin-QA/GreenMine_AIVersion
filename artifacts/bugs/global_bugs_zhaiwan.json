@@ -3585,9 +3585,9 @@
   {
     "id": "BUG-20261031-001",
     "run_id": "explore_20261103_183408",
-    "title": "[explore_20261030_193525] UI数据与接口原始报文不匹配: '左侧‘其他数据监测’区域中【810溜破锤】对应的‘油箱油温’数据项'",
+    "title": "[误报-业务规范] 810溜破锤处于离线停机状态，前端‘油箱油温’依规脱敏显示‘-- °C’",
     "severity": "Medium",
-    "status": "激活",
+    "status": "误报",
     "date": "2026-10-31",
     "occurrences": 2,
     "last_seen": "2026-11-04",
@@ -3605,8 +3605,9 @@
       "智能破碎锤",
       "810远控"
     ],
-    "analysis_notes": "### 🤖 AI 架构师缺陷根因诊断与研发整改指引\n\n**【核心技术定性】**：【前端】非安全HTTP上下文引发Web Crypto API受限导致Vue响应式链断裂\n\n**【案发速览】**：因页面运行于HTTP非安全上下文，Chromium禁用SubtleCrypto等API，触发Vue2/3中依赖crypto.randomUUID()生成唯一key的watcher或computed缓存失效，导致‘油箱油温’字段绑定数据未更新至DOM，呈现 '-- °C' 空值。\n\n#### 1. 底层案发机理深度剖析\n1. 根据W3C Secure Context规范（https://w3c.github.io/webappsec-secure-contexts/），当页面协议为HTTP且非localhost时，Chromium会将window.crypto.subtle置为undefined，并限制crypto.randomUUID()等API调用；\n2. 本系统前端（Vue2/3混合架构）在‘其他监测’模块中使用了自定义指令或mixin封装的防抖/缓存逻辑，其内部通过crypto.randomUUID()生成唯一标识符用于区分设备数据通道（如：const key = crypto.randomUUID() + '_' + deviceId）；\n3. 在非安全上下文中，crypto.randomUUID()抛出TypeError: Cannot read properties of undefined (reading 'randomUUID')，该异常被Vue的$nextTick或watch回调捕获但未显式处理，导致后续数据赋值流程中断；\n4. 接口返回的oilTemperature.value = -40.00已正确进入store/state，但因key生成失败，computed属性或watcher未触发重计算，最终模板渲染仍使用初始占位值'--'；\n5. 堆栈虽未显式打印错误，但Electron DevTools Console中存在静默Uncaught TypeError（可通过打开DevTools > Console > Filter: Errors复现），符合‘测试不复现、部分电脑复现’特征——仅当启动器强制HTTP访问真实IP（非127.0.0.1/localhost）时触发。\n\n#### 2. 跨环境与多机差异破局（为何部分电脑不复现）\n✅ 复现条件：客户端通过HTTP访问真实矿山内网IP（如 http://192.168.x.x:8080），且Chromium版本 ≥ 100（当前启动器1.4.2644基于Chromium 115+）；\n❌ 不复现条件：① 使用HTTPS；② 访问localhost；③ 启动器配置了--unsafely-treat-insecure-origin-as-secure参数；④ 测试环境为本地开发服务器（Vite/HMR自动注入localhost）；\n→ 本案中‘寨湾矿山’现场部署采用HTTP直连真实IP，故唯一复现；而测试机多走localhost或Mock服务，掩盖问题。\n\n#### 3. 推荐代码级修复补丁 (Copy-Paste Ready)\n```javascript\n【前端兼容性补丁】在main.js或全局mixin中注入安全fallback：\n```\n\n#### 4. 责任归属与联调指引\n建议指派至：**陈贻雄 (前端)**",
-    "global_step": null
+    "analysis_notes": "### 🤖 AI 架构师缺陷复核与归档结论\n\n**【核验结论】**：【纯误报 / 业务标准脱敏规范】设备离线状态下传感器显示 `-- °C` 符合工业大屏标准契约\n\n**【真实案发机理与业务逻辑】**：\n- **设备真实运行状态**：接口 `produceOrePass/getProduceOrePassList?ids[]=1` 中，ID=1 的设备【810溜破锤】状态明确为“离线”且“停止”，时间戳为停机历史残留快照；\n- **工业前端防御性渲染规范**：在工业 IoT 与数字孪生大屏规范中，当设备处于离线状态时，数据链路中断，前端严禁将设备停机前传感器残留的脏数据或底噪（如 `-40.00℃`）作为当前瞬时量展示给调度员，必须统一脱敏显示为占位符 `--` 或 `-- °C`；\n- **前端实现评价**：前端开发人员（陈贻雄）的数据绑定逻辑良好，严格执行了设备离线数据脱敏保护，避免了虚假的低温结冰告警。\n\n**【误报归因】**：\n自动化测试 Agent 在执行 `Auto-API` 双向接口核验时，机械地将接口 JSON 中存在的历史字段 `oilTemperature.value = -40.00` 视为前端必须照搬渲染的标准，见 UI 显示 `-- °C` 即草率判定为数据流转丢失；同时初诊模型产生了“非安全HTTP导致crypto报错”的推理幻觉。经人工与架构师复核，前端实现完全合规，正式归档为【误报】关闭。",
+    "global_step": null,
+    "remark": "【非业务缺陷 / 工业脱敏规范】810溜破锤在后台数据中处于明确的‘离线/停机’状态。工业大屏前端对于离线设备传感器做脱敏置灰显示‘-- °C’属于防误导调度的正确业务契约（若强行展示上月残留的-40℃反而会引发虚假低温报警）。AI判定为MISMATCH系教条比对产生的误报。"
   },
   {
     "id": "BUG-20261031-002",
