@@ -352,6 +352,14 @@ def sync_all_bugs(db: Session) -> int:
                     exist.task_id = assigned_task_id
                     changed = True
 
+                if rb.get("title") and exist.title != rb.get("title"):
+                    exist.title = rb.get("title")
+                    changed = True
+
+                if rb.get("target_element") and exist.target_element != rb.get("target_element"):
+                    exist.target_element = rb.get("target_element")
+                    changed = True
+
                 if rb.get("status") and exist.status != rb.get("status"):
                     exist.status = rb.get("status")
                     changed = True
@@ -360,15 +368,15 @@ def sync_all_bugs(db: Session) -> int:
                     exist.assignee = rb.get("assignee")
                     changed = True
 
-                if rb.get("analysis_notes") and (not exist.analysis_notes or len(rb.get("analysis_notes")) > len(exist.analysis_notes or "")):
+                if rb.get("analysis_notes") and exist.analysis_notes != rb.get("analysis_notes"):
                     exist.analysis_notes = rb.get("analysis_notes")
                     changed = True
 
-                if rb.get("remark") and not exist.remark:
+                if rb.get("remark") and exist.remark != rb.get("remark"):
                     exist.remark = rb.get("remark")
                     changed = True
 
-                if rb.get("zentao_id") and not exist.zentao_id:
+                if rb.get("zentao_id") and exist.zentao_id != str(rb.get("zentao_id")):
                     exist.zentao_id = str(rb.get("zentao_id"))
                     changed = True
 
