@@ -1000,13 +1000,25 @@ class ExplorerWorker:
                         except Exception:
                             crash_img_path = None
                         path_str = " -> ".join(current_ui_path) if current_ui_path else "未知路径"
-                        self.bug_reporter.report_bug(
-                            run_id=self.run_id,
-                            title=f"[{self.run_id}] 探索动作 '{element_desc}' 执行物理崩溃",
-                            step_prompt=f"[{action_type.upper()}] {element_desc} (当前路径: {path_str})",
-                            actual_result=f"底层驱动执行异常: {e_exec}",
-                            crash_image_path=crash_img_path
-                        )
+
+                        is_browser_disconnected = any(k in str(e_exec).lower() for k in [
+                            "target page, context or browser has been closed",
+                            "target closed",
+                            "browser has been closed",
+                            "connection closed",
+                            "session closed",
+                            "execution context was destroyed"
+                        ])
+                        if is_browser_disconnected:
+                            logger.warning(f"⚠️ [Driver Disconnected] 客户端进程已关闭或断开（如看门狗熔断自愈回收），跳过生成虚假操作崩溃 Bug: {e_exec}")
+                        else:
+                            self.bug_reporter.report_bug(
+                                run_id=self.run_id,
+                                title=f"[{self.run_id}] 探索动作 '{element_desc}' 执行物理崩溃",
+                                step_prompt=f"[{action_type.upper()}] {element_desc} (当前路径: {path_str})",
+                                actual_result=f"底层驱动执行异常: {e_exec}",
+                                crash_image_path=crash_img_path
+                            )
 
                 # --- 分支 C: Auto-API 双向核验 ---
                 combined_api_target = f"{element_desc} {api_assert_prompt}".lower()

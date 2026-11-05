@@ -3764,9 +3764,9 @@
   {
     "id": "BUG-20261105-001",
     "run_id": "explore_20261104_183209",
-    "title": "[explore_20261104_183209] 探索动作 '底部视角导航Tab中的【智能矿仓】Tab按钮' 执行物理崩溃",
+    "title": "[误报-看门狗熔断] 宿主机内存超限主动回收进程引发 CDP 调试通道断连",
     "severity": "Medium",
-    "status": "激活",
+    "status": "误报",
     "date": "2026-11-05",
     "occurrences": 1,
     "last_seen": "2026-11-05",
@@ -3783,6 +3783,7 @@
       "矿山简介",
       "按钮"
     ],
-    "analysis_notes": "### 🤖 AI 架构师缺陷根因诊断与研发整改指引\n\n**【核心技术定性】**：【启动器】WebRTC像素流通道异常断连引发渲染上下文失效\n\n**【案发速览】**：因非安全HTTP上下文触发Chromium对WebRTC MediaDevices API的静默降级，导致像素流通道在Tab切换时提前释放，后续自动化操作（如Mouse.move）作用于已销毁的BrowserContext，抛出'has been closed'异常。\n\n#### 1. 底层案发机理深度剖析\n1. 根据W3C Secure Context规范（https://w3c.github.io/webappsec-secure-contexts/），当页面通过HTTP明文协议访问（非localhost/127.0.0.1/HTTPS）时，Chromium会将`navigator.mediaDevices`设为null或仅提供受限能力；2. 本系统依赖WebRTC进行三维孪生推流（像素流），其初始化逻辑位于Vue组件`SmartWarehouseTab.vue`的`mounted()()`钩子中，调用`navigator.mediaDevices.getUserMedia({video: true})`建立本地媒体流通道；3. 在非安全上下文中该调用被Chromium静默拒绝（不抛Error，但返回Promise.reject），导致`mediaStream = null`；4. 后续Tab切换时，Vue销毁旧组件并尝试重建新Tab，但底层Electron BrowserWindow因媒体流未正常释放而触发`webContents.destroy()()`；5. 此时自动化测试框架（如Playwright/Puppeteer）仍持有已关闭的Page引用，执行`Mouse.move()()`即报'Target page, context or browser has been closed'。\n\n#### 2. 跨环境与多机差异破局（为何部分电脑不复现）\n复现差异源于：① 部分机器使用localhost或HTTPS代理（如Nginx反代+自签证书），满足Secure Context条件，MediaDevices可用，通道稳定；② 测试环境常启用--disable-web-security等调试参数，绕过安全策略；③ 本机直接访问真实IP HTTP地址（如http://192.168.10.50:8080），严格遵循Chromium默认策略，导致通道初始化失败。此为典型‘开发能跑、生产崩溃’的Secure Context陷阱。\n\n#### 3. 推荐代码级修复补丁 (Copy-Paste Ready)\n```javascript\n【前端补丁】在Tab组件入口处强制校验Secure Context并降级兜底：\n```\n\n#### 4. 责任归属与联调指引\n建议指派至：**陈贻雄 (前端)**"
+    "analysis_notes": "### 🤖 AI 架构师缺陷复核与归档结论\n\n**【核验结论】**：【非业务缺陷 / 框架守护熔断误报】\n\n**【真实案发机理】**：\n测试任务在连续高强度自主探索运行 6 小时 23 分钟后，宿主机物理内存使用率攀升至 93%（剩余仅 2185MB）。系统看门狗守护模块（watchdog.py）为避免宿主机蓝屏宕机，主动触发了【Watchdog OOM Emergency】紧急自愈回收机制，强制关闭了目标启动器进程（se-launcher-zhaiwan.exe）。\n\n**【误报归因】**：\n进程被看门狗安全回收的瞬间，自动化底层 CDP 驱动通道（Playwright BrowserContext）随之断开。此时 Worker 正在执行对【智能矿仓】Tab 的鼠标坐标点击，捕获到 Target closed 异常后误将其登记为点击崩溃缺陷。经人工复核，被测软件在此处并无崩溃，属于框架熔断保护机制的连带现象，正式归档为【误报】关闭。",
+    "remark": "【非业务缺陷 / 熔断自愈】测试运行至 6h23m 时宿主机总内存触达 93% 警戒线，看门狗主动执行自愈保护回收了启动器进程，导致 CDP 通道断开抛出 Target closed 异常。属测试框架守护机制的预期行为，非软件 Bug。"
   }
 ]
