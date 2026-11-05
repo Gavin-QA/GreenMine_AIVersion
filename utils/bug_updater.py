@@ -104,6 +104,12 @@ def update_bug_record(data: Dict[str, Any]) -> Dict[str, Any]:
                     json.dump(b_data, rf, ensure_ascii=False, indent=2)
                 success = True
                 updated_targets.append(f"{run_dir.name}/bugs/{bug_id}.json")
+                try:
+                    from utils.report_generator import ReportGenerator
+                    ReportGenerator(run_dir).generate_html(disable_push=True, update_hub=False)
+                    updated_targets.append(f"{run_dir.name}/report.html")
+                except Exception as rge:
+                    logger.debug(f"重新渲染 {run_dir.name}/report.html 跳过: {rge}")
             except Exception as e:
                 logger.warning(f"更新运行目录 Bug 文件异常 ({run_bug_file}): {e}")
 

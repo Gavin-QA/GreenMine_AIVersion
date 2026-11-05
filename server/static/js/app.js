@@ -145,7 +145,7 @@ const app = createApp({
     const liveAppsStatus = ref([
       { app_name: 'tianrui', title: '四川天瑞', online: false, ue_pid: null, ue_commit_mb: 0, ue_memory_mb: 0 },
       { app_name: 'zhaiwan', title: '寨湾矿山', online: false, ue_pid: null, ue_commit_mb: 0, ue_memory_mb: 0 },
-      { app_name: 'liwutong', title: '李屋塘矿山', online: false, ue_pid: null, ue_commit_mb: 0, ue_memory_mb: 0 }
+      { app_name: 'liwutong', title: '里伍铜矿山', online: false, ue_pid: null, ue_commit_mb: 0, ue_memory_mb: 0 }
     ]);
 
 
@@ -539,7 +539,7 @@ const app = createApp({
 
         if (bugAbortController) {
 
-          try { bugAbortController.abort(); } catch (_) {}
+          try { bugAbortController.abort(); } catch (_) { }
 
         }
 
@@ -1215,19 +1215,19 @@ const app = createApp({
 
           { type: 'inside', start: 0, end: 100 },
 
-          { 
+          {
 
-            type: 'slider', 
+            type: 'slider',
 
-            start: 0, 
+            start: 0,
 
-            end: 100, 
+            end: 100,
 
-            height: 18, 
+            height: 18,
 
-            bottom: 4, 
+            bottom: 4,
 
-            borderColor: '#1a253c', 
+            borderColor: '#1a253c',
 
             fillerColor: 'rgba(0, 210, 255, 0.15)',
 
@@ -1835,7 +1835,7 @@ const app = createApp({
 
                   if (found) Object.assign(selectedBug.value, found);
 
-                }).catch(() => {});
+                }).catch(() => { });
 
               }
 
