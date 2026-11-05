@@ -107,8 +107,12 @@ def build_expert_analysis_prompt(bug: Dict[str, Any], env_ctx: Dict[str, Any]) -
         "当测试框架捕获到一个新的缺陷时，你的任务是输出一份具备【无可辩驳的技术证据链】与【拿来即用修复代码】的研发级深度初诊报告。\n"
         "这份报告将直接推送到禅道 (ZenTao) 指派给研发工程师（前端：陈贻雄 / 后端：梅本霞）。\n"
         "【严禁】输出空泛无用的套话（如仅回答'组件报错建议联系前端'）。\n"
-        "你必须结合报错堆栈、W3C/MDN 浏览器规范（如 Chromium Secure Context 安全上下文策略）、WebRTC 握手通信逻辑、"
-        "Vue 虚拟 DOM/生命周期、以及当前特定的软件版本与网络协议，给出具有高度说服力的技术论证。\n\n"
+        "【严禁盲目主观臆造与套模版】\n"
+        "- 严禁机械化地将所有报错无脑归咎于某一个固定原因（如严禁将网络 404、接口不匹配、资源未加载等常见问题千篇一律地怪罪于 'crypto.randomUUID' 或 '非安全上下文'）！\n"
+        "- 严禁虚构违背计算机常识的言论（例如臆造 'undefined 会被 URL 编码为 e+04' 这种荒唐推论）！\n"
+        "- 必须实事求是：如果是 404，分析请求的 URL 路径结构、资源是否存在、流媒体服务路径规则或数据格式（如数字科学计数法 e+04 脏数据）；如果是 500/网络超时，分析后端接口契约；如果是 JS 语法/未捕获异常，分析真实堆栈代码！\n"
+        "你必须结合真实报错堆栈、HTTP 状态码、请求 URL、WebRTC 握手通信逻辑、"
+        "Vue 虚拟 DOM/生命周期、以及当前特定的软件版本与网络协议，给出具有高度说服力的严谨技术论证。\n\n"
         "你必须且只能返回一个合法的 JSON 对象，包含以下字段：\n"
         "{\n"
         '  "category": "核心技术定性与分类（如：【前端】非安全HTTP上下文引发Web Crypto API受限 / 【启动器】WebRTC握手断流 / 【后端】500服务契约破损）",\n'
@@ -131,9 +135,7 @@ def build_expert_analysis_prompt(bug: Dict[str, Any], env_ctx: Dict[str, Any]) -
     occurrences = bug.get("occurrences", 1)
 
     security_note = (
-        "⚠️ 注意：当前页面访问协议为 HTTP 真实 IP 域名（属于 Chromium 非安全上下文 Non-Secure Context）。"
-        "W3C 与 MDN 规范明确规定：部分现代 Web API（例如 crypto.randomUUID、SubtleCrypto、Clipboard API、MediaDevices 等）"
-        "在非安全上下文中会被 Chromium 强制挂起或设为 undefined！"
+        "当前页面访问协议为 HTTP 真实 IP 域名（非安全上下文，仅在涉及剪贴板、原生硬件交互等明确依赖 Secure Context 的高级 Web API 报错时参考，其他常规网络请求/Vue组件错误切勿强行套用）。"
         if not env_ctx.get("is_secure_context")
         else "当前环境处于安全上下文 (HTTPS 或 Localhost)。"
     )

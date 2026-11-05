@@ -2675,7 +2675,7 @@
   {
     "id": "BUG-20261022-002",
     "run_id": "explore_20261104_183209",
-    "title": "[explore_20261022_183127] 探索操作 '左侧业务面板中【810分段1#采场】卡片的标题栏（可点击区域）' 触发底层异常",
+    "title": "[explore_20261022_183127] 采场详情视频流地址存在科学计数法脏数据且播放器缺乏404熔断死循环770次",
     "severity": "Medium",
     "status": "激活",
     "date": "2026-10-22",
@@ -2697,8 +2697,9 @@
       "弹窗"
     ],
     "last_recurrence_step": 141,
-    "analysis_notes": "### 🤖 AI 架构师缺陷根因诊断与研发整改指引\n\n**【核心技术定性】**：【前端】非安全HTTP上下文引发WebRTC推流地址生成逻辑失效，导致非法路径死循环404\n\n**【案发速览】**：因页面运行于HTTP非安全上下文（http://221.234.48.197:8808），Vue组件在调用crypto.randomUUID()生成流ID时返回undefined或空字符串，拼接出非法推流路径'/vzlm/live/542/e+04'，触发高频404轮询；该问题在HTTPS环境或现代Chromium安全上下文中不会复现。\n\n#### 1. 底层案发机理深度剖析\n1. 根据W3C Secure Context规范（https://w3c.github.io/webappsec-secure-contexts/），当页面协议为HTTP且非localhost时，`crypto.randomUUID()()`在Chromium 100+中被降级为返回undefined（见Chrome Platform Status: https://chromestatus.com/feature/5698332122726400）；\n2. 前端视频流组件（推测为`LiveStream.vue`或类似模块）在初始化时执行：`const streamId = crypto.randomUUID().replace(/-/g, '') || 'fallback';`，但因非安全上下文返回undefined，导致后续拼接为`/vzlm/live/542/${streamId}}` → `/vzlm/live/542/undefined` → 被URL编码为`e+04`（即`%undefined`经encodeURI后异常转义）；\n3. 推流组件未做错误重试退避策略，每次失败后立即重试（无指数退避），形成770+次404死循环；\n4. 后端/vzlm/live/*接口实际仅接受合法UUID格式流ID（如550e8400-e29b-41d4-a716-446655440000），故持续404。\n\n#### 2. 跨环境与多机差异破局（为何部分电脑不复现）\n✅ 复现条件严格依赖：\n- 客户端使用Electron 25+（Chromium 116+），启用严格Secure Context策略；\n- 页面通过真实公网IP + HTTP访问（非localhost/127.0.0.1）；\n- 前端包版本未升级至兼容非安全上下文的兜底逻辑（如fallback使用Date.now().toString(36)）；\n❌ 不复现场景：\n- 本地开发时用`http://localhost:8080`（Chromium视为Secure Context）；\n- 部分旧版Electron（<23）仍允许crypto.randomUUID()在HTTP下返回伪随机值；\n- 测试机若配置了自签名HTTPS代理（如Charles HTTPS拦截）则自动升为Secure Context；\n- 控制台静默忽略404（部分测试环境关闭network error日志）导致漏报。\n\n#### 3. 推荐代码级修复补丁 (Copy-Paste Ready)\n```javascript\n【前端修复代码】（建议注入至main.js或全局polyfill）：\n```\n\n#### 4. 责任归属与联调指引\n建议指派至：**陈贻雄 (前端)**",
-    "assignee": "陈贻雄"
+    "analysis_notes": "### 🤖 AI 架构师缺陷根因诊断与研发整改指引\n\n**【核心技术定性】**：【后端数据源配置 / 前端组件容错】采场关联视频流标识存在科学计数法脏数据且播放器缺乏 404 熔断机制引发高频死循环风暴\n\n**【案发速览】**：\n用户在【安全管理 -> 采场可视化】模块点击打开【810分段1#采场】卡片后，弹窗内视频组件请求流地址 `http://221.234.48.197:8808/vzlm/live/542/e+04` 返回 404；前端播放器缺乏重试上限与退避策略，陷入无休止的高频死循环轮询，累计捕获 770+ 次 404 错误。前期初诊所推断的“crypto.randomUUID 在非安全上下文中将 undefined 编码为 e+04”系大模型受提示词诱导产生的严重事实幻觉，现已彻底纠偏。\n\n#### 1. 底层案发机理深度剖析\n1. **视频流地址脏数据根因 (典型科学计数法截断/裂变)**：\n   推流地址格式为 ZLMediaKit 标准的 `/vzlm/live/{app}/{stream}`。目标采场关联的摄像头/视频流代码原本应为类似 `54200` 等数字编号（5.42 × 10^4），在早期的台账录入、Excel 批量导入数据库或后端 JSON 序列化过程中，该编号被 Excel/脚本自动转换为科学计数法格式（如 `5.42e+04`），并在后续分割或路径拼接时，小数点与分隔符被误处理，裂变成了 app=`542`、stream=`e+04`。ZLMediaKit 流媒体服务器上根本不存在该标识的视频流，故持续返回 HTTP 404 (Not Found)。\n2. **前端视频播放组件缺乏退避熔断 (404 死亡轮询风暴)**：\n   弹窗内的视频播放器在推流地址返回 404 时，未设置最大重试上限（如重试 3 次后终止并提示“视频源离线”），也未执行指数退避策略，而是在 `onError` 回调中无延迟立即重新拉流，引发狂发 770+ 次高频 404 请求的死亡死循环，严重抢占网络带宽与浏览器主线程资源。\n\n#### 2. 跨环境与多机差异破局\n- 该问题取决于采场绑定的视频源数据。在测试环境中如果采场绑定的都是正常流地址（如 `/vzlm/live/camera_01`）则不会触发；仅在点击绑定了包含科学计数法脏数据的【810分段1#采场】时必然稳定复现。\n\n#### 3. 业务影响与隐患评估\n- 采场视频监控画面黑屏/无法加载，无法远程巡视采场生产与安全状态；\n- 770+ 次高频无效网络请求造成浏览器控制台严重刷屏，并导致局域网网络与流媒体服务器网关负载骤增。\n\n#### 4. 代码级修复建议与整改措施 (双向闭环)\n- **后端整改（梅本霞）**：核对【采场可视化 -> 810分段1#采场】后台视频流字段配置，将脏数据 `542/e+04` 纠正为真实的摄像头流标识或置空；\n- **前端整改（陈贻雄）**：在视频播放器封装组件中增加错误重试保护：\n```javascript\n// 视频流拉取防死循环熔断策略\nlet retryCount = 0;\nconst MAX_RETRY = 3;\nplayer.on('error', (err) => {\n    if (retryCount < MAX_RETRY) {\n        retryCount++;\n        setTimeout(reconnect, 2000 * retryCount); // 指数退避重试\n    } else {\n        player.destroy();\n        showPlaceholder(\"当前视频信号源离线或地址不可用\"); // 停止轮询并展示占位提示\n    }\n});\n```\n\n#### 5. 责任归属\n建议联合协同处理：\n- **主要责任人**：**梅本霞 (后端)**（负责排查并清洗数据库中采场视频流科学计数法脏数据）\n- **协同责任人**：**陈贻雄 (前端)**（负责播放器组件 404 错误熔断与防死循环保护）",
+    "assignee": "梅本霞",
+    "remark": "【真实根因排查】采场视频流地址中包含典型的科学计数法脏数据（/vzlm/live/542/e+04），ZLMediaKit 返回 404；且前端视频播放组件在 404 时未设置重试退避与熔断，导致短时间内发起 770+ 次死循环高频轮询。前期归因为 crypto.randomUUID 系大模型提示词诱导产生的幻觉，已纠偏重写。"
   },
   {
     "id": "BUG-20261023-001",
@@ -3561,7 +3562,7 @@
     "run_id": "explore_20261103_183408",
     "title": "[资源储量] 首次点击三维场景中的地质钻孔标签（如ZK101）打开岩性柱状表弹窗触发 TypeError: toFixed is not a function 异常",
     "severity": "High",
-    "status": "激活",
+    "status": "已提单",
     "date": "2026-10-30",
     "occurrences": 7,
     "last_seen": "2026-11-04",
@@ -3580,7 +3581,8 @@
       "资源储量"
     ],
     "analysis_notes": "### 🤖 AI 架构师缺陷根因诊断与研发整改指引\n\n**【核心技术定性】**：【前端代码健壮性漏洞】钻孔地质岩性接口返回脏数据（null/非数字）时，组件未做防御性类型校验直接调用 .toFixed(3) 引发 TypeError 崩溃\n\n**【准确复现步骤】**：\n1. 访问进入系统二级菜单：【资源管理】->【资源储量】；\n2. 首次进入页面，观察中央三维数字孪生场景（UE/三维视口），场景中分布有多个地质钻孔标签（如 ZK101、ZK201、ZK401、ZK803i 等）；\n3. 打开浏览器/客户端控制台（F12 Console）；\n4. 点击中央三维场景中的任一地质钻孔标签（如 **`ZK101`**）触发打开岩性柱状表弹窗；\n5. **控制台立即报错**：`TypeError: i.x.toFixed is not a function at panelCard18-DVdiJhQ8.js:1:3767`。\n*(注意：该异常仅在首次进入该页面并首次点击任一钻孔标签时触发；由于首次渲染抛出未捕获异常破坏了响应式链，后续点击切换其他钻孔时通常不再二次抛错。)*\n\n#### 1. 底层案发机理与前端源码铁证\n根据前端打包产物 `assets/panelCard18-DVdiJhQ8.js`（钻孔岩性柱状表弹窗组件）实际源码：\n```javascript\n// panelCard18 组件获取钻孔地层岩性详情：\nmethods: {\n    getList() {\n        const l = this;\n        T.getGeologyDrillingGeologyList({ holeNumber: l.code }, n => {\n            const i = n?.data?.list || [];\n            this.tableData = i.map((s, e) => ({\n                number: e + 1,\n                code: s.strataCode,\n                name: s.strataName,\n                bottomDepth: s.endDepth.toFixed(3) || \"--\",   // 💥 致命崩溃行 1\n                thickness: s.thickness.toFixed(3) || \"--\",    // 💥 致命崩溃行 2\n                content: s.description\n            }))\n        })\n    }\n}\n```\n- 后端接口 `/getGeologyDrillingGeologyList` 返回的数据中，部分地层的 `endDepth`（底板埋深）或 `thickness`（地层厚度）字段为 `null`、`undefined` 或未转数值的字符串；\n- 前端未做任何类型防御性转换，直接裸调 `.toFixed(3)`，由于 `null`/`undefined`/`string` 上不存在 `toFixed` 方法，瞬间抛出 `TypeError` 崩溃。\n\n#### 2. 责任归属与整改方案\n建议指派至：**陈贻雄 (前端开发)**\n\n**推荐代码级修复补丁 (Copy-Paste Ready)**：\n在 `panelCard18` 组件的 `tableData` 映射逻辑中，统一加入浮点数值防御性转换：\n```javascript\nbottomDepth: Number.isFinite(Number(s.endDepth)) ? Number(s.endDepth).toFixed(3) : \"--\",\nthickness: Number.isFinite(Number(s.thickness)) ? Number(s.thickness).toFixed(3) : \"--\",\n```\n",
-    "last_recurrence_step": 1430
+    "last_recurrence_step": 1430,
+    "zentao_id": "1209"
   },
   {
     "id": "BUG-20261031-001",
