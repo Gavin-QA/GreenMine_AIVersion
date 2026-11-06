@@ -25,7 +25,7 @@ from fastapi import (
 
 from fastapi.middleware.cors import CORSMiddleware
 
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse, Response
 
 from fastapi.staticfiles import StaticFiles
 
@@ -266,6 +266,15 @@ def serve_index():
         return FileResponse(str(index_file))
 
     return {"message": "Vision Platform API Server Running"}
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def serve_favicon():
+    """网站专属图标 (Favicon)"""
+    icon_file = STATIC_DIR / "favicon.svg"
+    if icon_file.exists():
+        return FileResponse(str(icon_file), media_type="image/svg+xml")
+    return Response(status_code=204)
 
 
 # =============================================================================
