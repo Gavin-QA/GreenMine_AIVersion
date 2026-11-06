@@ -1349,11 +1349,11 @@
             <div style="display:flex;gap:6px;align-items:center;justify-content:center;">
               <div style="position:relative;display:inline-block;cursor:zoom-in;" title="点击放大操作前截图" onclick="showImageFullscreen('${beforeShotUrl}', event)">
                 <span style="position:absolute;top:2px;left:2px;font-size:9px;font-weight:700;padding:1px 4px;border-radius:3px;color:#fff;background:rgba(16,185,129,0.85);z-index:2;line-height:1.2;">前</span>
-                <img src="${beforeShotUrl}" style="width:68px;height:42px;object-fit:cover;border-radius:4px;border:1px solid rgba(16,185,129,0.4);display:block;transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.08)'" onmouseout="this.style.transform='scale(1)'"/>
+                <img src="${beforeShotUrl}" onerror="this.parentElement.style.display='none'" style="width:68px;height:42px;object-fit:cover;border-radius:4px;border:1px solid rgba(16,185,129,0.4);display:block;transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.08)'" onmouseout="this.style.transform='scale(1)'"/>
               </div>
               <div style="position:relative;display:inline-block;cursor:zoom-in;" title="点击放大案发现场截图" onclick="showImageFullscreen('${relShotUrl}', event)">
                 <span style="position:absolute;top:2px;left:2px;font-size:9px;font-weight:700;padding:1px 4px;border-radius:3px;color:#fff;background:rgba(244,63,94,0.85);z-index:2;line-height:1.2;">案发</span>
-                <img src="${relShotUrl}" style="width:68px;height:42px;object-fit:cover;border-radius:4px;border:1px solid rgba(244,63,94,0.4);display:block;transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.08)'" onmouseout="this.style.transform='scale(1)'"/>
+                <img src="${relShotUrl}" onerror="this.parentElement.style.display='none'" style="width:68px;height:42px;object-fit:cover;border-radius:4px;border:1px solid rgba(244,63,94,0.4);display:block;transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.08)'" onmouseout="this.style.transform='scale(1)'"/>
               </div>
             </div>`;
         } else if (relShotUrl) {
@@ -1361,7 +1361,7 @@
             <div style="display:flex;justify-content:center;">
               <div style="position:relative;display:inline-block;cursor:zoom-in;" title="点击放大案发现场截图" onclick="showImageFullscreen('${relShotUrl}', event)">
                 <span style="position:absolute;top:2px;left:2px;font-size:9px;font-weight:700;padding:1px 4px;border-radius:3px;color:#fff;background:rgba(244,63,94,0.85);z-index:2;line-height:1.2;">案发</span>
-                <img src="${relShotUrl}" style="width:78px;height:46px;object-fit:cover;border-radius:4px;border:1px solid rgba(255,255,255,0.15);display:block;transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.08)'" onmouseout="this.style.transform='scale(1)'"/>
+                <img src="${relShotUrl}" onerror="this.parentElement.style.display='none'" style="width:78px;height:46px;object-fit:cover;border-radius:4px;border:1px solid rgba(255,255,255,0.15);display:block;transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.08)'" onmouseout="this.style.transform='scale(1)'"/>
               </div>
             </div>`;
         } else {
@@ -1552,12 +1552,12 @@
             <div class="bug-screenshots-duo">
               <div class="bug-thumb-box" onclick="showImageFullscreen('${beforeShotUrl}', event)" title="点击放大操作前截图">
                 <span class="bug-thumb-tag tag-before">操作前 (目标位置)</span>
-                <img src="${beforeShotUrl}" alt="Before" loading="lazy">
+                <img src="${beforeShotUrl}" alt="Before" loading="lazy" onerror="this.parentElement.style.display='none'">
                 <div class="zoom-hint">🔍 点击放大</div>
               </div>
               <div class="bug-thumb-box" onclick="showImageFullscreen('${relShotUrl}', event)" title="点击放大案发现场截图">
                 <span class="bug-thumb-tag tag-after">案发现场 (报错)</span>
-                <img src="${relShotUrl}" alt="Crash" loading="lazy">
+                <img src="${relShotUrl}" alt="Crash" loading="lazy" onerror="this.parentElement.style.display='none'">
                 <div class="zoom-hint">🔍 点击放大</div>
               </div>
             </div>`;
@@ -1565,7 +1565,7 @@
           document.getElementById('modalScreenshot').innerHTML = `
             <div class="bug-thumb-box" style="max-width:550px;" onclick="showImageFullscreen('${relShotUrl}', event)" title="点击放大案发现场截图">
               <span class="bug-thumb-tag tag-after">案发现场 (报错)</span>
-              <img src="${relShotUrl}" alt="Crash Screenshot" loading="lazy">
+              <img src="${relShotUrl}" alt="Crash Screenshot" loading="lazy" onerror="this.parentElement.style.display='none'">
               <div class="zoom-hint">🔍 点击放大核验</div>
             </div>`;
       } else {

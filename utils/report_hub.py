@@ -145,6 +145,8 @@ class ReportHub:
             except Exception as e:
                 logger.error(f"解析运行目录 {d.name} 失败: {e}")
 
+        # 按执行时间倒序排列，优先采用最新批次的运行数据
+        runs_data.sort(key=lambda x: x.get("mtime", 0), reverse=True)
         return runs_data
 
     def build_index_html(self, output_path: Optional[Path | str] = None) -> Path:
@@ -253,18 +255,27 @@ class ReportHub:
                 before_shot = b.get("before_screenshot", "")
                 step_num = b.get("step_num")
                 if b_id in all_bugs_dict:
-                    if rel_shot:
-                        if target_run_dir and (target_run_dir / rel_shot).exists():
-                            all_bugs_dict[b_id]["rel_screenshot"] = rel_shot
-                            all_bugs_dict[b_id]["rel_run_path"] = r_rel
-                        else:
-                            all_bugs_dict[b_id].pop("rel_screenshot", None)
-                    if before_shot and target_run_dir and (target_run_dir / before_shot).exists():
-                        all_bugs_dict[b_id]["before_screenshot"] = before_shot
-                    if step_num:
-                        all_bugs_dict[b_id]["step_num"] = step_num
-                    all_bugs_dict[b_id]["report_link"] = r_link
-                    all_bugs_dict[b_id]["rel_run_path"] = r_rel
+                    # 严格校验当前批次截图真实存在性，并以原子元组方式更新，严禁跨批次状态污染
+                    valid_rel_shot = rel_shot if (rel_shot and target_run_dir and (target_run_dir / rel_shot).exists()) else ""
+                    valid_before_shot = before_shot if (before_shot and target_run_dir and (target_run_dir / before_shot).exists()) else ""
+                    
+                    is_auth_run = (r_id == all_bugs_dict[b_id].get("run_id"))
+                    curr_has_shots = bool(all_bugs_dict[b_id].get("rel_screenshot") or all_bugs_dict[b_id].get("before_screenshot"))
+                    cand_has_shots = bool(valid_rel_shot or valid_before_shot)
+
+                    # 决定是否采用当前批次作为现场呈现批次：
+                    # 1) 是该 Bug 绑定的权威 run；或
+                    # 2) 现存条目完全没有现场截图，而当前候选 run 拥有真实截图；或
+                    # 3) 当前条目并非权威 run，且当前候选 run 拥有更完整的双快照
+                    should_adopt_run = is_auth_run or (not curr_has_shots and cand_has_shots) or (valid_rel_shot and valid_before_shot and not all_bugs_dict[b_id].get("before_screenshot"))
+
+                    if should_adopt_run:
+                        all_bugs_dict[b_id]["rel_run_path"] = r_rel
+                        all_bugs_dict[b_id]["report_link"] = r_link
+                        all_bugs_dict[b_id]["rel_screenshot"] = valid_rel_shot
+                        all_bugs_dict[b_id]["before_screenshot"] = valid_before_shot
+                        if step_num is not None:
+                            all_bugs_dict[b_id]["step_num"] = step_num
                     
                     # 若已有的 ui_path 缺失或为首页，尝试用 run 中的数据补充
                     if (all_bugs_dict[b_id]["ui_path"] in ("", "无", "首页")) and b.get("ui_path"):
@@ -334,7 +345,20 @@ class ReportHub:
                     }
                     enrich_bug_metadata(all_bugs_dict[b_id])
                     
-        # 3. 生成 all_bugs 并修正总数
+        # 3. 最终健全性巡检：严格核验所有 Bug 快照在其绑定的 rel_run_path 下真实存在，杜绝悬挂路径与 404
+        for b_entry in all_bugs_dict.values():
+            run_p = b_entry.get("rel_run_path") or b_entry.get("run_id", "")
+            r_dir = find_run_dir(run_p)
+            if r_dir:
+                if b_entry.get("rel_screenshot") and not (r_dir / b_entry["rel_screenshot"]).exists():
+                    b_entry["rel_screenshot"] = ""
+                if b_entry.get("before_screenshot") and not (r_dir / b_entry["before_screenshot"]).exists():
+                    b_entry["before_screenshot"] = ""
+            else:
+                b_entry["rel_screenshot"] = ""
+                b_entry["before_screenshot"] = ""
+
+        # 4. 生成 all_bugs 并修正总数
         all_bugs = list(all_bugs_dict.values())
         total_bugs = len(all_bugs)
 
