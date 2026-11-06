@@ -471,8 +471,6 @@ const app = createApp({
 
         }
 
-        fetchLiveAppsStatus();
-
       } catch (e) {
 
         console.error('获取实时快照失败:', e);
@@ -1823,7 +1821,11 @@ const app = createApp({
 
               console.log('[Live-Update] ⚡ 监听到缺陷数据变更，静默热更新...', msg.data);
 
-              fetchBugs();
+              if (currentTab.value === 'bugs') {
+
+                fetchBugs();
+
+              }
 
               if (selectedBug.value && msg.data && selectedBug.value.id === msg.data.bug_id) {
 
@@ -1843,13 +1845,17 @@ const app = createApp({
 
               console.log('[Live-Update] ⚡ 监听到巡检任务状态变更，静默热更新...', msg.data);
 
-              fetchTasks();
+              if (currentTab.value === 'tasks') {
+
+                fetchTasks();
+
+              }
 
             } else if (msg.event === 'data_refresh') {
 
-              fetchBugs();
+              if (currentTab.value === 'bugs') fetchBugs();
 
-              fetchTasks();
+              if (currentTab.value === 'tasks') fetchTasks();
 
             }
 
@@ -1897,80 +1903,74 @@ const app = createApp({
 
     let liveTimer = null;
 
-    let taskTimer = null;
+    function startLiveTimer() {
+      if (!liveTimer) {
+        liveTimer = setInterval(fetchLiveSnapshot, 4000);
+      }
+    }
 
+    function stopLiveTimer() {
+      if (liveTimer) {
+        clearInterval(liveTimer);
+        liveTimer = null;
+      }
+    }
 
+    // 智能 Tab 驱动：仅在用户切换到对应 Tab 时按需发起单次数据获取，彻底消灭无意义后台轮询
+    watch(currentTab, (newTab) => {
+      if (newTab === 'bugs') {
+        fetchBugs();
+      } else if (newTab === 'tasks') {
+        fetchTasks();
+      } else if (newTab === 'monitor') {
+        fetchLiveAppsStatus();
+        fetchLiveSnapshot();
+        loadLiveAmbientHistory(liveSelectedApp.value, getSpanHours(liveTimeSpan.value));
+        startLiveTimer();
+      } else if (newTab === 'dashboard') {
+        fetchLiveSnapshot();
+        startLiveTimer();
+      }
+
+      // 切离实时监控与看板时，暂停 4 秒快照轮询，彻底释放网络与 CPU 资源
+      if (newTab !== 'monitor' && newTab !== 'dashboard') {
+        stopLiveTimer();
+      }
+    });
 
     onMounted(() => {
-
       fetchOptions();
-
       fetchPresetTasks();
-
-      fetchTasks();
-
       fetchLiveAppsStatus();
 
-      loadLiveAmbientHistory(liveSelectedApp.value, getSpanHours(liveTimeSpan.value));
-
-      fetchLiveSnapshot();
-
-      fetchBugs();
+      // 根据初始默认 Tab 按需加载首屏数据与启动必要监控
+      if (currentTab.value === 'dashboard') {
+        fetchLiveSnapshot();
+        startLiveTimer();
+      } else if (currentTab.value === 'monitor') {
+        fetchLiveSnapshot();
+        loadLiveAmbientHistory(liveSelectedApp.value, getSpanHours(liveTimeSpan.value));
+        startLiveTimer();
+      } else if (currentTab.value === 'tasks') {
+        fetchTasks();
+      } else if (currentTab.value === 'bugs') {
+        fetchBugs();
+      }
 
       initPlatformWebSocket();
 
-
-
-      // 当用户从其他应用/窗口切回本控制台标签页时，自动静默触发最新数据同步
-
-      document.addEventListener('visibilitychange', () => {
-
-        if (!document.hidden) {
-
-          fetchBugs();
-
-          fetchTasks();
-
-        }
-
-      });
-
-
-
-      // 定时轮询环境快照与任务状态
-
-      liveTimer = setInterval(fetchLiveSnapshot, 4000);
-
-      taskTimer = setInterval(fetchTasks, 5000);
-
-
-
       window.addEventListener('resize', () => {
-
         if (domChart) domChart.resize();
-
         if (ueChart) ueChart.resize();
-
       });
-
     });
 
-
-
     onUnmounted(() => {
-
-      if (liveTimer) clearInterval(liveTimer);
-
-      if (taskTimer) clearInterval(taskTimer);
-
+      stopLiveTimer();
       if (platformReconnectTimer) clearTimeout(platformReconnectTimer);
-
       if (platformWs) platformWs.close();
-
       if (logWs) logWs.close();
-
       if (metricWs) metricWs.close();
-
     });
 
 
