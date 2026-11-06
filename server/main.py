@@ -363,24 +363,24 @@ def get_config_options():
         {
             "key": "explore",
             "name": "自主探索模式 (Explorer)",
-            "desc": "Planner-Worker 双核黑客模式，自主规划链路挖掘深层 Crash",
-        },
-        {
-            "key": "smoke",
-            "name": "全量页面冒烟体检 (Smoke Tour)",
-            "desc": "极速单次遍历当前系统全部业务菜单，验证两级跳转与基础健康度",
+            "desc": "多模态大模型动态驱动，自主规划链路与挖掘未知深层 Crash",
         },
         {
             "key": "case",
-            "name": "YAML 确定性用例回放",
-            "desc": "精确重现已通过静态合规检验的 YAML 业务流程",
-        },
-        {
-            "key": "all",
-            "name": "批量回归全套用例",
-            "desc": "遍历运行 test_cases/ 目录下全部 YAML 用例",
+            "name": "确定性用例回放 (YAML Case)",
+            "desc": "精确重现已通过静态合规检验的标准自然语言回归流程",
         },
     ]
+
+    yaml_cases = [{"name": "运行全量用例 (批量回归)", "path": ""}]
+    test_cases_dir = Path("test_cases")
+    if test_cases_dir.exists():
+        for p in sorted(test_cases_dir.glob("*.yaml")):
+            if p.is_file() and p.stat().st_size > 0:
+                yaml_cases.append({
+                    "name": p.name,
+                    "path": str(p).replace("\\", "/")
+                })
 
     templates = [
         {
@@ -413,6 +413,7 @@ def get_config_options():
     return ConfigOptionsResponse(
         apps=apps,
         modes=modes,
+        yaml_cases=yaml_cases,
         prompt_templates=templates,
         zentao_configured=zentao_ok,
         zentao_base_url=zentao_url,
@@ -460,7 +461,8 @@ DEFAULT_PRESET_TASKS = [
         "id": "preset_zhaiwan_smoke_tour",
         "title": "二级菜单极速全量冒烟体检",
         "app_name": "zhaiwan",
-        "mode": "smoke",
+        "mode": "explore",
+        "tour": True,
         "badge": "冒烟",
         "max_steps": 1500,
         "max_times": 150,
@@ -531,6 +533,7 @@ def get_preset_tasks(db: Session = Depends(get_db)):
                 reset_memory=p.get("reset_memory", False),
                 ignore_errors=p.get("ignore_errors", True),
                 case_path=p.get("case_path"),
+                tour=p.get("tour", False),
                 is_system=True,
             )
 
@@ -544,6 +547,8 @@ def get_preset_tasks(db: Session = Depends(get_db)):
             exist.app_name = p["app_name"]
 
             exist.mode = p["mode"]
+
+            exist.tour = p.get("tour", False)
 
             exist.badge = p["badge"]
 
@@ -624,7 +629,13 @@ def save_or_update_preset_task(
         existing.ignore_errors = payload.ignore_errors
 
         existing.case_path = payload.case_path
-
+        existing.tour = payload.tour
+        existing.resume_from = payload.resume_from
+        existing.reexplore = payload.reexplore
+        existing.start_delay = payload.start_delay
+        existing.wait_ready = payload.wait_ready
+        existing.wait_timeout = payload.wait_timeout
+        existing.ignore_env_check = payload.ignore_env_check
         existing.updated_at = now
 
         db.commit()
@@ -648,6 +659,13 @@ def save_or_update_preset_task(
             reset_memory=payload.reset_memory,
             ignore_errors=payload.ignore_errors,
             case_path=payload.case_path,
+            tour=payload.tour,
+            resume_from=payload.resume_from,
+            reexplore=payload.reexplore,
+            start_delay=payload.start_delay,
+            wait_ready=payload.wait_ready,
+            wait_timeout=payload.wait_timeout,
+            ignore_env_check=payload.ignore_env_check,
             is_system=False,
             created_at=now,
             updated_at=now,
@@ -735,25 +753,31 @@ def launch_preset_task(
         p_ignore = target_preset["ignore_errors"]
 
         p_case = target_preset["case_path"]
+        p_tour = target_preset.get("tour", False)
+        p_resume = target_preset.get("resume_from")
+        p_reexplore = target_preset.get("reexplore")
+        p_start_delay = target_preset.get("start_delay")
+        p_wait_ready = target_preset.get("wait_ready")
+        p_wait_timeout = target_preset.get("wait_timeout", 60.0)
+        p_ignore_env = target_preset.get("ignore_env_check", False)
 
     else:
         p_title = target_preset.title
-
         p_app = target_preset.app_name
-
         p_mode = target_preset.mode
-
         p_obj = target_preset.macro_objective
-
         p_steps = target_preset.max_steps
-
         p_times = target_preset.max_times
-
         p_reset = target_preset.reset_memory
-
         p_ignore = target_preset.ignore_errors
-
         p_case = target_preset.case_path
+        p_tour = getattr(target_preset, "tour", False)
+        p_resume = getattr(target_preset, "resume_from", None)
+        p_reexplore = getattr(target_preset, "reexplore", None)
+        p_start_delay = getattr(target_preset, "start_delay", None)
+        p_wait_ready = getattr(target_preset, "wait_ready", None)
+        p_wait_timeout = getattr(target_preset, "wait_timeout", 60.0)
+        p_ignore_env = getattr(target_preset, "ignore_env_check", False)
 
     now = datetime.datetime.now()
     task_id = f"task_{now.strftime('%Y%m%d_%H%M%S')}"
@@ -774,6 +798,13 @@ def launch_preset_task(
         reset_memory=p_reset,
         ignore_errors=p_ignore,
         case_path=p_case,
+        tour=p_tour,
+        resume_from=p_resume,
+        reexplore=p_reexplore,
+        start_delay=p_start_delay,
+        wait_ready=p_wait_ready,
+        wait_timeout=p_wait_timeout,
+        ignore_env_check=p_ignore_env,
         explore_context=f"docs/explore_rules_{p_app}.md",
         start_time=now,
     )
@@ -829,6 +860,13 @@ def create_task(payload: TaskCreate, db: Session = Depends(get_db)):
         ignore_errors=payload.ignore_errors,
         explore_context=payload.explore_context,
         case_path=payload.case_path,
+        tour=payload.tour,
+        resume_from=payload.resume_from,
+        reexplore=payload.reexplore,
+        start_delay=payload.start_delay,
+        wait_ready=payload.wait_ready,
+        wait_timeout=payload.wait_timeout,
+        ignore_env_check=payload.ignore_env_check,
         start_time=now,
     )
 

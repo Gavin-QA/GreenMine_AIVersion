@@ -31,17 +31,12 @@ const app = createApp({
     // 全局选项配置 (应用、模式、提示词模板)
 
     const options = reactive({
-
       apps: [],
-
       modes: [],
-
+      yaml_cases: [],
       prompt_templates: [],
-
       zentao_configured: false,
-
       report_hub_url: '/report-hub'
-
     });
 
 
@@ -151,29 +146,26 @@ const app = createApp({
 
 
     const taskForm = reactive({
-
       preset_id: null, // 记录当前是否绑定某个预设 (用于回写保存)
-
       name: '',
-
       app_name: 'tianrui',
-
-      mode: 'explore',
-
+      mode: 'explore', // explore | case
+      tour: false, // 是否启用二级菜单全量冒烟巡检策略 (--tour)
+      case_path: '',
       macro_objective: '',
-
       max_steps: 200,
-
       max_times: 60,
-
       reset_memory: false,
-
       ignore_errors: true,
-
       explore_context: 'docs/explore_rules_tianrui.md',
-
-      case_path: ''
-
+      // 进阶参数调优 (对应 main.py CLI 选项)
+      show_advanced: false,
+      resume_from: '',
+      reexplore: '',
+      start_delay: null,
+      wait_ready: '',
+      wait_timeout: 60,
+      ignore_env_check: false
     });
 
     // 全局当前权威选中的矿山名称 (用于顶栏、侧边栏和看板联动)
@@ -316,9 +308,8 @@ const app = createApp({
         const data = await res.json();
 
         options.apps = data.apps || [];
-
         options.modes = data.modes || [];
-
+        options.yaml_cases = data.yaml_cases || [];
         options.prompt_templates = data.prompt_templates || [];
 
         options.zentao_configured = data.zentao_configured;
@@ -705,13 +696,23 @@ const app = createApp({
       // 2. 严禁覆盖 taskForm.app_name，严格保持用户当前选择的目标矿山
 
       // 3. 模式与目标
-      taskForm.mode = preset.mode;
+      taskForm.mode = (preset.mode === 'case' ? 'case' : 'explore');
+      taskForm.tour = (preset.mode === 'smoke' || !!preset.tour);
       taskForm.macro_objective = preset.macro_objective;
       taskForm.max_steps = preset.max_steps;
       taskForm.max_times = preset.max_times;
       taskForm.reset_memory = preset.reset_memory;
       taskForm.ignore_errors = preset.ignore_errors;
       taskForm.case_path = preset.case_path || '';
+      taskForm.resume_from = preset.resume_from || '';
+      taskForm.reexplore = preset.reexplore || '';
+      taskForm.start_delay = preset.start_delay != null ? preset.start_delay : null;
+      taskForm.wait_ready = preset.wait_ready || '';
+      taskForm.wait_timeout = preset.wait_timeout != null ? preset.wait_timeout : 60;
+      taskForm.ignore_env_check = !!preset.ignore_env_check;
+      if (taskForm.resume_from || taskForm.reexplore || taskForm.start_delay || taskForm.wait_ready || taskForm.ignore_env_check) {
+        taskForm.show_advanced = true;
+      }
 
       // 平滑滚动到底部表单
       const formCard = document.getElementById('taskFormCard');
@@ -752,8 +753,14 @@ const app = createApp({
 
         ignore_errors: taskForm.ignore_errors,
 
-        case_path: taskForm.case_path || null,
-
+        case_path: taskForm.mode === 'case' ? (taskForm.case_path || null) : null,
+        tour: taskForm.mode === 'explore' ? taskForm.tour : false,
+        resume_from: taskForm.resume_from || null,
+        reexplore: taskForm.reexplore || null,
+        start_delay: taskForm.start_delay,
+        wait_ready: taskForm.wait_ready || null,
+        wait_timeout: taskForm.wait_timeout,
+        ignore_env_check: taskForm.ignore_env_check,
         description: `用户自定义预设: ${taskForm.app_name} / ${taskForm.mode} / ${taskForm.max_steps}步`
 
       };
@@ -868,13 +875,33 @@ const app = createApp({
 
         }
 
+        const payload = {
+          name: taskForm.name,
+          app_name: taskForm.app_name,
+          mode: taskForm.mode,
+          tour: taskForm.mode === 'explore' ? !!taskForm.tour : false,
+          case_path: taskForm.mode === 'case' ? (taskForm.case_path || null) : null,
+          macro_objective: taskForm.macro_objective,
+          max_steps: taskForm.max_steps,
+          max_times: taskForm.max_times,
+          reset_memory: taskForm.reset_memory,
+          ignore_errors: taskForm.ignore_errors,
+          explore_context: `docs/explore_rules_${taskForm.app_name}.md`,
+          resume_from: taskForm.resume_from || null,
+          reexplore: taskForm.reexplore || null,
+          start_delay: taskForm.start_delay,
+          wait_ready: taskForm.wait_ready || null,
+          wait_timeout: taskForm.wait_timeout,
+          ignore_env_check: taskForm.ignore_env_check,
+        };
+
         const res = await fetch(`${apiBase}/api/tasks`, {
 
           method: 'POST',
 
           headers: { 'Content-Type': 'application/json' },
 
-          body: JSON.stringify(taskForm)
+          body: JSON.stringify(payload)
 
         });
 

@@ -116,4 +116,22 @@ def init_db():
             with engine.begin() as conn:
                 conn.execute(text("ALTER TABLE bug_records ADD COLUMN run_id VARCHAR(64)"))
 
+    # 针对已有 task_runs 与 preset_task_records 表平滑补齐高级调优列
+    adv_columns = [
+        ("tour", "BOOLEAN DEFAULT 0"),
+        ("resume_from", "VARCHAR(256)"),
+        ("reexplore", "VARCHAR(128)"),
+        ("start_delay", "FLOAT"),
+        ("wait_ready", "VARCHAR(256)"),
+        ("wait_timeout", "FLOAT"),
+        ("ignore_env_check", "BOOLEAN DEFAULT 0"),
+    ]
+    for table_name in ("task_runs", "preset_task_records"):
+        if table_name in inspector.get_table_names():
+            tbl_cols = {col["name"] for col in inspector.get_columns(table_name)}
+            with engine.begin() as conn:
+                for col_name, col_ddl in adv_columns:
+                    if col_name not in tbl_cols:
+                        conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_ddl}"))
+
 

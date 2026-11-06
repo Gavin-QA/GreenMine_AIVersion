@@ -31,6 +31,15 @@ class TaskRun(Base):
     ignore_errors = Column(Boolean, default=True)
     explore_context = Column(String(256), default="docs/explore_rules_zhaiwan.md")
     case_path = Column(String(256), nullable=True)
+
+    # 进阶参数调优 (对应 main.py CLI 选项)
+    tour = Column(Boolean, default=False) # --tour / --smoke: 二级菜单全量冒烟巡检策略
+    resume_from = Column(String(256), nullable=True) # --resume-from: 断点续传历史运行目录
+    reexplore = Column(String(128), nullable=True) # --reexplore: 强制重探业务模块名
+    start_delay = Column(Float, nullable=True) # --start-delay: 启动应用缓冲等待秒数
+    wait_ready = Column(String(256), nullable=True) # --wait-ready: 画面就绪自然语言判定词
+    wait_timeout = Column(Float, nullable=True) # --wait-timeout: 视觉等待超时秒数
+    ignore_env_check = Column(Boolean, default=False) # --ignore-env-check: 忽略 Launcher 客户端环境前置校验
     
     # 运行物理环境与进程
     pid = Column(Integer, nullable=True)
@@ -209,6 +218,16 @@ class PresetTaskRecord(Base):
     reset_memory = Column(Boolean, default=False)
     ignore_errors = Column(Boolean, default=True)
     case_path = Column(String(256), nullable=True)
+
+    # 进阶参数调优
+    tour = Column(Boolean, default=False)
+    resume_from = Column(String(256), nullable=True)
+    reexplore = Column(String(128), nullable=True)
+    start_delay = Column(Float, nullable=True)
+    wait_ready = Column(String(256), nullable=True)
+    wait_timeout = Column(Float, nullable=True)
+    ignore_env_check = Column(Boolean, default=False)
+
     is_system = Column(Boolean, default=False) # 系统默认预设 vs 用户自定义预设
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)

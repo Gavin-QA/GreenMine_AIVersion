@@ -59,7 +59,10 @@ class TaskManager:
             cmd = [python_exe, "main.py"]
 
             if task.mode == "explore":
-                cmd.extend(["--explore", task.macro_objective or "全量自主探索"])
+                if getattr(task, "tour", False):
+                    cmd.append("--tour")
+                else:
+                    cmd.extend(["--explore", task.macro_objective or "全量自主探索"])
                 cmd.extend(["--max-steps", str(task.max_steps)])
                 cmd.extend(["--max-times", str(task.max_times)])
                 if task.reset_memory:
@@ -68,8 +71,21 @@ class TaskManager:
                     cmd.append("--ignore-errors")
                 if task.explore_context:
                     cmd.extend(["--explore-context", task.explore_context])
+                if getattr(task, "resume_from", None):
+                    cmd.extend(["--resume-from", task.resume_from])
+                if getattr(task, "reexplore", None):
+                    cmd.extend(["--reexplore", task.reexplore])
+                if getattr(task, "start_delay", None) is not None:
+                    cmd.extend(["--start-delay", str(task.start_delay)])
+                if getattr(task, "wait_ready", None):
+                    cmd.extend(["--wait-ready", task.wait_ready])
+                    if getattr(task, "wait_timeout", None) is not None:
+                        cmd.extend(["--wait-timeout", str(task.wait_timeout)])
+                if getattr(task, "ignore_env_check", False):
+                    cmd.append("--ignore-env-check")
 
             elif task.mode in ("smoke", "tour"):
+                # 兼容旧历史任务
                 cmd.append("--tour")
                 if task.ignore_errors:
                     cmd.append("--ignore-errors")
@@ -81,6 +97,14 @@ class TaskManager:
                     cmd.append("--all")
                 if task.ignore_errors:
                     cmd.append("--ignore-errors")
+                if getattr(task, "start_delay", None) is not None:
+                    cmd.extend(["--start-delay", str(task.start_delay)])
+                if getattr(task, "wait_ready", None):
+                    cmd.extend(["--wait-ready", task.wait_ready])
+                    if getattr(task, "wait_timeout", None) is not None:
+                        cmd.extend(["--wait-timeout", str(task.wait_timeout)])
+                if getattr(task, "ignore_env_check", False):
+                    cmd.append("--ignore-env-check")
 
             elif task.mode == "all":
                 cmd.append("--all")

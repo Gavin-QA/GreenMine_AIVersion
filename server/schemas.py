@@ -68,6 +68,13 @@ class TaskCreate(BaseModel):
         description="单一 YAML 用例路径 (仅在 mode='case' 确定性用例模式下生效)",
         examples=["test_cases/case_zhaiwan_smoke.yaml"]
     )
+    tour: bool = Field(default=False, description="是否启用二级菜单全量冒烟巡检策略 (--tour)")
+    resume_from: Optional[str] = Field(default=None, description="断点续传历史运行目录 (--resume-from)")
+    reexplore: Optional[str] = Field(default=None, description="强制重新探索指定业务模块 (--reexplore)")
+    start_delay: Optional[float] = Field(default=None, description="启动等待时间秒数 (--start-delay)")
+    wait_ready: Optional[str] = Field(default=None, description="视觉智能就绪自然语言判定条件 (--wait-ready)")
+    wait_timeout: Optional[float] = Field(default=60.0, description="视觉智能就绪超时秒数 (--wait-timeout)")
+    ignore_env_check: bool = Field(default=False, description="是否忽略 Launcher 客户端环境前置校验 (--ignore-env-check)")
 
 
 class TaskResponse(BaseModel):
@@ -80,6 +87,13 @@ class TaskResponse(BaseModel):
     macro_objective: Optional[str] = Field(default=None, description="任务执行的宏观意图提示词")
     max_steps: int = Field(description="配置的最大步数")
     max_times: int = Field(description="配置的最大超时时间(分钟)")
+    tour: bool = Field(default=False, description="是否开启二级菜单冒烟巡检策略")
+    resume_from: Optional[str] = Field(default=None, description="断点续传历史运行目录")
+    reexplore: Optional[str] = Field(default=None, description="强制重探模块名")
+    start_delay: Optional[float] = Field(default=None, description="启动缓冲等待秒数")
+    wait_ready: Optional[str] = Field(default=None, description="视觉就绪条件")
+    wait_timeout: Optional[float] = Field(default=60.0, description="视觉就绪超时时间")
+    ignore_env_check: bool = Field(default=False, description="是否跳过环境前置校验")
     pid: Optional[int] = Field(default=None, description="后台执行子进程物理 PID")
     start_time: Optional[datetime.datetime] = Field(default=None, description="任务启动时间戳 (UTC)")
     end_time: Optional[datetime.datetime] = Field(default=None, description="任务结束时间戳 (UTC)")
@@ -262,6 +276,13 @@ class PresetTaskCreate(BaseModel):
     case_path: Optional[str] = Field(default=None, description="用例路径 (case模式生效)")
     badge: Optional[str] = Field(default="自定义", description="标签 (推荐/抗压/冒烟/回归/自定义)")
     description: Optional[str] = Field(default=None, description="简要描述说明")
+    tour: bool = Field(default=False, description="是否开启二级菜单冒烟巡检策略")
+    resume_from: Optional[str] = Field(default=None, description="断点续传历史运行目录")
+    reexplore: Optional[str] = Field(default=None, description="强制重探模块名")
+    start_delay: Optional[float] = Field(default=None, description="启动缓冲等待秒数")
+    wait_ready: Optional[str] = Field(default=None, description="视觉就绪条件")
+    wait_timeout: Optional[float] = Field(default=60.0, description="视觉就绪超时时间")
+    ignore_env_check: bool = Field(default=False, description="是否跳过环境前置校验")
 
 
 class PresetTaskResponse(BaseModel):
@@ -278,6 +299,13 @@ class PresetTaskResponse(BaseModel):
     case_path: Optional[str] = Field(default=None, description="用例文件相对路径")
     badge: str = Field(default="推荐", description="标签 (推荐/高优/抗压/冒烟/自定义)")
     description: Optional[str] = Field(default=None, description="业务场景与测试目标简要说明")
+    tour: bool = Field(default=False, description="是否开启二级菜单冒烟巡检策略")
+    resume_from: Optional[str] = Field(default=None, description="断点续传历史运行目录")
+    reexplore: Optional[str] = Field(default=None, description="强制重探模块名")
+    start_delay: Optional[float] = Field(default=None, description="启动缓冲等待秒数")
+    wait_ready: Optional[str] = Field(default=None, description="视觉就绪条件")
+    wait_timeout: Optional[float] = Field(default=60.0, description="视觉就绪超时时间")
+    ignore_env_check: bool = Field(default=False, description="是否跳过环境前置校验")
     is_system: bool = Field(default=False, description="是否为系统只读预设")
 
     class Config:
@@ -288,6 +316,7 @@ class ConfigOptionsResponse(BaseModel):
     """前端表单初始化选项字典响应模型"""
     apps: List[Dict[str, str]] = Field(description="可选矿山大屏应用清单 (key, name, desc)")
     modes: List[Dict[str, str]] = Field(description="可选运行模式清单 (key, name, desc)")
+    yaml_cases: List[Dict[str, str]] = Field(default_factory=list, description="本地 test_cases 目录下的标准 YAML 用例列表")
     prompt_templates: List[Dict[str, str]] = Field(description="高质量预置探索提示词模板清单 (title, prompt)")
     zentao_configured: bool = Field(description="当前后端是否已正确配置公司禅道系统免密提单鉴权")
     zentao_base_url: Optional[str] = Field(default=None, description="公司禅道系统 Web 根地址 (用于单号超链接动态拼接)")
