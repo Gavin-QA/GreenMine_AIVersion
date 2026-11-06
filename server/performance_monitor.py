@@ -262,13 +262,27 @@ class PerformanceMonitor:
             "webrtc_fps": None
         }
 
-        # 项目专属身份特征签名 (解决共用 9223 端口时的张冠李戴串线 Bug)
-        app_signatures = {
-            "zhaiwan": ["zhaiwan", "寨湾"],
-            "liwutong": ["liwutong", "里伍", "里伍铜"],
-            "tianrui": ["tianrui", "天瑞", "四川天瑞"]
-        }
-        signatures = app_signatures.get(app_name, [app_name.lower()])
+        # 1. 严格操作系统进程级验真：检查占用当前 debug_port (9223) 的进程是否确属当前 app_name
+        app_key = app_name.lower()
+        port_belongs_to_app = False
+        try:
+            for c in psutil.net_connections(kind="tcp4"):
+                if c.laddr.port == port and c.status == "LISTEN" and c.pid:
+                    try:
+                        proc = psutil.Process(c.pid)
+                        p_name = proc.name().lower()
+                        p_exe = proc.exe().lower()
+                        if app_key in p_name or app_key in p_exe:
+                            port_belongs_to_app = True
+                            break
+                    except Exception:
+                        pass
+        except Exception:
+            port_belongs_to_app = True
+
+        # 若 9223 端口未启动，或被其他矿山客户端占用，坚决判定当前应用 CDP 离线，彻底防止跨应用串线
+        if not port_belongs_to_app:
+            return empty_res
 
         try:
             # 绕过系统网络代理直连 localhost
@@ -280,21 +294,18 @@ class PerformanceMonitor:
             if not pages:
                 return empty_res
 
-            # 严格验明正身：优先寻找业务页面，且该页面必须归属于当前 app_name
+            # 2. 优先寻找业务页面 (排除 devtools, background, chrome-extension 等系统页)
             target_page = None
             for p in pages:
                 p_url = (p.get("url") or "").lower()
-                p_title = (p.get("title") or "").lower()
                 p_type = p.get("type", "")
                 if p_type == "page" and not p_url.startswith("devtools://") and not p_url.startswith("chrome-extension://"):
-                    belongs_to_app = any(sig in p_url or sig in p_title for sig in signatures)
-                    if belongs_to_app and ("main.html" in p_url or "index.html" in p_url or "http" in p_url):
+                    if "main.html" in p_url or "index.html" in p_url or "localhost" in p_url or "http" in p_url:
                         target_page = p
                         break
-                    elif belongs_to_app and not target_page:
+                    elif not target_page:
                         target_page = p
 
-            # 若 9223 端口中无归属当前 app_name 的业务页面，坚决判定该应用 CDP 离线，严禁跨项目串线
             if not target_page:
                 return empty_res
 
