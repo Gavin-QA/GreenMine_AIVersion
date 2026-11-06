@@ -98,7 +98,7 @@ const app = createApp({
 
     const tasks = ref([]);
 
-    const activeTaskId = ref(null);
+    const activeTaskId = ref('__live__');
 
     const activeTask = ref(null);
 
@@ -1765,47 +1765,7 @@ const app = createApp({
 
 
 
-    // 监听标签页切换
 
-    watch(currentTab, (val) => {
-
-      if (val === 'monitor') {
-
-        // 切回大屏标签页时：图表 DOM 重新恢复显示，只调用 resize 自适应容器，不销毁历史数据！
-
-        nextTick(() => {
-
-          if (domChart) domChart.resize();
-
-          if (ueChart) ueChart.resize();
-
-          scrollTerminalToBottom();
-
-        });
-
-        if (!domChart || !ueChart) {
-
-          initCharts(false);
-
-          if (activeTaskId.value && activeTaskId.value !== '__live__') {
-
-            loadHistoricalMetrics(activeTaskId.value);
-
-          } else if (activeTaskId.value === '__live__') {
-
-            loadLiveAmbientHistory(liveSelectedApp.value, getSpanHours(liveTimeSpan.value));
-
-          }
-
-        }
-
-      } else if (val === 'bugs') {
-
-        fetchBugs();
-
-      }
-
-    });
 
 
 
@@ -1956,17 +1916,33 @@ const app = createApp({
       }
     }
 
-    // 智能 Tab 驱动：仅在用户切换到对应 Tab 时按需发起单次数据获取，彻底消灭无意义后台轮询
+    // 智能 Tab 驱动：仅在用户切换到对应 Tab 时按需发起数据获取，彻底消灭全站高频无意义轮询
     watch(currentTab, (newTab) => {
       if (newTab === 'bugs') {
         fetchBugs();
       } else if (newTab === 'tasks') {
         fetchTasks();
       } else if (newTab === 'monitor') {
+        fetchTasks(); // 预载最新任务清单，保证“当前查看维度”下拉选项时刻齐全
         fetchLiveAppsStatus();
         fetchLiveSnapshot();
-        loadLiveAmbientHistory(liveSelectedApp.value, getSpanHours(liveTimeSpan.value));
         startLiveTimer();
+
+        nextTick(() => {
+          if (domChart) domChart.resize();
+          if (ueChart) ueChart.resize();
+          scrollTerminalToBottom();
+        });
+
+        if (!domChart || !ueChart) {
+          initCharts(false);
+        }
+
+        if (activeTaskId.value && activeTaskId.value !== '__live__') {
+          loadHistoricalMetrics(activeTaskId.value);
+        } else {
+          loadLiveAmbientHistory(liveSelectedApp.value, getSpanHours(liveTimeSpan.value));
+        }
       } else if (newTab === 'dashboard') {
         fetchLiveSnapshot();
         startLiveTimer();
@@ -1982,6 +1958,7 @@ const app = createApp({
       fetchOptions();
       fetchPresetTasks();
       fetchLiveAppsStatus();
+      fetchTasks(); // 启动时预载任务库，保证任何页面（含监控大屏维度）均可即刻使用任务数据
 
       // 根据初始默认 Tab 按需加载首屏数据与启动必要监控
       if (currentTab.value === 'dashboard') {
@@ -1991,8 +1968,6 @@ const app = createApp({
         fetchLiveSnapshot();
         loadLiveAmbientHistory(liveSelectedApp.value, getSpanHours(liveTimeSpan.value));
         startLiveTimer();
-      } else if (currentTab.value === 'tasks') {
-        fetchTasks();
       } else if (currentTab.value === 'bugs') {
         fetchBugs();
       }
