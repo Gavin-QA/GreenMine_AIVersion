@@ -1677,6 +1677,21 @@ const app = createApp({
       return str.split('.')[0] || '-';
     }
 
+    function formatDuration(val) {
+      if (!val || val === '未知') return '-';
+      if (typeof val === 'string' && (val.includes('h') || val.includes('m') || val.includes('s'))) {
+        return val;
+      }
+      const m = String(val).match(/^(\d+):(\d+):(\d+)$/);
+      if (m) {
+        const h = parseInt(m[1], 10);
+        const mn = parseInt(m[2], 10);
+        const s = parseInt(m[3], 10);
+        return h > 0 ? `${h}h ${mn}m ${s}s` : `${mn}m ${s}s`;
+      }
+      return String(val);
+    }
+
     function formatReportUrl(url) {
 
       if (!url) return '';
@@ -2103,6 +2118,8 @@ const app = createApp({
       viewBugDetail,
 
       formatDateTime,
+
+      formatDuration,
 
       formatReportUrl,
 

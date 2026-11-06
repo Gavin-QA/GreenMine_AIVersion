@@ -200,7 +200,11 @@ class TaskManager:
                 task.end_time = datetime.datetime.now()
                 if task.start_time:
                     delta = task.end_time - task.start_time
-                    task.duration = str(delta).split(".")[0]
+                    sec = int(delta.total_seconds())
+                    h = sec // 3600
+                    m = (sec % 3600) // 60
+                    s = sec % 60
+                    task.duration = f"{h}h {m}m {s}s" if h > 0 else f"{m}m {s}s"
 
                 if task.status != "stopped":
                     task.status = "completed" if exit_code == 0 else "failed"
