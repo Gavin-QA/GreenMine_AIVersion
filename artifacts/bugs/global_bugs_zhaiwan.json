@@ -4309,7 +4309,7 @@
   },
   {
     "id": "BUG-20261030-001",
-    "run_id": "explore_20261104_183209",
+    "run_id": "explore_20261105_182434",
     "task_id": "task_20261104_183208",
     "app": "zhaiwan",
     "title": "[explore_20261030_181807] 探索操作 '左侧业务面板中【地质勘探报告】分类下的第一条报告条目【寨湾矿段采样点素描图】' 触发底层异常",
@@ -4329,15 +4329,17 @@
     "actual": "[page_error] crypto.randomUUID is not a function",
     "analysis_notes": "🔍【核心根因与多机差异复盘排查报告】\n1. 异常本质与案发代码：\n   - 报错位置：se-launcher-zhaiwan 启动器内置 WebRTC 数据通道组件（app.asar 中 sendClientEvent 方法）。\n   - 案发源码：\n     sendClientEvent(t) { this.dc ? (t.event_id = t.event_id || crypto.randomUUID(), this.dc.send(JSON.stringify(t)), this.appendEvent(t)) : console.error(\"Failed to send mess\") }\n   - 报错堆栈：[page_error] TypeError: crypto.randomUUID is not a function。\n\n2. 为什么仅在本机复现，另外两台电脑无法复现？（版本对比铁证）：\n   - 启动器版本差异：本机已升级至 2026-10-30 发布的【1.4.2644】版本（se-launcher-zhaiwan-Windows-1.4.2644-Setup.exe，体积由 139MB 增至 178MB）。\n   - 历史版本（1.4.2630 / 1.4.2632）的 WebRTC 事件通道代码中并未使用 crypto.randomUUID()，因此未升级的机器绝对不会触发。\n   - 1.4.2644 新版在重构 WebRTC 事件结构时引入了该 API，但未考虑非安全上下文环境，属于新版本引入的代码兼容性倒退（Regression Bug）。\n\n3. 为什么人工测试难以察觉：\n   - 依据 W3C / MDN 规范，crypto.randomUUID() 仅在安全上下文（HTTPS 或 localhost）下暴露；在通过普通 HTTP IP（如 http://221.234.48.197:8808）访问时，Chromium 会静默将该方法置为 undefined。\n   - 报错发生在后台异步数据包发送阶段，界面不弹红框报错也不闪退，仅在 DevTools Console 中静默抛出 PageError，人工肉眼极难察觉，而自动化 CDP 探针能够 100% 精准捕获。\n\n4. 启动器开发修复方案：\n   - 在启动器 WebRTC 数据通道发送模块中增加兼容兜底，严禁裸调：\n     const eventId = t.event_id || ((typeof crypto !== \"undefined\" && typeof crypto.randomUUID === \"function\") ? crypto.randomUUID() : (Date.now().toString(36) + Math.random().toString(36).slice(2)));",
     "remark": "已定位为 1.4.2644 新版启动器 WebRTC 数据通道 sendClientEvent 裸调 crypto.randomUUID 引发的兼容性倒退缺陷，准备另提单给启动器开发组。",
-    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/explore_20261101_134222/bugs/BUG-20261030-001_170026.png",
-    "occurrences": 208,
+    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/explore_20261105_182434/bugs/BUG-20261030-001_070401.png",
+    "occurrences": 225,
     "date": "2026-11-02",
-    "last_seen": "2026-11-05",
-    "details": null
+    "last_seen": "2026-11-06",
+    "details": null,
+    "last_recurrence_step": 1897,
+    "global_step": 51
   },
   {
     "id": "BUG-20261030-002",
-    "run_id": "explore_20261104_183209",
+    "run_id": "explore_20261105_182434",
     "task_id": "task_20261104_183208",
     "app": "zhaiwan",
     "title": "[explore_20261030_193525] 长航探索捕获前端内存/显存资源泄漏 (安全管理 -> 人车防碰撞)",
@@ -4355,13 +4357,15 @@
       "人车防碰撞"
     ],
     "actual": "【前端内存/显存资源泄漏】全局 JS 事件监听器严重泄漏未解绑 (净增 +5245 个 > 阈值 +5000, 当前 5402) | 探针详情: JSHeap: 28.42MB -> 74.25MB (Δ=+45.83MB, 2.61x) | DOM: 401 -> 21016 (Δ=+20615) | Listeners: 157 -> 5402 (Δ=+5245) | ECharts=2, Canvas=2, Video=1",
-    "analysis_notes": "🤖【AI 智能初诊与排查指引 (长航高频复现深度归因)】\n1. 缺陷定位与表现：\n   系统级前端内存/显存严重泄漏与 DOM/事件监听器暴涨未解绑。\n   在近 3 轮长航深度探索（10-30、10-31、11-01）中累计高频复现 6 次，跨越多个核心大屏业务模块：\n   - 运行中途单页告警：\n     •【安全管理 -> 人车防碰撞】：事件监听器净增 +5,245 个（达 5,402），DOM 节点净增 +20,615 个（达 21,016），JSHeap 暴涨 2.61x；\n     •【设备管理 -> 运输设备】：事件监听器净增 +5,134 个（达 5,204），DOM 节点净增 +15,651 个（达 16,035），JSHeap 暴涨 5.29x；\n     •【安全管理 -> 安全管理一张图】：事件监听器净增 +7,440 个（达 7,513），DOM 节点净增 +29,564 个（达 29,948），JSHeap 暴涨 8.19x；\n   - 终态全量稳态复检（经 CDP 强制 Full GC 垃圾回收后依然无法释放）：\n     • 10-30 终态：DOM 节点堆积达 561,578 个（超标 11 倍），监听器达 170,163 个（超标 34 倍），JSHeap 暴增 +416.28MB（膨胀 15.65x）；\n     • 10-31 终态：DOM 节点堆积达 630,308 个（超标 12 倍），监听器达 189,052 个（超标 37 倍），JSHeap 暴增 +455.28MB（膨胀 46.16x）；\n     • 11-01 终态：DOM 节点堆积达 313,498 个，监听器达 91,671 个，导致 Chromium Event Loop 假死卡顿并直接引发 CDP 截屏连续 8 次超时死锁。\n\n2. 严重性评估与现场危害：\n   - 矿山大屏现场 7x24 小时长时间运行挂机必死：内存与 DOM 节点随切页呈线性恶性堆积，导致客户端持续掉帧、UI 响应严重迟滞。\n   - 最终必然引发 Chromium 渲染主线程卡死假死、WebGL 上下文丢失（Canvas 破面黑屏），直至触发浏览器 OOM 崩溃（白屏死机），具有极高线上隐蔽性与严重破坏力。\n\n3. 核心疑点与推断根因：\n   ① Vue 组件生命周期清理缺失：大量业务卡片在组件卸载（unmounted / beforeDestroy）时，未成对移除全局监听（如 window.addEventListener('resize')、document.addEventListener 或地图/Canvas 事件）；\n   ② 渲染实例未释放：ECharts 图表未执行 chart.dispose()，视频播放器卡片未清理 video.srcObject / MediaStream，导致脱离文档树的节点（Detached DOM Tree）被全局闭包引用锁死，无法被 V8 GC 回收；\n   ③ 页面级轮询定时器泄漏：切页后组件内部的 setInterval / requestAnimationFrame 未执行 clearInterval，持续在后台向已废弃的 DOM 实例追加数据与触发重绘。\n\n4. 建议排查与修复指引（责任人：陈贻雄）：\n   ① 全局静态排查：全局检索项目中所有的 addEventListener，严格补齐成对的 removeEventListener，推荐大屏业务卡片统一引入 VueUse 的 useEventListener 自动托管生命周期；\n   ② 图表与多媒体统一销毁规范：在所有包含 ECharts / Canvas / 视频流的组件 onUnmounted 钩子中，强制统一执行 chart.dispose()、video.srcObject = null 与 clearInterval()；\n   ③ 人工深度复核验证：使用 Chrome DevTools 的 Performance 与 Memory 面板（录制 Allocation instrumentation on timeline），在“人车防碰撞”与“运输设备”页面间反复切换 10 次，核验 DOM 节点与 Detached Tree 是否能够正常平稳回落至基线。",
+    "analysis_notes": "🤖【AI 架构师智能初诊与排查指引 (长航高频复现深度归因)】\n\n【缺陷表现与实测规模 (经 CDP Full GC 垃圾回收后依然无法释放)】\n- DOM 节点树：基线 384 个 ➔ 阶梯式暴涨至 305,835 个 (净增 +305,451，超标 6 倍)\n- 全局 JS 监听器：基线 73 个 ➔ 暴涨至 87,642 个 (净增 +87,569，严重未解绑)\n- V8 JSHeap：从 6.33 MB 暴涨至 245.06 MB (膨胀 24.51 倍)\n- 物理内存占用：zhaiwan.exe 峰值超 2.1 GB，整机内存水位达 88%\n\n【高发重灾区页面】\n- 【安全管理 -> 人车防碰撞】\n- 【设备管理 -> 运输设备】\n- 【安全管理 -> 安全管理一张图】\n- 【安全管理 -> 通风监测】\n\n【核心根因与修复三板斧 (责任人：陈贻雄)】\n1. 全局监听未解绑：排查 window/document.addEventListener，组件 unmounted 时未成对 removeEventListener（建议大屏统一接入 VueUse useEventListener 托管生命周期）。\n2. 图表/流媒体未销毁：ECharts 容器未执行 chart.dispose()，WebRTC/视频卡片未释放流与 DOM 引用，导致 Detached DOM Tree 脱离文档树后仍被闭包强引用锁死。\n3. 轮询定时器未清：切页后组件内部的 setInterval / requestAnimationFrame 未执行 clearInterval，后台持续向废弃实例追加数据。\n\n【本地复现验证方法】\n打开 Chrome DevTools -> Performance / Memory 面板，在“人车防碰撞”与“运输设备”页面间反复切换 10 次，核验 DOM 节点与 Detached Tree 是否能够正常平稳回落至基线。",
     "remark": null,
-    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/explore_20261101_134222/bugs/BUG-20261030-002.png",
-    "occurrences": 11,
+    "screenshot": "d:/Auto/electron_ai_vision/reports/runs/zhaiwan/explore_20261105_182434/bugs/BUG-20261030-002_timeline.png",
+    "occurrences": 13,
     "date": "2026-11-02",
-    "last_seen": "2026-11-04",
-    "details": null
+    "last_seen": "2026-11-06",
+    "details": null,
+    "last_recurrence_step": 2000,
+    "global_step": 388
   },
   {
     "id": "BUG-20261030-003",
@@ -4394,7 +4398,7 @@
   },
   {
     "id": "BUG-20261030-004",
-    "run_id": "explore_20261103_183408",
+    "run_id": "explore_20261105_182434",
     "task_id": "task_20261103_103407",
     "app": "zhaiwan",
     "title": "[explore_20261030_193525] 探索操作 '底部视角导航Tab中的【810溜井】标签项' 触发底层异常",
@@ -4414,11 +4418,13 @@
     "actual": "[page_error] Cannot read properties of undefined (reading 'map')",
     "analysis_notes": "### 🤖 AI 架构师缺陷根因诊断与研发整改指引\n\n**【核心技术定性】**：【前端代码健壮性漏洞】物联网历史属性接口数据为空时，前端遗漏可选链防护引发未捕获的 TypeError 崩溃\n\n**【案发速览】**：\n当点击底部导航 Tab【810溜井】标签时，页面触发加载该溜井的雷达料位计监控数据，向上游接口 `/iot/getInstancePropertiesHistoryQuery` 发起请求。后端因该时间段无采样点或设备未上报数据，正常响应返回业务空字典 `{\"code\": 0, \"data\": {}, \"msg\": \"查询成功\", \"err\": null}`。前端在解析设备属性时获取到的设备数据为 `undefined`（兜底为 `[]`），在构造 X 轴数据时直接执行了 `t.OnlineStatus.map(...)`，因缺失可选链导致对 `undefined` 调用 `.map()`，瞬间抛出 `Cannot read properties of undefined (reading 'map')` 并使组件崩溃。\n*(注：此前分析推测的 crypto.randomUUID / 安全上下文假说已被代码实证推翻，本 Bug 与 BUG-20261030-001 无关。)*\n\n#### 1. 底层案发机理与前端代码实证剖析\n根据前端打包产物（`assets/intelligentOredrawing9-CqMr4PNL.js`）中的实际源码：\n```javascript\n// 接口调用处：\nre.getIotInstancePropertiesHistoryQuery({deviceQueries: f}, n => {\n    var e, h, b, g, m, p, d, y;\n    // 当接口 data 为 {} 时，e[r] 找不到对应设备属性，降级为 t = []\n    const t = ((e = n == null ? void 0 : n.data) == null ? void 0 : e[r]) || [];\n    console.log(t);\n    \n    // 💥【直接致命崩溃行】：此处遗漏了可选链，t 上无 OnlineStatus 属性即为 undefined，直接调用 .map() 抛出异常！\n    i.xAxisData = t.OnlineStatus.map(l => v._getDateFormatStringHHMM(new Date(l == null ? void 0 : l.formatTime)) || \"--\").reverse();\n    \n    // 🔍【铁证】：开发者在后续行中对同类字段却明确加上了可选链防护：\n    i.orePassLevel = ((p = t == null ? void 0 : t.EmptyWarehouseHeight) == null ? void 0 : p.map(...));\n    i.warningData = ((y = t == null ? void 0 : t.OnlineStatus) == null ? void 0 : y.map(...)) || [];\n})\n```\n- **对比排查**：另一接口 `produceOrePass/getOrePassRuntimeStatistics` 返回 `{\"totalRuntimeSeconds\": 0, \"dataPoints\": []}` 时，前端通过 `(l.data?.dataPoints || []).map(...)` 实现了安全兜底，空数组 map 不会报错。\n- **真凶确认**：正是 `/iot/getInstancePropertiesHistoryQuery` 响应空字典 `{}` 时，`t.OnlineStatus` 为 `undefined` 且未作保护触发了崩溃。\n\n#### 2. 软件工程规范与责任划分\n1. **直接责任 - 前端（陈贻雄）**：\n   - 物联网大屏运行中，新装设备、断网离线、检修停机等无数据场景属于合法的日常业务状态。\n   - 接口返回 HTTP 200 和 `code: 0` 且 `data: {}` 符合接口规范。\n   - 前端未能进行防御性编程（Defensive Programming），空数据时应优雅降级展示“暂无数据”或空坐标轴，而绝不能直接抛 JS Uncaught Exception 导致界面瘫痪。\n2. **协作事项 - 后端/IoT（梅本霞）**：\n   - 需确认现场 810 溜井的雷达料位计设备编码及 IoT 数据采集服务是否正常入库，为何该设备历史数据为空。\n\n#### 3. 推荐代码级修复补丁 (Copy-Paste Ready)\n```javascript\n// 前端修复补丁（陈贻雄负责）：\n// intelligentOredrawing 组件 getHistory 回调内：\ni.xAxisData = (t?.OnlineStatus?.map(l => v._getDateFormatStringHHMM(new Date(l?.formatTime)) || \"--\") || []).reverse();\n```\n",
     "remark": null,
-    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/explore_20261031_151626/bugs/BUG-20261030-004_004922.png",
-    "occurrences": 13,
+    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/explore_20261105_182434/bugs/BUG-20261030-004.png",
+    "occurrences": 14,
     "date": "2026-11-02",
-    "last_seen": "2026-11-04",
-    "details": null
+    "last_seen": "2026-11-05",
+    "details": null,
+    "last_recurrence_step": 352,
+    "global_step": 352
   },
   {
     "id": "BUG-20261030-005",
