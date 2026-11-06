@@ -1,15 +1,10 @@
 import asyncio
-
 import datetime
-
 import json
-
 import logging
-
 import os
-
+import re
 import threading
-
 import time
 
 from pathlib import Path
@@ -426,7 +421,7 @@ def get_config_options():
 DEFAULT_PRESET_TASKS = [
     {
         "id": "preset_zhaiwan_explore_full",
-        "title": "【寨湾】全栈地毯式扫荡巡检",
+        "title": "全栈地毯式扫荡巡检",
         "app_name": "zhaiwan",
         "mode": "explore",
         "badge": "推荐",
@@ -440,7 +435,7 @@ DEFAULT_PRESET_TASKS = [
     },
     {
         "id": "preset_zhaiwan_3d_stress",
-        "title": "【寨湾】中央 3D 视界与像素流抗压专项",
+        "title": "中央 3D 视界与像素流抗压专项",
         "app_name": "zhaiwan",
         "mode": "explore",
         "badge": "抗压",
@@ -454,7 +449,7 @@ DEFAULT_PRESET_TASKS = [
     },
     {
         "id": "preset_zhaiwan_smoke_tour",
-        "title": "【寨湾】二级菜单极速全量冒烟体检",
+        "title": "二级菜单极速全量冒烟体检",
         "app_name": "zhaiwan",
         "mode": "smoke",
         "badge": "冒烟",
@@ -468,7 +463,7 @@ DEFAULT_PRESET_TASKS = [
     },
     {
         "id": "preset_zhaiwan_home_yaml",
-        "title": "【寨湾】首页业务深度确定性回归 (YAML)",
+        "title": "首页业务深度确定性回归 (YAML)",
         "app_name": "zhaiwan",
         "mode": "case",
         "badge": "回归",
@@ -482,7 +477,7 @@ DEFAULT_PRESET_TASKS = [
     },
     {
         "id": "preset_liwutong_explore",
-        "title": "【里伍铜】数字孪生采矿与选矿自主探索",
+        "title": "数字孪生采矿与选矿自主探索",
         "app_name": "liwutong",
         "mode": "explore",
         "badge": "探索",
@@ -491,8 +486,8 @@ DEFAULT_PRESET_TASKS = [
         "reset_memory": False,
         "ignore_errors": True,
         "case_path": None,
-        "macro_objective": "全面扫荡里伍铜矿山各业务模块：深入探测选矿看板、采场可视化与设备一张图，挖掘未覆盖盲区中的数据不一致与前端崩溃 Bug！",
-        "description": "里伍铜矿山全业务板块探测，深入验证选矿流程、指标卡片与报警处置流程。",
+        "macro_objective": "全面扫荡矿山各业务模块：深入探测选矿看板、采场可视化与设备一张图，挖掘未覆盖盲区中的数据不一致与前端崩溃 Bug！",
+        "description": "数字孪生采矿与选矿全业务板块探测，深入验证选矿流程、指标卡片与报警处置流程。",
     },
 ]
 
@@ -556,6 +551,11 @@ def get_preset_tasks(db: Session = Depends(get_db)):
             exist.ignore_errors = p.get("ignore_errors", True)
 
             exist.case_path = p.get("case_path")
+
+    # 清洗历史遗留的带有固定矿山前缀的标题
+    for r in db.query(PresetTaskRecord).all():
+        if r.title and re.match(r"^【(?:寨湾|里伍铜|天瑞)】", r.title):
+            r.title = re.sub(r"^【.*?】\s*", "", r.title)
 
     db.commit()
 
@@ -747,12 +747,15 @@ def launch_preset_task(
         p_case = target_preset.case_path
 
     now = datetime.datetime.now()
-
     task_id = f"task_{now.strftime('%Y%m%d_%H%M%S')}"
+
+    app_short_names = {"zhaiwan": "寨湾", "liwutong": "里伍铜", "tianrui": "天瑞"}
+    short_mine = app_short_names.get(p_app, p_app)
+    clean_title = re.sub(r"^【.*?】\s*", "", p_title)
 
     task = TaskRun(
         id=task_id,
-        name=f"{p_title} ({now.strftime('%H:%M:%S')})",
+        name=f"【{short_mine}】{clean_title} ({now.strftime('%H:%M:%S')})",
         app_name=p_app,
         mode=p_mode,
         status="pending",

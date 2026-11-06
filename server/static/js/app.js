@@ -419,9 +419,27 @@ const app = createApp({
       }
     }
 
+    function getAppShortName(appKey) {
+      const shortMap = {
+        zhaiwan: '寨湾',
+        liwutong: '里伍铜',
+        tianrui: '天瑞'
+      };
+      if (shortMap[appKey]) return shortMap[appKey];
+      const found = (options.apps || []).find(a => a.key === appKey);
+      if (found && found.name) {
+        return found.name.replace(/矿山.*$/, '').replace(/\(.*?\)/, '').trim() || found.name;
+      }
+      return appKey || '';
+    }
+
     async function changeLiveApp(appName) {
       liveSelectedApp.value = appName;
       taskForm.app_name = appName;
+      if (taskForm.name && /^【.*?】/.test(taskForm.name)) {
+        const shortName = getAppShortName(appName);
+        taskForm.name = taskForm.name.replace(/^【.*?】\s*/, `【${shortName}】`);
+      }
       await loadLiveAmbientHistory(appName, getSpanHours(liveTimeSpan.value));
       await fetchLiveSnapshot();
     }
@@ -677,37 +695,29 @@ const app = createApp({
 
 
     function loadPresetToForm(preset) {
-
       taskForm.preset_id = preset.is_system ? null : preset.id; // 系统预设载入默认另存，自定义预设保留id可直接回写
 
-      taskForm.name = preset.title;
+      // 1. 去除预设可能残留的前缀标签，并根据当前已选矿山应用动态组装【矿山名】
+      const cleanTitle = (preset.title || '').replace(/^【.*?】\s*/, '').trim();
+      const shortName = getAppShortName(taskForm.app_name);
+      taskForm.name = shortName ? `【${shortName}】${cleanTitle}` : cleanTitle;
 
-      taskForm.app_name = preset.app_name;
+      // 2. 严禁覆盖 taskForm.app_name，严格保持用户当前选择的目标矿山
 
+      // 3. 模式与目标
       taskForm.mode = preset.mode;
-
       taskForm.macro_objective = preset.macro_objective;
-
       taskForm.max_steps = preset.max_steps;
-
       taskForm.max_times = preset.max_times;
-
       taskForm.reset_memory = preset.reset_memory;
-
       taskForm.ignore_errors = preset.ignore_errors;
-
       taskForm.case_path = preset.case_path || '';
 
       // 平滑滚动到底部表单
-
       const formCard = document.getElementById('taskFormCard');
-
       if (formCard) {
-
         formCard.scrollIntoView({ behavior: 'smooth' });
-
       }
-
     }
 
 

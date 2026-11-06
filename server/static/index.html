@@ -393,19 +393,12 @@
 
 
                 <div class="form-group">
-
-                  <label class="form-label">矿山应用选择</label>
-
+                  <label class="form-label">矿山应用</label>
                   <select class="form-control" v-model="taskForm.app_name" @change="changeLiveApp(taskForm.app_name)">
-
                     <option v-for="app in options.apps" :key="app.key" :value="app.key">
-
-                      {{ app.name }} ({{ app.desc }})
-
+                      {{ app.name }}
                     </option>
-
                   </select>
-
                 </div>
 
 
