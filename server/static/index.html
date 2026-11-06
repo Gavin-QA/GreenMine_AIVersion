@@ -186,7 +186,7 @@
 
               <span style="font-size: 13px; color: #fff; font-weight: 600;">正在实时监控大屏应用：</span>
 
-              <select v-model="taskForm.app_name" @change="fetchLiveSnapshot" style="background: #111a2e; color: #00d2ff; border: 1px solid #00d2ff; padding: 4px 12px; border-radius: 4px; font-weight: 700; font-size: 13px; cursor: pointer; outline: none;">
+              <select v-model="taskForm.app_name" @change="changeLiveApp(taskForm.app_name)" style="background: #111a2e; color: #00d2ff; border: 1px solid #00d2ff; padding: 4px 12px; border-radius: 4px; font-weight: 700; font-size: 13px; cursor: pointer; outline: none;">
 
                 <option v-for="app in options.apps" :key="app.key" :value="app.key">
 

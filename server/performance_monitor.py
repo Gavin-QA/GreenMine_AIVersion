@@ -75,36 +75,32 @@ class PerformanceMonitor:
             return {"cpu": 0.0, "mem_mb": 0.0, "alive": False}
 
     def collect_ue_metrics(self, app_name: str = "zhaiwan", allow_fallback: bool = False) -> Dict[str, Any]:
-        """采集 UE 伴生主进程及其引擎子进程的资源占用 (支持分项目精确匹配，避免跨应用数据串线)"""
+        """采集 UE 伴生主进程及其引擎子进程的资源占用 (支持分项目精确匹配，彻底杜绝跨应用数据串线)"""
         cfg = self.get_app_config(app_name)
         ue_target = cfg.get("ue_process_name", f"{app_name}.exe").lower()
+        exe_path = cfg.get("exe_path", "")
+        exe_stem = Path(exe_path).name.lower() if exe_path else ""
+        app_keyword = app_name.lower()
+
         candidates: List[psutil.Process] = []
 
         for p in psutil.process_iter(['pid', 'name', 'exe']):
             try:
                 pname = (p.info.get('name') or "").lower()
-                if ue_target and (ue_target in pname or (ue_target.replace(".exe", "") in pname)):
+                pexe = (p.info.get('exe') or "").lower()
+                # 严格匹配目标 UE 进程或该矿山专属 launcher 进程，绝不借用其他矿山进程
+                is_match = False
+                if ue_target and (ue_target in pname or ue_target.replace(".exe", "") in pname):
+                    is_match = True
+                elif exe_stem and exe_stem in pname:
+                    is_match = True
+                elif app_keyword in pexe and ("se-launcher" in pname or app_keyword in pname):
+                    is_match = True
+
+                if is_match:
                     candidates.append(p)
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
-
-        if not candidates and allow_fallback:
-            # 智能嗅探：仅在显式允许 fallback 时扫描其他已配置应用
-            for other_app, other_cfg in (getattr(settings, "apps", {}) or {}).items():
-                if other_app == app_name:
-                    continue
-                other_target = (other_cfg.get("ue_process_name") or "").lower()
-                if not other_target:
-                    continue
-                for p in psutil.process_iter(['pid', 'name', 'exe']):
-                    try:
-                        pname = (p.info.get('name') or "").lower()
-                        if other_target in pname or (other_target.replace(".exe", "") in pname):
-                            candidates.append(p)
-                    except (psutil.NoSuchProcess, psutil.AccessDenied):
-                        continue
-                if candidates:
-                    break
 
         if not candidates:
             return {"ue_pid": None, "ue_cpu_percent": None, "ue_cpu_raw_percent": None, "ue_memory_mb": None, "ue_commit_mb": None}
@@ -156,17 +152,23 @@ class PerformanceMonitor:
         }
 
     def collect_chrome_process_metrics(self, app_name: str = "zhaiwan") -> Dict[str, Any]:
-        """采集 Electron / Chromium 渲染端进程树的 CPU 与总物理内存"""
+        """采集 Electron / Chromium 渲染端进程树的 CPU 与总物理内存 (严格分应用归属)"""
         cfg = self.get_app_config(app_name)
         exe_path = cfg.get("exe_path", "")
         exe_stem = Path(exe_path).name.lower() if exe_path else ""
+        app_keyword = app_name.lower()
 
         chrome_procs: List[psutil.Process] = []
         for p in psutil.process_iter(['pid', 'name', 'exe']):
             try:
                 pname = (p.info.get('name') or "").lower()
                 pexe = (p.info.get('exe') or "").lower()
-                if (exe_stem and exe_stem in pname) or "electron" in pname:
+                is_chrome = False
+                if exe_stem and exe_stem in pname:
+                    is_chrome = True
+                elif app_keyword in pexe and ("se-launcher" in pname or "electron" in pname or app_keyword in pname):
+                    is_chrome = True
+                if is_chrome:
                     chrome_procs.append(p)
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
@@ -260,6 +262,14 @@ class PerformanceMonitor:
             "webrtc_fps": None
         }
 
+        # 项目专属身份特征签名 (解决共用 9223 端口时的张冠李戴串线 Bug)
+        app_signatures = {
+            "zhaiwan": ["zhaiwan", "寨湾"],
+            "liwutong": ["liwutong", "里伍", "里伍铜"],
+            "tianrui": ["tianrui", "天瑞", "四川天瑞"]
+        }
+        signatures = app_signatures.get(app_name, [app_name.lower()])
+
         try:
             # 绕过系统网络代理直连 localhost
             resp = requests.get(json_url, timeout=1.5, proxies={"http": None, "https": None})
@@ -270,17 +280,23 @@ class PerformanceMonitor:
             if not pages:
                 return empty_res
 
-            # 优先寻找业务页面 (排除 devtools, background, about:blank 等)
+            # 严格验明正身：优先寻找业务页面，且该页面必须归属于当前 app_name
             target_page = None
             for p in pages:
-                p_url = p.get("url", "")
+                p_url = (p.get("url") or "").lower()
+                p_title = (p.get("title") or "").lower()
                 p_type = p.get("type", "")
                 if p_type == "page" and not p_url.startswith("devtools://") and not p_url.startswith("chrome-extension://"):
-                    if "main.html" in p_url or "index.html" in p_url or "http" in p_url:
+                    belongs_to_app = any(sig in p_url or sig in p_title for sig in signatures)
+                    if belongs_to_app and ("main.html" in p_url or "index.html" in p_url or "http" in p_url):
                         target_page = p
                         break
-            if not target_page and pages:
-                target_page = pages[0]
+                    elif belongs_to_app and not target_page:
+                        target_page = p
+
+            # 若 9223 端口中无归属当前 app_name 的业务页面，坚决判定该应用 CDP 离线，严禁跨项目串线
+            if not target_page:
+                return empty_res
 
             ws_url = target_page.get("webSocketDebuggerUrl")
             if not ws_url:
@@ -843,8 +859,9 @@ class PerformanceMonitor:
         for app_name in target_keys:
             cfg = apps_cfg.get(app_name, {})
             ue_metrics = self.collect_ue_metrics(app_name, allow_fallback=False)
+            cdp_metrics = self.collect_cdp_metrics(app_name)
             title = friendly_titles.get(app_name) or cfg.get("name") or cfg.get("title") or app_name
-            is_online = bool(ue_metrics.get("ue_pid"))
+            is_online = bool(ue_metrics.get("ue_pid")) or cdp_metrics.get("cdp_online", False)
             result.append({
                 "app_name": app_name,
                 "title": title,
@@ -852,7 +869,8 @@ class PerformanceMonitor:
                 "ue_pid": ue_metrics.get("ue_pid"),
                 "ue_memory_mb": ue_metrics.get("ue_memory_mb"),
                 "ue_commit_mb": ue_metrics.get("ue_commit_mb"),
-                "ue_cpu_percent": ue_metrics.get("ue_cpu_percent")
+                "ue_cpu_percent": ue_metrics.get("ue_cpu_percent"),
+                "cdp_online": cdp_metrics.get("cdp_online", False)
             })
         return result
 

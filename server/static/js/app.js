@@ -373,6 +373,19 @@ const app = createApp({
           const data = await res.json();
           if (Array.isArray(data) && data.length > 0) {
             liveAppsStatus.value = data;
+
+            // 🎯 活体自适应智能对焦：
+            // 若当前选中的矿山不在线，而有且仅有另一个矿山应用正处于在线绿灯状态，自动对焦并无缝切换到运行中的应用
+            const currentAppObj = data.find(x => x.app_name === liveSelectedApp.value);
+            const onlineApps = data.filter(x => x.online);
+            if ((!currentAppObj || !currentAppObj.online) && onlineApps.length === 1) {
+              const activeApp = onlineApps[0].app_name;
+              console.log(`[Auto-Focus] 🎯 自动对焦到本机唯一在线矿山应用: ${activeApp}`);
+              liveSelectedApp.value = activeApp;
+              taskForm.app_name = activeApp;
+              await loadLiveAmbientHistory(activeApp, getSpanHours(liveTimeSpan.value));
+              await fetchLiveSnapshot();
+            }
           }
         }
       } catch (e) {
@@ -402,6 +415,7 @@ const app = createApp({
 
     async function changeLiveApp(appName) {
       liveSelectedApp.value = appName;
+      taskForm.app_name = appName;
       await loadLiveAmbientHistory(appName, getSpanHours(liveTimeSpan.value));
       await fetchLiveSnapshot();
     }
