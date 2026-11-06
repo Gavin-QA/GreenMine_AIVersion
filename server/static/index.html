@@ -64,30 +64,13 @@
 
         </li>
 
-        <!-- 任务与产物库 (父级菜单，点击展开/收起子菜单，默认展开) -->
-        <li class="nav-item" :class="{ active: currentTab === 'tasks' || currentTab === 'cases' }"
-          @click="toggleSubMenu('assets')">
-          <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
-            <div style="display: flex; align-items: center; gap: 12px;">
-              <span class="nav-icon">📁</span>
-              <span>任务与产物库</span>
-            </div>
-            <span style="font-size: 10px; color: var(--text-muted); transition: transform 0.2s;"
-              :style="{ transform: subMenuOpen.assets ? 'rotate(180deg)' : 'rotate(0deg)' }">▼</span>
-          </div>
-        </li>
+        <li class="nav-item" :class="{ active: currentTab === 'tasks' }" @click="currentTab = 'tasks'">
 
-        <!-- 任务与产物库子菜单 -->
-        <ul class="sub-nav-menu" v-show="subMenuOpen.assets">
-          <li class="sub-nav-item" :class="{ active: currentTab === 'tasks' }" @click.stop="currentTab = 'tasks'">
-            <span style="margin-right: 6px;">📑</span>
-            <span>历史巡检任务</span>
-          </li>
-          <li class="sub-nav-item" :class="{ active: currentTab === 'cases' }" @click.stop="currentTab = 'cases'">
-            <span style="margin-right: 6px;">🧪</span>
-            <span>用例资产管理</span>
-          </li>
-        </ul>
+          <span class="nav-icon">📁</span>
+
+          <span>任务与产物库</span>
+
+        </li>
 
         <li class="nav-item" :class="{ active: currentTab === 'bugs' }" @click="currentTab = 'bugs'">
 
@@ -144,9 +127,7 @@
           <span v-if="currentTab === 'monitor'">📈 双核性能与日志流大屏 ({{ activeTaskId === '__live__' ? '⚡ 本机物理环境实时心电图' :
             (activeTask ? activeTask.name : '未选择任务') }})</span>
 
-          <span v-if="currentTab === 'tasks'">📁 巡检任务执行历史与产物归档</span>
-
-          <span v-if="currentTab === 'cases'">🧪 测试用例资产管理 (双引擎协同)</span>
+          <span v-if="currentTab === 'tasks'">📁 任务与产物库</span>
 
           <span v-if="currentTab === 'bugs'">🐛 缺陷知识库与禅道协同</span>
 
@@ -860,19 +841,59 @@
 
         <!-- ============================================================= -->
 
-        <!-- 3. 任务与产物库列表 -->
+        <!-- 3. 任务与产物库 (包含历史巡检任务与用例资产管理) -->
 
         <!-- ============================================================= -->
 
         <div v-show="currentTab === 'tasks'">
 
-          <div class="card">
+          <!-- 任务与产物库顶栏横向切换分段器 (无括号、无数字) -->
+          <div style="display: flex; gap: 12px; margin-bottom: 18px;">
+            <button type="button" @click="assetsSubTab = 'runs'" :style="{
+                background: assetsSubTab === 'runs' ? 'linear-gradient(90deg, rgba(0, 210, 255, 0.2), rgba(58, 123, 213, 0.2))' : 'rgba(13, 20, 36, 0.6)',
+                border: assetsSubTab === 'runs' ? '1px solid #00d2ff' : '1px solid #1a253c',
+                color: assetsSubTab === 'runs' ? '#00d2ff' : '#8b9bb4',
+                padding: '9px 22px',
+                borderRadius: '8px',
+                fontSize: '14px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                transition: 'all 0.2s ease'
+              }">
+              <span>📑 历史巡检任务</span>
+            </button>
 
-            <div class="card-header">
+            <button type="button" @click="assetsSubTab = 'cases'" :style="{
+                background: assetsSubTab === 'cases' ? 'linear-gradient(90deg, rgba(0, 210, 255, 0.2), rgba(58, 123, 213, 0.2))' : 'rgba(13, 20, 36, 0.6)',
+                border: assetsSubTab === 'cases' ? '1px solid #00d2ff' : '1px solid #1a253c',
+                color: assetsSubTab === 'cases' ? '#00d2ff' : '#8b9bb4',
+                padding: '9px 22px',
+                borderRadius: '8px',
+                fontSize: '14px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                transition: 'all 0.2s ease'
+              }">
+              <span>🧪 用例资产管理</span>
+            </button>
+          </div>
 
-              <div class="card-title">📁 历史巡检任务列表</div>
+          <!-- 子模块 1: 历史巡检任务 -->
+          <div v-show="assetsSubTab === 'runs'">
 
-            </div>
+            <div class="card">
+
+              <div class="card-header">
+
+                <div class="card-title">📁 历史巡检任务列表</div>
+
+              </div>
 
             <div class="table-responsive">
 
@@ -997,19 +1018,12 @@
 
           </div>
 
-        </div>
+          </div>
 
+          <!-- 子模块 2: 用例资产管理 -->
+          <div v-show="assetsSubTab === 'cases'">
 
-
-        <!-- ============================================================= -->
-
-        <!-- 3. 用例资产管理 (分手工编写用例与 AI 自动生成用例) -->
-
-        <!-- ============================================================= -->
-
-        <div v-show="currentTab === 'cases'">
-
-          <div class="card">
+            <div class="card">
 
             <div class="card-header"
               style="flex-direction: column; align-items: stretch; gap: 14px; padding-bottom: 16px;">
@@ -1040,51 +1054,33 @@
 
               </div>
 
-              <!-- 顶部两档分段器 (Segmented Control) -->
+              <!-- 顶部两档分段器 (无括号、无数字) -->
               <div style="display: flex; background: rgba(5, 7, 13, 0.8); padding: 4px; border-radius: 8px; border: 1px solid #1a253c; width: fit-content;">
 
                 <button type="button" @click="casesSubTab = 'manual'" :style="{
                     background: casesSubTab === 'manual' ? '#00d2ff' : 'transparent',
                     color: casesSubTab === 'manual' ? '#000' : '#8b9bb4',
                     border: 'none',
-                    padding: '8px 18px',
+                    padding: '8px 22px',
                     borderRadius: '6px',
                     fontSize: '13px',
                     fontWeight: 700,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px'
+                    cursor: 'pointer'
                   }">
-                  <span>✍️ 手工编写用例 (Manual Cases)</span>
-                  <span :style="{
-                    background: casesSubTab === 'manual' ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.1)',
-                    padding: '2px 8px',
-                    borderRadius: '10px',
-                    fontSize: '11px'
-                  }">{{ manualCases.length }}</span>
+                  <span>✍️ 手工编写用例</span>
                 </button>
 
                 <button type="button" @click="casesSubTab = 'auto'" :style="{
                     background: casesSubTab === 'auto' ? '#00d2ff' : 'transparent',
                     color: casesSubTab === 'auto' ? '#000' : '#8b9bb4',
                     border: 'none',
-                    padding: '8px 18px',
+                    padding: '8px 22px',
                     borderRadius: '6px',
                     fontSize: '13px',
                     fontWeight: 700,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px'
+                    cursor: 'pointer'
                   }">
-                  <span>🤖 AI 自动生成用例 (Auto Cases)</span>
-                  <span :style="{
-                    background: casesSubTab === 'auto' ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.1)',
-                    padding: '2px 8px',
-                    borderRadius: '10px',
-                    fontSize: '11px'
-                  }">{{ autoCases.length }}</span>
+                  <span>🤖 AI 自动生成用例</span>
                 </button>
 
               </div>
@@ -1272,6 +1268,8 @@
             </div>
 
           </div>
+
+        </div>
 
         </div>
 

@@ -143,13 +143,8 @@ const app = createApp({
       { app_name: 'liwutong', title: '里伍铜矿山', online: false, ue_pid: null, ue_commit_mb: 0, ue_memory_mb: 0 }
     ]);
 
-    // 侧边栏子菜单折叠/展开状态
-    const subMenuOpen = reactive({
-      assets: true
-    });
-    function toggleSubMenu(key) {
-      subMenuOpen[key] = !subMenuOpen[key];
-    }
+    // 任务与产物库内顶栏 Tab 状态 ('runs' | 'cases')
+    const assetsSubTab = ref('runs');
 
     // 运行环境与配置基线快照弹窗状态
     const selectedEnvInfo = ref(null);
@@ -2096,9 +2091,11 @@ const app = createApp({
       if (newTab === 'bugs') {
         fetchBugs();
       } else if (newTab === 'tasks') {
-        fetchTasks();
-      } else if (newTab === 'cases') {
-        fetchCases();
+        if (assetsSubTab.value === 'cases') {
+          fetchCases();
+        } else {
+          fetchTasks();
+        }
       } else if (newTab === 'monitor') {
         fetchTasks(); // 预载最新任务清单，保证“当前查看维度”下拉选项时刻齐全
         fetchLiveAppsStatus();
@@ -2128,6 +2125,14 @@ const app = createApp({
       // 切离实时监控与看板时，暂停 4 秒快照轮询，彻底释放网络与 CPU 资源
       if (newTab !== 'monitor' && newTab !== 'dashboard') {
         stopLiveTimer();
+      }
+    });
+
+    watch(assetsSubTab, (newSub) => {
+      if (newSub === 'cases') {
+        fetchCases();
+      } else {
+        fetchTasks();
       }
     });
 
@@ -2304,9 +2309,7 @@ const app = createApp({
 
       changeLiveTimeSpan,
 
-      subMenuOpen,
-
-      toggleSubMenu,
+      assetsSubTab,
 
       selectedEnvInfo,
 
