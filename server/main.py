@@ -9,7 +9,7 @@ import time
 
 from pathlib import Path
 
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 
 from fastapi import (
@@ -19,6 +19,7 @@ from fastapi import (
     HTTPException,
     Query,
     Path as FastPath,
+    Body,
     WebSocket,
     WebSocketDisconnect,
 )
@@ -1816,3 +1817,217 @@ def get_task_apis(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"解析已测接口清单失败: {e}")
+
+
+@app.get(
+    "/api/tasks/{task_id}/env_info",
+    tags=["2. 巡检任务生命周期调度"],
+    summary="获取指定任务的案发/运行时环境基线快照 (env_info.json)",
+    description="解析并返回该次巡检启动时的 2D 前端包版本路径、UE5 孪生工程版本路径、N+1 业务接口与推流网关配置。",
+)
+def get_task_env_info(
+    task_id: str = FastPath(..., description="巡检任务标识码"),
+    db: Session = Depends(get_db),
+):
+    task = db.query(TaskRun).filter(TaskRun.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    run_dir = task.run_dir or ""
+    if run_dir.startswith("reports/runs/") or run_dir.startswith("reports\\runs\\"):
+        run_dir = run_dir.replace("reports/runs/", "").replace("reports\\runs\\", "")
+
+    if not run_dir:
+        return {
+            "task_id": task_id,
+            "exists": False,
+            "env_info": None,
+            "message": "该任务尚未关联运行产物目录",
+        }
+
+    env_path = PROJECT_ROOT / "reports" / "runs" / run_dir / "env_info.json"
+    if not env_path.exists():
+        env_path = PROJECT_ROOT / "reports" / "runs" / Path(run_dir).name / "env_info.json"
+
+    if not env_path.exists():
+        return {
+            "task_id": task_id,
+            "run_dir": run_dir,
+            "exists": False,
+            "env_info": None,
+            "message": "未采集到该批次的环境基线快照记录 (env_info.json 不存在)",
+        }
+
+    try:
+        with open(env_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return {
+            "task_id": task_id,
+            "run_dir": run_dir,
+            "exists": True,
+            "env_info": data,
+            "raw_json": json.dumps(data, indent=2, ensure_ascii=False),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"读取环境基线快照失败: {e}")
+
+
+@app.get(
+    "/api/cases",
+    tags=["5. 用例资产管理"],
+    summary="获取全量测试用例资产列表 (分手工编写与 AI 自动生成两类)",
+    description="扫描并汇总 test_cases/ 下的手工编写自然语言用例，以及 reports/runs/**/generated_cases 下 AI 探索沉淀的回归用例。",
+)
+def get_test_cases():
+    import yaml
+    from datetime import datetime
+
+    manual_cases = []
+    test_cases_dir = PROJECT_ROOT / "test_cases"
+    if test_cases_dir.exists():
+        for p in sorted(test_cases_dir.glob("*.yaml")):
+            if p.is_file() and p.stat().st_size > 0:
+                steps_count = 0
+                title = p.stem
+                desc = ""
+                try:
+                    content = yaml.safe_load(p.read_text(encoding="utf-8"))
+                    if isinstance(content, list):
+                        steps_count = len(content)
+                    elif isinstance(content, dict):
+                        steps = content.get("steps", [])
+                        steps_count = len(steps) if isinstance(steps, list) else 0
+                        title = content.get("name") or content.get("title") or title
+                        desc = content.get("description", "")
+                except Exception:
+                    pass
+
+                stat = p.stat()
+                mtime_str = datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S")
+                rel_path = str(p.relative_to(PROJECT_ROOT)).replace("\\", "/")
+                manual_cases.append({
+                    "id": p.stem,
+                    "name": title,
+                    "filename": p.name,
+                    "path": rel_path,
+                    "steps_count": steps_count,
+                    "size_kb": round(stat.st_size / 1024, 2),
+                    "modified_at": mtime_str,
+                    "description": desc,
+                    "type": "manual"
+                })
+
+    auto_cases = []
+    runs_dir = PROJECT_ROOT / "reports" / "runs"
+    if runs_dir.exists():
+        for p in sorted(runs_dir.glob("**/generated_cases/*.yaml"), reverse=True):
+            if p.is_file() and p.stat().st_size > 0:
+                steps_count = 0
+                title = p.stem
+                try:
+                    content = yaml.safe_load(p.read_text(encoding="utf-8"))
+                    if isinstance(content, list):
+                        steps_count = len(content)
+                    elif isinstance(content, dict):
+                        steps = content.get("steps", [])
+                        steps_count = len(steps) if isinstance(steps, list) else 0
+                        title = content.get("name") or title
+                except Exception:
+                    pass
+
+                stat = p.stat()
+                ctime_str = datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S")
+                rel_path = str(p.relative_to(PROJECT_ROOT)).replace("\\", "/")
+
+                parts = p.parts
+                app_name = "zhaiwan"
+                run_id = ""
+                try:
+                    idx = parts.index("runs")
+                    if len(parts) > idx + 2:
+                        app_name = parts[idx + 1]
+                        run_id = parts[idx + 2]
+                except Exception:
+                    pass
+
+                auto_cases.append({
+                    "id": p.stem,
+                    "name": title,
+                    "filename": p.name,
+                    "path": rel_path,
+                    "app_name": app_name,
+                    "run_id": run_id,
+                    "steps_count": steps_count,
+                    "size_kb": round(stat.st_size / 1024, 2),
+                    "created_at": ctime_str,
+                    "type": "auto"
+                })
+
+    return {
+        "manual_cases": manual_cases,
+        "auto_cases": auto_cases,
+        "total_manual": len(manual_cases),
+        "total_auto": len(auto_cases)
+    }
+
+
+@app.get(
+    "/api/cases/content",
+    tags=["5. 用例资产管理"],
+    summary="读取指定用例的 YAML 内容",
+)
+def get_case_content(path: str = Query(..., description="用例相对工程根目录的路径")):
+    safe_path = (PROJECT_ROOT / path).resolve()
+    if not str(safe_path).startswith(str(PROJECT_ROOT.resolve())):
+        raise HTTPException(status_code=403, detail="非法路径访问拒绝")
+
+    if not safe_path.exists() or not safe_path.is_file():
+        raise HTTPException(status_code=404, detail="用例文件不存在")
+
+    if safe_path.suffix.lower() not in [".yaml", ".yml"]:
+        raise HTTPException(status_code=400, detail="仅支持预览 YAML 用例文件")
+
+    try:
+        content = safe_path.read_text(encoding="utf-8")
+        return {
+            "path": path,
+            "filename": safe_path.name,
+            "content": content
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"读取文件失败: {e}")
+
+
+@app.post(
+    "/api/cases/promote",
+    tags=["5. 用例资产管理"],
+    summary="将 AI 自动生成的用例固化转存为手工常态化回归用例",
+)
+def promote_auto_case(data: Dict[str, Any] = Body(...)):
+    path = data.get("path")
+    target_name = data.get("target_name")
+    if not path:
+        raise HTTPException(status_code=400, detail="缺少源路径 path")
+
+    src_path = (PROJECT_ROOT / path).resolve()
+    if not str(src_path).startswith(str(PROJECT_ROOT.resolve())) or not src_path.exists():
+        raise HTTPException(status_code=404, detail="源文件不存在")
+
+    target_filename = target_name or src_path.name
+    if not target_filename.endswith(".yaml") and not target_filename.endswith(".yml"):
+        target_filename += ".yaml"
+
+    dest_dir = PROJECT_ROOT / "test_cases"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest_path = dest_dir / target_filename
+
+    import shutil
+    try:
+        shutil.copyfile(src_path, dest_path)
+        return {
+            "code": 200,
+            "message": f"成功固化为常态用例: test_cases/{target_filename}",
+            "dest_path": f"test_cases/{target_filename}"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"复制失败: {e}")

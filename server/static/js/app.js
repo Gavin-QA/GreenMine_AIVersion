@@ -143,6 +143,28 @@ const app = createApp({
       { app_name: 'liwutong', title: '里伍铜矿山', online: false, ue_pid: null, ue_commit_mb: 0, ue_memory_mb: 0 }
     ]);
 
+    // 侧边栏子菜单折叠/展开状态
+    const subMenuOpen = reactive({
+      assets: true
+    });
+    function toggleSubMenu(key) {
+      subMenuOpen[key] = !subMenuOpen[key];
+    }
+
+    // 运行环境与配置基线快照弹窗状态
+    const selectedEnvInfo = ref(null);
+    const envInfoLoading = ref(false);
+    const envInfoViewMode = ref('card'); // 'card' | 'json'
+
+    // 用例资产管理状态
+    const manualCases = ref([]);
+    const autoCases = ref([]);
+    const casesSubTab = ref('manual'); // 'manual' | 'auto'
+    const isCasesLoading = ref(false);
+    const previewingCase = ref(null);
+    const previewCaseLoading = ref(false);
+    const previewCaseContent = ref('');
+
 
 
     const taskForm = reactive({
@@ -1741,6 +1763,114 @@ const app = createApp({
 
     }
 
+    async function openEnvInfoModal(task) {
+      selectedEnvInfo.value = { task_id: task.id, exists: false, env_info: null, raw_json: '' };
+      envInfoLoading.value = true;
+      envInfoViewMode.value = 'card';
+      try {
+        const res = await fetch(`${apiBase}/api/tasks/${task.id}/env_info`);
+        if (res.ok) {
+          selectedEnvInfo.value = await res.json();
+        } else {
+          selectedEnvInfo.value = { task_id: task.id, exists: false, message: '读取环境快照记录失败' };
+        }
+      } catch (e) {
+        selectedEnvInfo.value = { task_id: task.id, exists: false, message: `网络请求异常: ${e.message}` };
+      } finally {
+        envInfoLoading.value = false;
+      }
+    }
+
+    function copyEnvInfoJson() {
+      if (!selectedEnvInfo.value || !selectedEnvInfo.value.raw_json) return;
+      navigator.clipboard.writeText(selectedEnvInfo.value.raw_json).then(() => {
+        showToast({ type: 'success', title: '已复制 JSON', message: '环境基线快照配置已成功复制到剪贴板' });
+      }).catch(() => {
+        showToast({ type: 'warning', title: '复制失败', message: '请手动选中文本框内容复制' });
+      });
+    }
+
+    async function fetchCases() {
+      isCasesLoading.value = true;
+      try {
+        const res = await fetch(`${apiBase}/api/cases`);
+        if (res.ok) {
+          const data = await res.json();
+          manualCases.value = data.manual_cases || [];
+          autoCases.value = data.auto_cases || [];
+        }
+      } catch (e) {
+        console.error('获取测试用例资产失败:', e);
+      } finally {
+        isCasesLoading.value = false;
+      }
+    }
+
+    async function openCasePreview(c) {
+      previewingCase.value = c;
+      previewCaseLoading.value = true;
+      previewCaseContent.value = '';
+      try {
+        const res = await fetch(`${apiBase}/api/cases/content?path=${encodeURIComponent(c.path)}`);
+        if (res.ok) {
+          const data = await res.json();
+          previewCaseContent.value = data.content || '';
+        } else {
+          previewCaseContent.value = '# 读取用例源码失败';
+        }
+      } catch (e) {
+        previewCaseContent.value = `# 读取异常: ${e.message}`;
+      } finally {
+        previewCaseLoading.value = false;
+      }
+    }
+
+    function copyCaseYaml() {
+      if (!previewCaseContent.value) return;
+      navigator.clipboard.writeText(previewCaseContent.value).then(() => {
+        showToast({ type: 'success', title: '已复制 YAML', message: '测试用例脚本内容已复制到剪贴板' });
+      }).catch(() => {
+        showToast({ type: 'warning', title: '复制失败', message: '请手动选中文本框内容复制' });
+      });
+    }
+
+    async function promoteCase(c) {
+      if (!confirm(`确定将探索生成的用例 [${c.filename}] 固化转存到 test_cases/ 作为常态化回归用例吗？`)) return;
+      try {
+        const res = await fetch(`${apiBase}/api/cases/promote`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: c.path, target_name: c.filename })
+        });
+        if (res.ok) {
+          const ret = await res.json();
+          showToast({ type: 'success', title: '固化成功', message: ret.message });
+          await fetchCases();
+          await fetchOptions(); // 刷新控制台可选 yaml 列表
+        } else {
+          showToast({ type: 'warning', title: '固化失败', message: '无法转存该用例' });
+        }
+      } catch (e) {
+        showToast({ type: 'danger', title: '请求失败', message: e.message });
+      }
+    }
+
+    function runCaseInDashboard(c) {
+      taskForm.mode = 'case';
+      taskForm.case_path = c.path;
+      taskForm.name = `【确定性回归】${c.name || c.filename}`;
+      if (c.app_name) {
+        changeLiveApp(c.app_name);
+      }
+      currentTab.value = 'dashboard';
+      previewingCase.value = null;
+      showToast({
+        type: 'info',
+        title: '用例已载入控制台',
+        message: `已将 [${c.name || c.filename}] 载入，核验参数后点击“立即创建并启动巡检”即可执行！`
+      });
+    }
+
 
 
     async function syncZenTao(bug) {
@@ -1947,7 +2077,10 @@ const app = createApp({
 
     function startLiveTimer() {
       if (!liveTimer) {
-        liveTimer = setInterval(fetchLiveSnapshot, 4000);
+        liveTimer = setInterval(() => {
+          fetchLiveSnapshot();
+          fetchLiveAppsStatus();
+        }, 4000);
       }
     }
 
@@ -1964,6 +2097,8 @@ const app = createApp({
         fetchBugs();
       } else if (newTab === 'tasks') {
         fetchTasks();
+      } else if (newTab === 'cases') {
+        fetchCases();
       } else if (newTab === 'monitor') {
         fetchTasks(); // 预载最新任务清单，保证“当前查看维度”下拉选项时刻齐全
         fetchLiveAppsStatus();
@@ -2001,6 +2136,7 @@ const app = createApp({
       fetchPresetTasks();
       fetchLiveAppsStatus();
       fetchTasks(); // 启动时预载任务库，保证任何页面（含监控大屏维度）均可即刻使用任务数据
+      fetchCases(); // 预载用例资产清单
 
       // 根据初始默认 Tab 按需加载首屏数据与启动必要监控
       if (currentTab.value === 'dashboard') {
@@ -2012,6 +2148,8 @@ const app = createApp({
         startLiveTimer();
       } else if (currentTab.value === 'bugs') {
         fetchBugs();
+      } else if (currentTab.value === 'cases') {
+        fetchCases();
       }
 
       initPlatformWebSocket();
@@ -2164,7 +2302,45 @@ const app = createApp({
 
       changeLiveApp,
 
-      changeLiveTimeSpan
+      changeLiveTimeSpan,
+
+      subMenuOpen,
+
+      toggleSubMenu,
+
+      selectedEnvInfo,
+
+      envInfoLoading,
+
+      envInfoViewMode,
+
+      openEnvInfoModal,
+
+      copyEnvInfoJson,
+
+      manualCases,
+
+      autoCases,
+
+      casesSubTab,
+
+      isCasesLoading,
+
+      previewingCase,
+
+      previewCaseLoading,
+
+      previewCaseContent,
+
+      fetchCases,
+
+      openCasePreview,
+
+      copyCaseYaml,
+
+      promoteCase,
+
+      runCaseInDashboard
 
     };
 

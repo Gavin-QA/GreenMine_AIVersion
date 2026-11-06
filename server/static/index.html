@@ -64,13 +64,30 @@
 
         </li>
 
-        <li class="nav-item" :class="{ active: currentTab === 'tasks' }" @click="currentTab = 'tasks'">
-
-          <span class="nav-icon">📁</span>
-
-          <span>任务与产物库</span>
-
+        <!-- 任务与产物库 (父级菜单，点击展开/收起子菜单，默认展开) -->
+        <li class="nav-item" :class="{ active: currentTab === 'tasks' || currentTab === 'cases' }"
+          @click="toggleSubMenu('assets')">
+          <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <span class="nav-icon">📁</span>
+              <span>任务与产物库</span>
+            </div>
+            <span style="font-size: 10px; color: var(--text-muted); transition: transform 0.2s;"
+              :style="{ transform: subMenuOpen.assets ? 'rotate(180deg)' : 'rotate(0deg)' }">▼</span>
+          </div>
         </li>
+
+        <!-- 任务与产物库子菜单 -->
+        <ul class="sub-nav-menu" v-show="subMenuOpen.assets">
+          <li class="sub-nav-item" :class="{ active: currentTab === 'tasks' }" @click.stop="currentTab = 'tasks'">
+            <span style="margin-right: 6px;">📑</span>
+            <span>历史巡检任务</span>
+          </li>
+          <li class="sub-nav-item" :class="{ active: currentTab === 'cases' }" @click.stop="currentTab = 'cases'">
+            <span style="margin-right: 6px;">🧪</span>
+            <span>用例资产管理</span>
+          </li>
+        </ul>
 
         <li class="nav-item" :class="{ active: currentTab === 'bugs' }" @click="currentTab = 'bugs'">
 
@@ -128,6 +145,8 @@
             (activeTask ? activeTask.name : '未选择任务') }})</span>
 
           <span v-if="currentTab === 'tasks'">📁 巡检任务执行历史与产物归档</span>
+
+          <span v-if="currentTab === 'cases'">🧪 测试用例资产管理 (双引擎协同)</span>
 
           <span v-if="currentTab === 'bugs'">🐛 缺陷知识库与禅道协同</span>
 
@@ -920,6 +939,14 @@
 
                       </a>
 
+                      <button class="btn btn-secondary"
+                        style="padding: 4px 10px; font-size: 12px; margin-left: 6px; border-color: #00d2ff; color: #00d2ff;"
+                        @click="openEnvInfoModal(t)">
+
+                        运行环境
+
+                      </button>
+
                     </td>
 
                   </tr>
@@ -966,6 +993,282 @@
                 <span>页</span>
                 <button class="page-btn" style="padding: 0 10px; margin-left: 4px;" @click="jumpToTaskPage">确定</button>
               </div>
+            </div>
+
+          </div>
+
+        </div>
+
+
+
+        <!-- ============================================================= -->
+
+        <!-- 3. 用例资产管理 (分手工编写用例与 AI 自动生成用例) -->
+
+        <!-- ============================================================= -->
+
+        <div v-show="currentTab === 'cases'">
+
+          <div class="card">
+
+            <div class="card-header"
+              style="flex-direction: column; align-items: stretch; gap: 14px; padding-bottom: 16px;">
+
+              <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+
+                <div class="card-title" style="display: flex; align-items: center; gap: 10px;">
+
+                  <span>🧪 测试用例资产管理 (双引擎协同)</span>
+
+                </div>
+
+                <div style="display: flex; align-items: center; gap: 10px;">
+
+                  <button class="btn btn-secondary" @click="fetchCases" style="padding: 5px 12px; font-size: 12px;">
+
+                    🔄 刷新用例
+
+                  </button>
+
+                  <button class="btn btn-primary" @click="currentTab = 'dashboard'" style="padding: 5px 12px; font-size: 12px;">
+
+                    🚀 前往控制台发起测试
+
+                  </button>
+
+                </div>
+
+              </div>
+
+              <!-- 顶部两档分段器 (Segmented Control) -->
+              <div style="display: flex; background: rgba(5, 7, 13, 0.8); padding: 4px; border-radius: 8px; border: 1px solid #1a253c; width: fit-content;">
+
+                <button type="button" @click="casesSubTab = 'manual'" :style="{
+                    background: casesSubTab === 'manual' ? '#00d2ff' : 'transparent',
+                    color: casesSubTab === 'manual' ? '#000' : '#8b9bb4',
+                    border: 'none',
+                    padding: '8px 18px',
+                    borderRadius: '6px',
+                    fontSize: '13px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }">
+                  <span>✍️ 手工编写用例 (Manual Cases)</span>
+                  <span :style="{
+                    background: casesSubTab === 'manual' ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.1)',
+                    padding: '2px 8px',
+                    borderRadius: '10px',
+                    fontSize: '11px'
+                  }">{{ manualCases.length }}</span>
+                </button>
+
+                <button type="button" @click="casesSubTab = 'auto'" :style="{
+                    background: casesSubTab === 'auto' ? '#00d2ff' : 'transparent',
+                    color: casesSubTab === 'auto' ? '#000' : '#8b9bb4',
+                    border: 'none',
+                    padding: '8px 18px',
+                    borderRadius: '6px',
+                    fontSize: '13px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }">
+                  <span>🤖 AI 自动生成用例 (Auto Cases)</span>
+                  <span :style="{
+                    background: casesSubTab === 'auto' ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.1)',
+                    padding: '2px 8px',
+                    borderRadius: '10px',
+                    fontSize: '11px'
+                  }">{{ autoCases.length }}</span>
+                </button>
+
+              </div>
+
+            </div>
+
+            <!-- 1. 手工用例表格 -->
+            <div class="table-responsive" v-show="casesSubTab === 'manual'">
+
+              <table class="data-table">
+
+                <thead>
+
+                  <tr>
+
+                    <th>用例名称</th>
+
+                    <th>相对路径</th>
+
+                    <th>步骤数</th>
+
+                    <th>大小</th>
+
+                    <th>最后更新时间</th>
+
+                    <th>操作</th>
+
+                  </tr>
+
+                </thead>
+
+                <tbody>
+
+                  <tr v-if="manualCases.length === 0">
+
+                    <td colspan="6" style="text-align: center; padding: 28px; color: var(--text-muted);">
+
+                      📁 test_cases/ 下暂无手工 YAML 用例
+
+                    </td>
+
+                  </tr>
+
+                  <tr v-else v-for="c in manualCases" :key="c.path">
+
+                    <td>
+
+                      <div style="font-weight: 600; color: #fff;">{{ c.name }}</div>
+
+                      <div style="font-size: 11px; color: var(--text-muted);">{{ c.description || c.filename }}</div>
+
+                    </td>
+
+                    <td style="font-family: monospace; font-size: 12px; color: #8b9bb4;">{{ c.path }}</td>
+
+                    <td><b style="color: #00d2ff;">{{ c.steps_count }}</b> 步</td>
+
+                    <td style="color: var(--text-muted); font-size: 12px;">{{ c.size_kb }} KB</td>
+
+                    <td style="font-size: 12px; color: #a0aec0; font-family: monospace;">{{ c.modified_at }}</td>
+
+                    <td>
+
+                      <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 12px;"
+                        @click="openCasePreview(c)">
+
+                        🔍 查看 YAML
+
+                      </button>
+
+                      <button class="btn btn-primary" style="padding: 4px 10px; font-size: 12px; margin-left: 6px;"
+                        @click="runCaseInDashboard(c)">
+
+                        🚀 载入运行
+
+                      </button>
+
+                    </td>
+
+                  </tr>
+
+                </tbody>
+
+              </table>
+
+            </div>
+
+            <!-- 2. AI 自动生成用例表格 -->
+            <div class="table-responsive" v-show="casesSubTab === 'auto'">
+
+              <table class="data-table">
+
+                <thead>
+
+                  <tr>
+
+                    <th>生成批次 (Run ID)</th>
+
+                    <th>所属矿山</th>
+
+                    <th>用例文件名</th>
+
+                    <th>探索步骤数</th>
+
+                    <th>文件大小</th>
+
+                    <th>生成时间</th>
+
+                    <th>操作</th>
+
+                  </tr>
+
+                </thead>
+
+                <tbody>
+
+                  <tr v-if="autoCases.length === 0">
+
+                    <td colspan="7" style="text-align: center; padding: 28px; color: var(--text-muted);">
+
+                      📁 reports/runs/ 下暂未发现自动沉淀的 YAML 用例
+
+                    </td>
+
+                  </tr>
+
+                  <tr v-else v-for="c in autoCases" :key="c.path">
+
+                    <td>
+
+                      <div style="font-weight: 600; font-family: monospace; color: #00d2ff;">{{ c.run_id }}</div>
+
+                    </td>
+
+                    <td>
+
+                      <span class="badge badge-low">{{ c.app_name }}</span>
+
+                    </td>
+
+                    <td>
+
+                      <div style="font-size: 12px; color: #cbd5e1; font-family: monospace;">{{ c.filename }}</div>
+
+                    </td>
+
+                    <td><b style="color: #00e676;">{{ c.steps_count }}</b> 步</td>
+
+                    <td style="color: var(--text-muted); font-size: 12px;">{{ c.size_kb }} KB</td>
+
+                    <td style="font-size: 12px; color: #a0aec0; font-family: monospace;">{{ c.created_at }}</td>
+
+                    <td>
+
+                      <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 12px;"
+                        @click="openCasePreview(c)">
+
+                        🔍 查看 YAML
+
+                      </button>
+
+                      <button class="btn btn-secondary"
+                        style="padding: 4px 10px; font-size: 12px; margin-left: 6px; border-color: #00e676; color: #00e676;"
+                        @click="promoteCase(c)" title="固化转存到 test_cases/ 作为常态用例">
+
+                        📌 固化转存
+
+                      </button>
+
+                      <button class="btn btn-primary" style="padding: 4px 10px; font-size: 12px; margin-left: 6px;"
+                        @click="runCaseInDashboard(c)">
+
+                        🚀 载入运行
+
+                      </button>
+
+                    </td>
+
+                  </tr>
+
+                </tbody>
+
+              </table>
+
             </div>
 
           </div>
@@ -1606,6 +1909,158 @@
 
           </div>
 
+        </div>
+
+        <!-- 🌐 运行环境与配置基线快照弹窗 (env_info.json) -->
+        <div class="modal-overlay" v-if="selectedEnvInfo" @click.self="selectedEnvInfo = null">
+          <div class="modal-content" style="max-width: 820px;">
+            <div class="modal-header">
+              <div>
+                <h3 style="display: flex; align-items: center; gap: 10px;">
+                  <span>🌐 巡检任务运行环境与配置基线</span>
+                  <span class="badge badge-low" style="font-family: monospace;">{{ selectedEnvInfo.task_id }}</span>
+                </h3>
+              </div>
+              <button class="modal-close" @click="selectedEnvInfo = null">&times;</button>
+            </div>
+
+            <div v-if="envInfoLoading" style="text-align: center; padding: 40px; color: #00d2ff;">
+              ⚡ 正在读取该批次的环境基线快照...
+            </div>
+
+            <div v-else-if="!selectedEnvInfo.exists" style="text-align: center; padding: 36px 20px;">
+              <div style="font-size: 36px; margin-bottom: 12px;">📁</div>
+              <div style="font-size: 15px; font-weight: 600; color: #cbd5e1; margin-bottom: 6px;">
+                {{ selectedEnvInfo.message || '未采集到该批次的环境基线快照记录' }}
+              </div>
+              <div style="font-size: 12px; color: var(--text-muted);">
+                该运行目录中未发现 env_info.json，可能是早期版本运行或执行被强制中断。
+              </div>
+            </div>
+
+            <div v-else>
+              <!-- 顶部视图切换工具栏 -->
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid #1a253c; padding-bottom: 10px;">
+                <div style="display: flex; gap: 8px;">
+                  <button class="btn" :class="envInfoViewMode === 'card' ? 'btn-primary' : 'btn-secondary'"
+                    style="padding: 4px 12px; font-size: 12px;" @click="envInfoViewMode = 'card'">
+                    📋 结构化卡片
+                  </button>
+                  <button class="btn" :class="envInfoViewMode === 'json' ? 'btn-primary' : 'btn-secondary'"
+                    style="padding: 4px 12px; font-size: 12px;" @click="envInfoViewMode = 'json'">
+                    💻 原始 JSON
+                  </button>
+                </div>
+                <div>
+                  <button class="btn btn-secondary" style="padding: 4px 12px; font-size: 12px;" @click="copyEnvInfoJson">
+                    📋 复制完整 JSON
+                  </button>
+                </div>
+              </div>
+
+              <!-- 结构化卡片视图 -->
+              <div v-if="envInfoViewMode === 'card'">
+                <div class="grid-2" style="margin-bottom: 12px;">
+                  <div class="form-group" style="background: rgba(13, 20, 36, 0.6); padding: 12px; border-radius: 6px; border: 1px solid #1a253c; margin-bottom: 0;">
+                    <label class="form-label" style="color: #00d2ff;">🏢 目标矿山系统</label>
+                    <div style="font-weight: 600; font-size: 14px;">{{ selectedEnvInfo.env_info.app_name || '-' }}</div>
+                  </div>
+                  <div class="form-group" style="background: rgba(13, 20, 36, 0.6); padding: 12px; border-radius: 6px; border: 1px solid #1a253c; margin-bottom: 0;">
+                    <label class="form-label" style="color: #00e676;">🌍 部署环境代号</label>
+                    <div style="font-weight: 600; font-size: 14px;">{{ selectedEnvInfo.env_info.env_name || selectedEnvInfo.env_info.env_key || '-' }}</div>
+                  </div>
+                </div>
+
+                <div class="form-group" style="background: rgba(13, 20, 36, 0.6); padding: 12px; border-radius: 6px; border: 1px solid #1a253c; margin-bottom: 12px;">
+                  <label class="form-label" style="color: #ffb300;">🌐 2D 前端发布包版本路径 (big_screen_dist)</label>
+                  <div style="font-family: monospace; font-size: 12px; word-break: break-all; color: #cbd5e1; background: #05070d; padding: 6px 10px; border-radius: 4px;">
+                    {{ selectedEnvInfo.env_info.big_screen_dist || '未配置' }}
+                  </div>
+                </div>
+
+                <div class="form-group" style="background: rgba(13, 20, 36, 0.6); padding: 12px; border-radius: 6px; border: 1px solid #1a253c; margin-bottom: 12px;">
+                  <label class="form-label" style="color: #ff9100;">🎮 3D UE 孪生工程包版本路径 (ue_dist)</label>
+                  <div style="font-family: monospace; font-size: 12px; word-break: break-all; color: #cbd5e1; background: #05070d; padding: 6px 10px; border-radius: 4px;">
+                    {{ selectedEnvInfo.env_info.ue_dist || '未配置' }}
+                  </div>
+                </div>
+
+                <div class="grid-2" style="margin-bottom: 12px;">
+                  <div class="form-group" style="background: rgba(13, 20, 36, 0.6); padding: 12px; border-radius: 6px; border: 1px solid #1a253c; margin-bottom: 0;">
+                    <label class="form-label" style="color: #00d2ff;">🔗 N+1 业务后端接口基地址</label>
+                    <div style="font-family: monospace; font-size: 12px; word-break: break-all; color: #cbd5e1;">
+                      {{ selectedEnvInfo.env_info.nplusone_url || '-' }}
+                    </div>
+                  </div>
+                  <div class="form-group" style="background: rgba(13, 20, 36, 0.6); padding: 12px; border-radius: 6px; border: 1px solid #1a253c; margin-bottom: 0;">
+                    <label class="form-label" style="color: #00d2ff;">📡 NATS 推流网关地址</label>
+                    <div style="font-family: monospace; font-size: 12px; word-break: break-all; color: #cbd5e1;">
+                      {{ selectedEnvInfo.env_info.nats_ws_url || '-' }}
+                    </div>
+                  </div>
+                </div>
+
+                <div class="grid-2">
+                  <div class="form-group" style="background: rgba(13, 20, 36, 0.6); padding: 12px; border-radius: 6px; border: 1px solid #1a253c; margin-bottom: 0;">
+                    <label class="form-label" style="color: var(--text-muted);">⚙️ 启动器配置文件路径</label>
+                    <div style="font-family: monospace; font-size: 11px; word-break: break-all; color: #8b9bb4;">
+                      {{ selectedEnvInfo.env_info.config_file || '-' }}
+                    </div>
+                  </div>
+                  <div class="form-group" style="background: rgba(13, 20, 36, 0.6); padding: 12px; border-radius: 6px; border: 1px solid #1a253c; margin-bottom: 0;">
+                    <label class="form-label" style="color: var(--text-muted);">🔌 自动化 CDP 调试端口</label>
+                    <div style="font-family: monospace; font-size: 13px; font-weight: 600; color: #00e676;">
+                      {{ selectedEnvInfo.env_info.start_port || '9527' }}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 原始 JSON 视图 -->
+              <div v-else>
+                <pre style="background: #05070d; border: 1px solid #1a253c; border-radius: 6px; padding: 14px; font-family: monospace; font-size: 12px; color: #00e676; max-height: 400px; overflow-y: auto;">{{ selectedEnvInfo.raw_json }}</pre>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 📄 用例 YAML 源码预览弹窗 -->
+        <div class="modal-overlay" v-if="previewingCase" @click.self="previewingCase = null">
+          <div class="modal-content" style="max-width: 860px; max-height: 85vh; display: flex; flex-direction: column;">
+            <div class="modal-header">
+              <div>
+                <h3 style="display: flex; align-items: center; gap: 10px;">
+                  <span>📄 用例 YAML 脚本预览</span>
+                  <span class="badge badge-low" style="font-family: monospace;">{{ previewingCase.filename }}</span>
+                </h3>
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
+                  {{ previewingCase.path }} (共 {{ previewingCase.steps_count }} 步)
+                </div>
+              </div>
+              <button class="modal-close" @click="previewingCase = null">&times;</button>
+            </div>
+
+            <div style="flex: 1; overflow-y: auto; margin: 12px 0;">
+              <div v-if="previewCaseLoading" style="text-align: center; padding: 40px; color: #00d2ff;">
+                ⚡ 正在读取 YAML 源码...
+              </div>
+              <pre v-else style="background: #05070d; border: 1px solid #1a253c; border-radius: 6px; padding: 16px; font-family: monospace; font-size: 12px; line-height: 1.6; color: #cbd5e1; margin: 0; white-space: pre-wrap; word-break: break-all;">{{ previewCaseContent }}</pre>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #1a253c; padding-top: 12px;">
+              <div>
+                <button class="btn btn-secondary" style="padding: 6px 14px; font-size: 12px;" @click="copyCaseYaml">
+                  📋 复制 YAML 全文
+                </button>
+              </div>
+              <div style="display: flex; gap: 10px;">
+                <button class="btn btn-secondary" @click="previewingCase = null">关闭</button>
+                <button class="btn btn-primary" @click="runCaseInDashboard(previewingCase)">
+                  🚀 在控制台以此脚本启动测试
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
 
 
