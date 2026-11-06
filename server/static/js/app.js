@@ -1667,6 +1667,16 @@ const app = createApp({
 
 
 
+    function formatDateTime(val) {
+      if (!val) return '-';
+      const str = String(val).replace('T', ' ');
+      const matched = str.match(/^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2}:\d{2})/);
+      if (matched) {
+        return `${matched[1]} ${matched[2]}`;
+      }
+      return str.split('.')[0] || '-';
+    }
+
     function formatReportUrl(url) {
 
       if (!url) return '';
@@ -2116,6 +2126,8 @@ const app = createApp({
       switchToLiveMonitor,
 
       viewBugDetail,
+
+      formatDateTime,
 
       formatReportUrl,
 

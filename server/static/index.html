@@ -88,7 +88,8 @@
 
         <div>探针目标: <b style="color: #00d2ff;">{{ currentAppName }}</b></div>
 
-        <div class="status-badge" :style="{ background: liveSnapshot.ue_online ? 'rgba(0, 230, 118, 0.1)' : 'rgba(255, 82, 82, 0.1)', color: liveSnapshot.ue_online ? '#00e676' : '#ff5252' }">
+        <div class="status-badge"
+          :style="{ background: liveSnapshot.ue_online ? 'rgba(0, 230, 118, 0.1)' : 'rgba(255, 82, 82, 0.1)', color: liveSnapshot.ue_online ? '#00e676' : '#ff5252' }">
 
           <span class="dot" :style="{ background: liveSnapshot.ue_online ? '#00e676' : '#ff5252' }"></span>
 
@@ -96,7 +97,8 @@
 
         </div>
 
-        <div class="status-badge" style="margin-top: 4px;" :style="{ background: liveSnapshot.cdp_online ? 'rgba(0, 210, 255, 0.1)' : 'rgba(139, 155, 180, 0.1)', color: liveSnapshot.cdp_online ? '#00d2ff' : '#8b9bb4' }">
+        <div class="status-badge" style="margin-top: 4px;"
+          :style="{ background: liveSnapshot.cdp_online ? 'rgba(0, 210, 255, 0.1)' : 'rgba(139, 155, 180, 0.1)', color: liveSnapshot.cdp_online ? '#00d2ff' : '#8b9bb4' }">
 
           <span class="dot" :style="{ background: liveSnapshot.cdp_online ? '#00d2ff' : '#8b9bb4' }"></span>
 
@@ -120,7 +122,8 @@
 
           <span v-if="currentTab === 'dashboard'">🚀 任务发起与快速调度</span>
 
-          <span v-if="currentTab === 'monitor'">📈 双核性能与日志流大屏 ({{ activeTaskId === '__live__' ? '⚡ 本机物理环境实时心电图' : (activeTask ? activeTask.name : '未选择任务') }})</span>
+          <span v-if="currentTab === 'monitor'">📈 双核性能与日志流大屏 ({{ activeTaskId === '__live__' ? '⚡ 本机物理环境实时心电图' :
+            (activeTask ? activeTask.name : '未选择任务') }})</span>
 
           <span v-if="currentTab === 'tasks'">📁 巡检任务执行历史与产物归档</span>
 
@@ -130,11 +133,13 @@
 
         <div class="top-actions">
 
-          <div style="display: flex; align-items: center; gap: 8px; background: rgba(13, 20, 36, 0.9); padding: 5px 12px; border-radius: 6px; border: 1px solid #00d2ff;">
+          <div
+            style="display: flex; align-items: center; gap: 8px; background: rgba(13, 20, 36, 0.9); padding: 5px 12px; border-radius: 6px; border: 1px solid #00d2ff;">
 
             <span style="font-size: 12px; color: #fff; font-weight: 600;">🎯 目标矿山:</span>
 
-            <select v-model="taskForm.app_name" @change="changeLiveApp(taskForm.app_name)" style="background: #111a2e; color: #00d2ff; border: none; font-weight: 700; font-size: 13px; cursor: pointer; outline: none;">
+            <select v-model="taskForm.app_name" @change="changeLiveApp(taskForm.app_name)"
+              style="background: #111a2e; color: #00d2ff; border: none; font-weight: 700; font-size: 13px; cursor: pointer; outline: none;">
 
               <option v-for="app in options.apps" :key="app.key" :value="app.key">
 
@@ -146,7 +151,8 @@
 
           </div>
 
-          <button class="btn btn-secondary" @click="triggerHotSync" :disabled="isSyncing" style="border-color: #10b981; color: #34d399;" title="重新扫描磁盘上的最新测试运行批次与全局缺陷">
+          <button class="btn btn-secondary" @click="triggerHotSync" :disabled="isSyncing"
+            style="border-color: #10b981; color: #34d399;" title="重新扫描磁盘上的最新测试运行批次与全局缺陷">
 
             <span>{{ isSyncing ? '⏳ 同步中...' : '⚡ 立即同步磁盘数据' }}</span>
 
@@ -154,7 +160,8 @@
 
           <button class="btn btn-secondary" @click="currentTab = 'dashboard'">+ 新建任务</button>
 
-          <a :href="options.report_hub_url || '/report-hub'" target="_blank" class="btn btn-secondary" style="border-color: #00d2ff; color: #00d2ff;">
+          <a :href="options.report_hub_url || '/report-hub'" target="_blank" class="btn btn-secondary"
+            style="border-color: #00d2ff; color: #00d2ff;">
 
             🌐 产物总门户 (Report Hub)
 
@@ -178,11 +185,13 @@
 
           <!-- 实时环境概览与状态提示条 -->
 
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; background: rgba(13, 20, 36, 0.85); padding: 8px 16px; border-radius: 6px; border: 1px solid #1a253c;">
+          <div
+            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; background: rgba(13, 20, 36, 0.85); padding: 8px 16px; border-radius: 6px; border: 1px solid #1a253c;">
 
             <div style="display: flex; align-items: center; gap: 10px;">
 
-              <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #00d2ff; box-shadow: 0 0 8px #00d2ff;"></span>
+              <span
+                style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #00d2ff; box-shadow: 0 0 8px #00d2ff;"></span>
 
               <span style="font-size: 13px; color: #fff; font-weight: 600;">大屏实时多核物理指标 ({{ currentAppName }})</span>
 
@@ -190,7 +199,8 @@
 
             <div style="font-size: 12px; color: var(--text-muted);">
 
-              <span>伴生 UE 进程: <strong style="color: #00e676;">{{ taskForm.app_name }}.exe</strong> | 调试端口: <strong style="color: #00d2ff;">9223</strong></span>
+              <span>伴生 UE 进程: <strong style="color: #00e676;">{{ taskForm.app_name }}.exe</strong> | 调试端口: <strong
+                  style="color: #00d2ff;">9223</strong></span>
 
             </div>
 
@@ -200,7 +210,9 @@
 
           <div class="grid-4" style="margin-bottom: 20px;">
 
-            <div class="kpi-card" :title="liveSnapshot.cdp_online ? 'Chromium CDP 协议探针在线，实时抓取 2D 页面 DOM 树与事件监听器' : 'CDP 调试端口 (9223) 未激活\n启动大屏附带参数 --remote-debugging-port=9223 即可秒级点亮此卡片'" style="cursor: help;">
+            <div class="kpi-card"
+              :title="liveSnapshot.cdp_online ? 'Chromium CDP 协议探针在线，实时抓取 2D 页面 DOM 树与事件监听器' : 'CDP 调试端口 (9223) 未激活\n启动大屏附带参数 --remote-debugging-port=9223 即可秒级点亮此卡片'"
+              style="cursor: help;">
 
               <div class="kpi-title">CHROMIUM DOM 节点</div>
 
@@ -210,67 +222,63 @@
 
                 事件监听器: {{ liveSnapshot.listeners_count.toLocaleString() }}
 
-                <span v-if="!liveSnapshot.cdp_online" style="font-size: 10px; color: #ffb300; margin-left: 4px;">(端口离线)</span>
+                <span v-if="!liveSnapshot.cdp_online"
+                  style="font-size: 10px; color: #ffb300; margin-left: 4px;">(端口离线)</span>
 
               </div>
 
             </div>
 
-            <div class="kpi-card purple" :title="liveSnapshot.cdp_online ? 'V8 引擎堆内存实时水位，反映大屏前端是否存在内存泄漏' : 'CDP 调试端口未连接 (显示为安全退避 0 值)'" style="cursor: help;">
+            <div class="kpi-card purple"
+              :title="liveSnapshot.cdp_online ? 'V8 引擎堆内存实时水位，反映大屏前端是否存在内存泄漏' : 'CDP 调试端口未连接 (显示为安全退避 0 值)'"
+              style="cursor: help;">
 
               <div class="kpi-title">V8 JS 堆内存</div>
 
-              <div class="kpi-val" style="color: #9d4edd;">{{ liveSnapshot.js_heap_mb }} <span style="font-size: 14px;">MB</span></div>
+              <div class="kpi-val" style="color: #9d4edd;">{{ liveSnapshot.js_heap_mb }} <span
+                  style="font-size: 14px;">MB</span></div>
 
               <div class="kpi-sub">总容量: {{ liveSnapshot.js_heap_total_mb }} MB</div>
 
             </div>
 
-            <div 
-
-              class="kpi-card green" 
-
+            <div class="kpi-card green"
               :title="`Windows 任务管理器全景视点:\n物理内存 (RAM/WorkingSet): ${liveSnapshot.ue_memory_mb || 0} MB\n专用提交量 (Private Commit): ${liveSnapshot.ue_commit_mb ? (liveSnapshot.ue_commit_mb / 1024).toFixed(2) + ' GB (' + liveSnapshot.ue_commit_mb + ' MB)' : '0 MB'}\n整机虚拟提交负荷: ${liveSnapshot.host_commit_load_percent || 0}% (防 OOM 核心指标)\n整机物理内存负荷: ${liveSnapshot.host_ram_load_percent || 0}%\nCPU 占用: ${liveSnapshot.ue_cpu_percent || 0}% (${liveSnapshot.cpu_cores || 12}核对齐)`"
-
-              style="cursor: help;"
-
-            >
+              style="cursor: help;">
 
               <div class="kpi-title">伴生 UE5 (Commit / RAM)</div>
 
               <div class="kpi-val" style="color: #00e676;">
 
-                <span v-if="liveSnapshot.ue_commit_mb" style="color: #ff9100;">{{ (liveSnapshot.ue_commit_mb / 1024).toFixed(1) }} <span style="font-size: 13px;">GB Commit</span></span>
+                <span v-if="liveSnapshot.ue_commit_mb" style="color: #ff9100;">{{ (liveSnapshot.ue_commit_mb /
+                  1024).toFixed(1) }} <span style="font-size: 13px;">GB Commit</span></span>
 
                 <span v-else>{{ liveSnapshot.ue_memory_mb || 0 }} <span style="font-size: 14px;">MB</span></span>
 
-                <span style="font-size: 12px; color: #a0aec0; margin-left: 6px;">/ {{ liveSnapshot.ue_memory_mb || 0 }}M RAM</span>
+                <span style="font-size: 12px; color: #a0aec0; margin-left: 6px;">/ {{ liveSnapshot.ue_memory_mb || 0 }}M
+                  RAM</span>
 
               </div>
 
               <div class="kpi-sub">
 
-                CPU: {{ liveSnapshot.ue_cpu_percent || 0 }}% | 宿主机Commit: {{ liveSnapshot.host_commit_load_percent || 0 }}%
+                CPU: {{ liveSnapshot.ue_cpu_percent || 0 }}% | 宿主机Commit: {{ liveSnapshot.host_commit_load_percent || 0
+                }}%
 
               </div>
 
             </div>
 
-            <div 
-
-              class="kpi-card warning" 
-
+            <div class="kpi-card warning"
               :title="`NVIDIA 官方驱动实时 3D 核心硬件负载: ${liveSnapshot.gpu_usage_percent || 0}%\n采样源: nvidia-smi 驱动级瞬时切片 (包含 UE5 渲染引擎、DWM 桌面窗口管理器与 Chromium 画面合成器总计；任务管理器单进程估算约 24% 左右)`"
-
-              style="cursor: help;"
-
-            >
+              style="cursor: help;">
 
               <div class="kpi-title">GPU 3D 渲染 / 显存</div>
 
               <div class="kpi-val" style="color: #ffb300;">{{ liveSnapshot.gpu_usage_percent || 0 }}%</div>
 
-              <div class="kpi-sub">显存已用: {{ liveSnapshot.gpu_memory_mb || 0 }} MB <span style="font-size: 11px; opacity: 0.8;">ℹ️</span></div>
+              <div class="kpi-sub">显存已用: {{ liveSnapshot.gpu_memory_mb || 0 }} MB <span
+                  style="font-size: 11px; opacity: 0.8;">ℹ️</span></div>
 
             </div>
 
@@ -290,43 +298,37 @@
 
             </div>
 
-            
+
 
             <div class="grid-3">
 
-              <div 
-
-                v-for="p in presetTasks" 
-
-                :key="p.id" 
-
-                class="card" 
-
-                style="background: #0d1424; margin-bottom: 0; display: flex; flex-direction: column; justify-content: space-between; border-color: #1a253c;"
-
-              >
+              <div v-for="p in presetTasks" :key="p.id" class="card"
+                style="background: #0d1424; margin-bottom: 0; display: flex; flex-direction: column; justify-content: space-between; border-color: #1a253c;">
 
                 <div>
 
                   <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
 
-                    <span class="badge" :class="p.badge === '推荐' ? 'badge-running' : (p.badge === '抗压' ? 'badge-high' : 'badge-low')">
+                    <span class="badge"
+                      :class="p.badge === '推荐' ? 'badge-running' : (p.badge === '抗压' ? 'badge-high' : 'badge-low')">
 
                       {{ p.badge }}
 
                     </span>
 
-                    <span style="font-size: 11px; color: var(--text-muted); font-family: monospace;">{{ p.app_name }} / {{ p.mode }}</span>
+                    <span style="font-size: 11px; color: var(--text-muted); font-family: monospace;">{{ p.app_name }} /
+                      {{ p.mode }}</span>
 
                   </div>
 
                   <div style="font-weight: 700; font-size: 14px; margin-bottom: 6px; color: #fff;">{{ p.title }}</div>
 
-                  <div style="font-size: 12px; color: var(--text-muted); line-height: 1.5; margin-bottom: 12px;">{{ p.description }}</div>
+                  <div style="font-size: 12px; color: var(--text-muted); line-height: 1.5; margin-bottom: 12px;">{{
+                    p.description }}</div>
 
                   <div style="font-size: 11px; color: #8b9bb4; margin-bottom: 14px;">
 
-                    <span>步数: <b style="color: #00d2ff;">{{ p.max_steps }}</b> 步</span> &nbsp;|&nbsp; 
+                    <span>步数: <b style="color: #00d2ff;">{{ p.max_steps }}</b> 步</span> &nbsp;|&nbsp;
 
                     <span>时限: <b style="color: #ffb300;">{{ p.max_times }}</b> 分钟</span>
 
@@ -336,21 +338,26 @@
 
 
 
-                <div style="display: flex; gap: 8px; margin-top: auto; border-top: 1px solid #1a253c; padding-top: 10px;">
+                <div
+                  style="display: flex; gap: 8px; margin-top: auto; border-top: 1px solid #1a253c; padding-top: 10px;">
 
-                  <button class="btn btn-primary" style="flex: 1; padding: 6px 10px; font-size: 12px; justify-content: center;" @click="launchPreset(p)">
+                  <button class="btn btn-primary"
+                    style="flex: 1; padding: 6px 10px; font-size: 12px; justify-content: center;"
+                    @click="launchPreset(p)">
 
                     🚀 一键拉起
 
                   </button>
 
-                  <button class="btn btn-secondary" style="padding: 6px 10px; font-size: 12px;" @click="loadPresetToForm(p)" title="载入到下方表单修改并可另存">
+                  <button class="btn btn-secondary" style="padding: 6px 10px; font-size: 12px;"
+                    @click="loadPresetToForm(p)" title="载入到下方表单修改并可另存">
 
                     ✏️ 载入微调
 
                   </button>
 
-                  <button v-if="!p.is_system" class="btn btn-danger" style="padding: 6px 8px; font-size: 12px;" @click="deletePreset(p)" title="删除此自定义预设">
+                  <button v-if="!p.is_system" class="btn btn-danger" style="padding: 6px 8px; font-size: 12px;"
+                    @click="deletePreset(p)" title="删除此自定义预设">
 
                     🗑️
 
@@ -475,17 +482,8 @@
 
                   <div class="select-pills" style="margin-bottom: 12px;">
 
-                    <span 
-
-                      class="pill-item" 
-
-                      v-for="(tpl, idx) in options.prompt_templates" 
-
-                      :key="idx"
-
-                      @click="applyTemplate(tpl)"
-
-                    >
+                    <span class="pill-item" v-for="(tpl, idx) in options.prompt_templates" :key="idx"
+                      @click="applyTemplate(tpl)">
 
                       🎯 {{ tpl.title }}
 
@@ -497,37 +495,33 @@
 
                   <label class="form-label">宏观探索目标提示词 (Macro Objective Prompt)</label>
 
-                  <textarea 
-
-                    class="form-control" 
-
-                    v-model="taskForm.macro_objective" 
-
-                    rows="6" 
-
-                    placeholder="输入自然语言意图，引导 AI 发起针对性探测..."
-
-                  ></textarea>
+                  <textarea class="form-control" v-model="taskForm.macro_objective" rows="6"
+                    placeholder="输入自然语言意图，引导 AI 发起针对性探测..."></textarea>
 
                 </div>
 
 
 
-                <div style="margin-top: 24px; display: flex; justify-content: flex-end; gap: 12px; align-items: center;">
+                <div
+                  style="margin-top: 24px; display: flex; justify-content: flex-end; gap: 12px; align-items: center;">
 
-                  <button class="btn btn-secondary" style="border-color: #00d2ff; color: #00d2ff;" @click="saveCurrentFormAsPreset(false)" title="将当前填写的全部配置持久化保存为常用预设">
+                  <button class="btn btn-secondary" style="border-color: #00d2ff; color: #00d2ff;"
+                    @click="saveCurrentFormAsPreset(false)" title="将当前填写的全部配置持久化保存为常用预设">
 
                     💾 保存为新预设
 
                   </button>
 
-                  <button v-if="taskForm.preset_id" class="btn btn-secondary" style="border-color: #ffb300; color: #ffb300;" @click="saveCurrentFormAsPreset(true)" title="直接回写覆盖当前载入的原预设">
+                  <button v-if="taskForm.preset_id" class="btn btn-secondary"
+                    style="border-color: #ffb300; color: #ffb300;" @click="saveCurrentFormAsPreset(true)"
+                    title="直接回写覆盖当前载入的原预设">
 
                     🔄 覆盖当前预设
 
                   </button>
 
-                  <button class="btn btn-primary" style="padding: 10px 24px; font-size: 14px;" @click="submitCreateTask">
+                  <button class="btn btn-primary" style="padding: 10px 24px; font-size: 14px;"
+                    @click="submitCreateTask">
 
                     🚀 立即创建并启动巡检
 
@@ -559,9 +553,11 @@
 
               <span style="font-size: 13px; color: var(--text-muted);">当前查看维度:</span>
 
-              <select class="form-control" style="width: 380px; font-weight: 600;" v-model="activeTaskId" @change="onMonitorTargetChange">
+              <select class="form-control" style="width: 380px; font-weight: 600;" v-model="activeTaskId"
+                @change="onMonitorTargetChange">
 
-                <option value="__live__" style="color: #00e676; font-weight: 700;">⚡ [实时模式] 本机物理环境实时心电图 (无需启动测试)</option>
+                <option value="__live__" style="color: #00e676; font-weight: 700;">⚡ [实时模式] 本机物理环境实时心电图 (无需启动测试)
+                </option>
 
                 <option disabled style="color: #64748b;">──────── 历史任务性能复盘 ────────</option>
 
@@ -579,9 +575,11 @@
 
             <div v-if="activeTaskId === '__live__'" style="display: flex; align-items: center; gap: 8px;">
 
-              <span class="badge badge-running" style="font-size: 12px; padding: 6px 14px; display: inline-flex; align-items: center; gap: 6px;">
+              <span class="badge badge-running"
+                style="font-size: 12px; padding: 6px 14px; display: inline-flex; align-items: center; gap: 6px;">
 
-                <span class="pulse-dot" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #00e676;"></span>
+                <span class="pulse-dot"
+                  style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #00e676;"></span>
 
                 物理探针每 4 秒实时流式绘制中
 
@@ -597,13 +595,15 @@
 
               </button>
 
-              <button v-else-if="activeTask.status === 'pending' || activeTask.status === 'stopped'" class="btn btn-primary" @click="startTask(activeTask.id)">
+              <button v-else-if="activeTask.status === 'pending' || activeTask.status === 'stopped'"
+                class="btn btn-primary" @click="startTask(activeTask.id)">
 
                 ▶️ 继续启动
 
               </button>
 
-              <a v-if="activeTask.report_url" :href="formatReportUrl(activeTask.report_url)" target="_blank" class="btn btn-secondary" style="margin-left: 8px;">
+              <a v-if="activeTask.report_url" :href="formatReportUrl(activeTask.report_url)" target="_blank"
+                class="btn btn-secondary" style="margin-left: 8px;">
 
                 📑 查看专属报告
 
@@ -616,18 +616,16 @@
 
 
           <!-- 实时心电图专属控制栏：分项目独立切换 + 状态微标 + 24小时回溯跨度 -->
-          <div v-if="activeTaskId === '__live__'" style="margin-bottom: 16px; background: rgba(13, 20, 36, 0.95); padding: 10px 16px; border-radius: 8px; border: 1px solid #1e293b; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+          <div v-if="activeTaskId === '__live__'"
+            style="margin-bottom: 16px; background: rgba(13, 20, 36, 0.95); padding: 10px 16px; border-radius: 8px; border: 1px solid #1e293b; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
             <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-              <span style="font-size: 13px; font-weight: 700; color: #94a3b8; display: flex; align-items: center; gap: 6px;">
+              <span
+                style="font-size: 13px; font-weight: 700; color: #94a3b8; display: flex; align-items: center; gap: 6px;">
                 🎯 监控目标项目:
               </span>
               <div style="display: flex; gap: 8px;">
-                <button 
-                  v-for="app in liveAppsStatus" 
-                  :key="app.app_name" 
-                  @click="changeLiveApp(app.app_name)"
-                  type="button"
-                  :style="{
+                <button v-for="app in liveAppsStatus" :key="app.app_name" @click="changeLiveApp(app.app_name)"
+                  type="button" :style="{
                     background: liveSelectedApp === app.app_name ? 'rgba(0, 210, 255, 0.15)' : 'rgba(30, 41, 59, 0.5)',
                     border: liveSelectedApp === app.app_name ? '1px solid #00d2ff' : '1px solid #334155',
                     color: liveSelectedApp === app.app_name ? '#00d2ff' : '#cbd5e1',
@@ -639,20 +637,18 @@
                     display: 'flex',
                     alignItems: 'center',
                     gap: '8px'
-                  }"
-                >
-                  <span 
-                    :style="{
+                  }">
+                  <span :style="{
                       display: 'inline-block',
                       width: '8px',
                       height: '8px',
                       borderRadius: '50%',
                       background: app.online ? '#00e676' : '#64748b',
                       boxShadow: app.online ? '0 0 8px #00e676' : 'none'
-                    }"
-                  ></span>
+                    }"></span>
                   <span>{{ app.title }}</span>
-                  <span v-if="app.online && app.ue_commit_mb" style="font-size: 11px; padding: 2px 6px; border-radius: 4px; background: rgba(255, 145, 0, 0.2); color: #ff9100; font-weight: 700;">
+                  <span v-if="app.online && app.ue_commit_mb"
+                    style="font-size: 11px; padding: 2px 6px; border-radius: 4px; background: rgba(255, 145, 0, 0.2); color: #ff9100; font-weight: 700;">
                     {{ (app.ue_commit_mb / 1024).toFixed(1) }}G Commit
                   </span>
                   <span v-else-if="app.online" style="font-size: 11px; color: #00e676; font-weight: 600;">
@@ -668,13 +664,11 @@
             <!-- 时间跨度快捷切换器 -->
             <div style="display: flex; align-items: center; gap: 8px;">
               <span style="font-size: 12px; color: #94a3b8;">历史回溯:</span>
-              <div style="display: flex; background: #0b1120; border: 1px solid #1e293b; border-radius: 6px; padding: 2px;">
-                <button 
+              <div
+                style="display: flex; background: #0b1120; border: 1px solid #1e293b; border-radius: 6px; padding: 2px;">
+                <button
                   v-for="span in [{'key':'15m','name':'15分钟'},{'key':'1h','name':'1小时'},{'key':'6h','name':'6小时'},{'key':'24h','name':'24小时'}]"
-                  :key="span.key"
-                  @click="changeLiveTimeSpan(span.key)"
-                  type="button"
-                  :style="{
+                  :key="span.key" @click="changeLiveTimeSpan(span.key)" type="button" :style="{
                     background: liveTimeSpan === span.key ? '#00d2ff' : 'transparent',
                     color: liveTimeSpan === span.key ? '#000' : '#94a3b8',
                     border: 'none',
@@ -683,8 +677,7 @@
                     fontSize: '12px',
                     fontWeight: 600,
                     cursor: 'pointer'
-                  }"
-                >
+                  }">
                   {{ span.name }}
                 </button>
               </div>
@@ -725,21 +718,14 @@
 
             <div id="terminalWindow" class="terminal-window">
 
-              <div v-if="terminalLogs.length === 0" style="color: var(--text-muted); text-align: center; padding: 40px;">
+              <div v-if="terminalLogs.length === 0"
+                style="color: var(--text-muted); text-align: center; padding: 40px;">
 
                 暂无日志流或任务尚未启动，启动任务后将实时输出执行过程...
 
               </div>
 
-              <div 
-
-                v-for="(log, idx) in terminalLogs" 
-
-                :key="idx" 
-
-                class="log-line"
-
-                :class="{
+              <div v-for="(log, idx) in terminalLogs" :key="idx" class="log-line" :class="{
 
                   error: log.includes('ERROR') || log.includes('❌') || log.includes('Traceback'),
 
@@ -749,9 +735,7 @@
 
                   success: log.includes('圆满完成') || log.includes('✅')
 
-                }"
-
-              >{{ log }}</div>
+                }">{{ log }}</div>
 
             </div>
 
@@ -784,42 +768,30 @@
                 <thead>
 
                   <tr>
-
                     <th>任务 ID / 名称</th>
-
+                    <th>开始时间</th>
                     <th>应用</th>
-
                     <th>模式</th>
-
                     <th>状态</th>
-
                     <th>步数 / 覆盖率</th>
-
                     <th>发现缺陷</th>
-
                     <th>运行时长</th>
-
                     <th>操作</th>
-
                   </tr>
-
                 </thead>
-
                 <tbody>
-
                   <tr v-if="!tasks || tasks.length === 0">
-                    <td colspan="8" style="text-align: center; padding: 28px; color: var(--text-muted);">
+                    <td colspan="9" style="text-align: center; padding: 28px; color: var(--text-muted);">
                       📁 暂无历史巡检任务记录
                     </td>
                   </tr>
                   <tr v-else v-for="t in paginatedTasks" :key="t.id">
-
                     <td>
-
                       <div style="font-weight: 600;">{{ t.name }}</div>
-
                       <div style="font-size: 11px; color: var(--text-muted); font-family: monospace;">{{ t.id }}</div>
-
+                    </td>
+                    <td style="font-size: 12px; color: #a0aec0; white-space: nowrap; font-family: monospace;">
+                      {{ formatDateTime(t.start_time) }}
                     </td>
 
                     <td>{{ t.app_name }}</td>
@@ -840,13 +812,15 @@
 
                     <td>
 
-                      <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 12px;" @click="switchActiveTask(t); currentTab = 'monitor'">
+                      <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 12px;"
+                        @click="switchActiveTask(t); currentTab = 'monitor'">
 
                         监控
 
                       </button>
 
-                      <a v-if="t.report_url" :href="formatReportUrl(t.report_url)" target="_blank" class="btn btn-secondary" style="padding: 4px 10px; font-size: 12px; margin-left: 6px;">
+                      <a v-if="t.report_url" :href="formatReportUrl(t.report_url)" target="_blank"
+                        class="btn btn-secondary" style="padding: 4px 10px; font-size: 12px; margin-left: 6px;">
 
                         报告
 
@@ -885,14 +859,16 @@
                   </button>
                 </template>
 
-                <button class="page-btn" :disabled="taskPage >= totalTaskPages" @click="setTaskPage(taskPage + 1)" title="下一页">
+                <button class="page-btn" :disabled="taskPage >= totalTaskPages" @click="setTaskPage(taskPage + 1)"
+                  title="下一页">
                   &gt;
                 </button>
 
                 <span style="margin: 0 4px; color: var(--text-muted);">第 {{ taskPage }} / {{ totalTaskPages }} 页</span>
 
                 <span style="margin-left: 6px;">跳至</span>
-                <input type="number" class="page-jump-input" min="1" :max="totalTaskPages" v-model.number="taskPageJump" @keydown.enter="jumpToTaskPage">
+                <input type="number" class="page-jump-input" min="1" :max="totalTaskPages" v-model.number="taskPageJump"
+                  @keydown.enter="jumpToTaskPage">
                 <span>页</span>
                 <button class="page-btn" style="padding: 0 10px; margin-left: 4px;" @click="jumpToTaskPage">确定</button>
               </div>
@@ -914,7 +890,8 @@
 
           <div class="card">
 
-            <div class="card-header" style="flex-direction: column; align-items: stretch; gap: 14px; padding-bottom: 16px;">
+            <div class="card-header"
+              style="flex-direction: column; align-items: stretch; gap: 14px; padding-bottom: 16px;">
 
               <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
 
@@ -922,7 +899,8 @@
 
                   <span>🐛 全局缺陷治理中枢 (AI 智能查重去重与分流)</span>
 
-                  <span style="font-size: 12px; font-weight: normal; color: #00d2ff; background: rgba(0, 210, 255, 0.1); border: 1px solid rgba(0, 210, 255, 0.25); padding: 2px 10px; border-radius: 12px;">
+                  <span
+                    style="font-size: 12px; font-weight: normal; color: #00d2ff; background: rgba(0, 210, 255, 0.1); border: 1px solid rgba(0, 210, 255, 0.25); padding: 2px 10px; border-radius: 12px;">
 
                     共 {{ bugs ? bugs.length : 0 }} 条缺陷
 
@@ -934,7 +912,8 @@
 
                   <span style="font-size: 12px; color: var(--text-muted);">✨ 智能关联实时过滤</span>
 
-                  <button class="btn btn-secondary" @click="resetBugFilters" style="padding: 5px 12px; font-size: 12px;" title="清空全部筛选条件">
+                  <button class="btn btn-secondary" @click="resetBugFilters" style="padding: 5px 12px; font-size: 12px;"
+                    title="清空全部筛选条件">
 
                     ↺ 重置筛选
 
@@ -948,19 +927,20 @@
 
               <!-- 5维一体现代复合筛选栏 -->
 
-              <div class="bug-filter-bar" style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center; background: rgba(11, 15, 25, 0.7); padding: 12px 16px; border-radius: 8px; border: 1px solid var(--border-color);">
+              <div class="bug-filter-bar"
+                style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center; background: rgba(11, 15, 25, 0.7); padding: 12px 16px; border-radius: 8px; border: 1px solid var(--border-color);">
 
                 <!-- 1. 全局关键字检索 (Bug编号、标题、报错堆栈、禅道单号) -->
 
                 <div style="flex: 1; min-width: 260px; position: relative;">
 
-                  <input type="text" class="form-control" style="width: 100%; padding-right: 30px;" 
+                  <input type="text" class="form-control" style="width: 100%; padding-right: 30px;"
+                    placeholder="🔍 检索 Bug 编号 / 标题 / 报错堆栈 / 禅道单号..." v-model="bugSearch" @input="onBugSearchInput"
+                    @keydown.enter="fetchBugs">
 
-                         placeholder="🔍 检索 Bug 编号 / 标题 / 报错堆栈 / 禅道单号..." 
-
-                         v-model="bugSearch" @input="onBugSearchInput" @keydown.enter="fetchBugs">
-
-                  <span v-if="isBugsLoading" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); font-size: 12px; color: #00d2ff;" title="正在快速过滤...">
+                  <span v-if="isBugsLoading"
+                    style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); font-size: 12px; color: #00d2ff;"
+                    title="正在快速过滤...">
 
                     ⚡
 
@@ -974,7 +954,8 @@
 
                 <div style="width: 135px;">
 
-                  <select class="form-control" style="width: 100%;" v-model="bugSeverityFilter" @change="fetchBugs({ resetPage: true })">
+                  <select class="form-control" style="width: 100%;" v-model="bugSeverityFilter"
+                    @change="fetchBugs({ resetPage: true })">
 
                     <option value="">⚡ 全部严重程度</option>
 
@@ -994,7 +975,8 @@
 
                 <div style="width: 145px;">
 
-                  <select class="form-control" style="width: 100%;" v-model="bugAssigneeFilter" @change="fetchBugs({ resetPage: true })">
+                  <select class="form-control" style="width: 100%;" v-model="bugAssigneeFilter"
+                    @change="fetchBugs({ resetPage: true })">
 
                     <option value="">👤 全部责任人</option>
 
@@ -1012,7 +994,8 @@
 
                 <div style="width: 130px;">
 
-                  <select class="form-control" style="width: 100%;" v-model="bugStatusFilter" @change="fetchBugs({ resetPage: true })">
+                  <select class="form-control" style="width: 100%;" v-model="bugStatusFilter"
+                    @change="fetchBugs({ resetPage: true })">
 
                     <option value="">📌 全部状态</option>
 
@@ -1034,7 +1017,8 @@
 
                 <div style="width: 160px;">
 
-                  <select class="form-control" style="width: 100%;" v-model="bugOccurrencesFilter" @change="fetchBugs({ resetPage: true })">
+                  <select class="form-control" style="width: 100%;" v-model="bugOccurrencesFilter"
+                    @change="fetchBugs({ resetPage: true })">
 
                     <option value="">🔄 全部频次</option>
 
@@ -1112,7 +1096,8 @@
 
                       <div style="font-weight: 500; cursor: pointer;" @click="viewBugDetail(b)">{{ b.title }}</div>
 
-                      <div style="font-size: 11px; color: var(--text-muted); max-width: 450px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                      <div
+                        style="font-size: 11px; color: var(--text-muted); max-width: 450px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
 
                         {{ b.actual_error }}
 
@@ -1132,19 +1117,9 @@
 
                     <td>
 
-                      <a 
-
-                        v-if="b.zentao_id" 
-
-                        :href="formatZenTaoUrl(b.zentao_id)" 
-
-                        target="_blank" 
-
+                      <a v-if="b.zentao_id" :href="formatZenTaoUrl(b.zentao_id)" target="_blank"
                         style="color: #00e676; font-weight: 600; text-decoration: underline; text-underline-offset: 3px;"
-
-                        title="点击跳转至禅道查看缺陷详情"
-
-                      >
+                        title="点击跳转至禅道查看缺陷详情">
 
                         #{{ b.zentao_id }} ↗
 
@@ -1158,25 +1133,24 @@
 
                     <td>
 
-                      <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px;" @click="viewBugDetail(b)">
+                      <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px;"
+                        @click="viewBugDetail(b)">
 
                         详情
 
                       </button>
 
-                      <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px; margin-left: 6px; border-color: #00d2ff; color: #00d2ff;" @click="openEditBugModal(b)">
+                      <button class="btn btn-secondary"
+                        style="padding: 4px 8px; font-size: 12px; margin-left: 6px; border-color: #00d2ff; color: #00d2ff;"
+                        @click="openEditBugModal(b)">
 
                         编辑
 
                       </button>
 
-                      <button 
-                        v-if="!b.zentao_id" 
-                        class="btn btn-primary" 
-                        style="padding: 4px 8px; font-size: 12px; margin-left: 6px;"
-                        :disabled="b._syncing"
-                        @click="syncZenTao(b)"
-                      >
+                      <button v-if="!b.zentao_id" class="btn btn-primary"
+                        style="padding: 4px 8px; font-size: 12px; margin-left: 6px;" :disabled="b._syncing"
+                        @click="syncZenTao(b)">
                         {{ b._syncing ? '提单中...' : '推禅道' }}
                       </button>
 
@@ -1213,14 +1187,16 @@
                   </button>
                 </template>
 
-                <button class="page-btn" :disabled="bugPage >= totalBugPages" @click="setBugPage(bugPage + 1)" title="下一页">
+                <button class="page-btn" :disabled="bugPage >= totalBugPages" @click="setBugPage(bugPage + 1)"
+                  title="下一页">
                   &gt;
                 </button>
 
                 <span style="margin: 0 4px; color: var(--text-muted);">第 {{ bugPage }} / {{ totalBugPages }} 页</span>
 
                 <span style="margin-left: 6px;">跳至</span>
-                <input type="number" class="page-jump-input" min="1" :max="totalBugPages" v-model.number="bugPageJump" @keydown.enter="jumpToBugPage">
+                <input type="number" class="page-jump-input" min="1" :max="totalBugPages" v-model.number="bugPageJump"
+                  @keydown.enter="jumpToBugPage">
                 <span>页</span>
                 <button class="page-btn" style="padding: 0 10px; margin-left: 4px;" @click="jumpToBugPage">确定</button>
               </div>
@@ -1244,19 +1220,9 @@
 
                     <span>[{{ selectedBug.id }}] 缺陷详细诊断分析</span>
 
-                    <a 
-
-                      v-if="selectedBug.zentao_id" 
-
-                      :href="formatZenTaoUrl(selectedBug.zentao_id)" 
-
-                      target="_blank" 
-
-                      class="badge" 
-
-                      style="background: rgba(0, 230, 118, 0.15); color: #00e676; border: 1px solid rgba(0, 230, 118, 0.3); text-decoration: none;"
-
-                    >
+                    <a v-if="selectedBug.zentao_id" :href="formatZenTaoUrl(selectedBug.zentao_id)" target="_blank"
+                      class="badge"
+                      style="background: rgba(0, 230, 118, 0.15); color: #00e676; border: 1px solid rgba(0, 230, 118, 0.3); text-decoration: none;">
 
                       禅道工单 #{{ selectedBug.zentao_id }} ↗
 
@@ -1296,17 +1262,8 @@
 
                     <span>{{ selectedBug.status }} (复现 {{ selectedBug.occurrences }} 次)</span>
 
-                    <a 
-
-                      v-if="selectedBug.zentao_id" 
-
-                      :href="formatZenTaoUrl(selectedBug.zentao_id)" 
-
-                      target="_blank" 
-
-                      style="color: #00e676; font-size: 13px; font-weight: 600; text-decoration: underline;"
-
-                    >
+                    <a v-if="selectedBug.zentao_id" :href="formatZenTaoUrl(selectedBug.zentao_id)" target="_blank"
+                      style="color: #00e676; font-size: 13px; font-weight: 600; text-decoration: underline;">
 
                       进入禅道查看 #{{ selectedBug.zentao_id }}
 
@@ -1324,19 +1281,12 @@
 
                 <div style="display: flex; align-items: center; gap: 12px;">
 
-                  <code style="background: #0f172a; color: #38bdf8; padding: 4px 8px; border-radius: 4px; font-size: 13px; border: 1px solid #1e293b; font-family: monospace;">{{ selectedBug.run_id || selectedBug.task_id }}</code>
+                  <code
+                    style="background: #0f172a; color: #38bdf8; padding: 4px 8px; border-radius: 4px; font-size: 13px; border: 1px solid #1e293b; font-family: monospace;">{{ selectedBug.run_id || selectedBug.task_id }}</code>
 
-                  <a 
-
-                    v-if="selectedBug.run_id" 
-
-                    :href="'reports/runs/zhaiwan/' + selectedBug.run_id + '/report.html'" 
-
-                    target="_blank" 
-
-                    style="color: #60a5fa; font-size: 13px; text-decoration: underline; font-weight: 500;"
-
-                  >
+                  <a v-if="selectedBug.run_id" :href="'reports/runs/zhaiwan/' + selectedBug.run_id + '/report.html'"
+                    target="_blank"
+                    style="color: #60a5fa; font-size: 13px; text-decoration: underline; font-weight: 500;">
 
                     查看该批次完整测试报告 ↗
 
@@ -1350,7 +1300,8 @@
 
                 <label class="form-label">案发现场实际报错</label>
 
-                <pre style="background: #05070d; padding: 12px; border-radius: 6px; font-size: 12px; color: #ff6b6b; white-space: pre-wrap; word-break: break-all;">{{ selectedBug.actual_error }}</pre>
+                <pre
+                  style="background: #05070d; padding: 12px; border-radius: 6px; font-size: 12px; color: #ff6b6b; white-space: pre-wrap; word-break: break-all;">{{ selectedBug.actual_error }}</pre>
 
               </div>
 
@@ -1358,7 +1309,9 @@
 
                 <label class="form-label">AI 智能初诊与排查指引</label>
 
-                <div style="background: #111827; padding: 12px; border-radius: 6px; font-size: 13px; line-height: 1.6; white-space: pre-wrap;">{{ selectedBug.analysis_notes }}</div>
+                <div
+                  style="background: #111827; padding: 12px; border-radius: 6px; font-size: 13px; line-height: 1.6; white-space: pre-wrap;">
+                  {{ selectedBug.analysis_notes }}</div>
 
               </div>
 
@@ -1366,7 +1319,9 @@
 
                 <label class="form-label">📌 处理备注 / 关闭原因</label>
 
-                <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); color: #34d399; padding: 12px; border-radius: 6px; font-size: 13px; line-height: 1.6; white-space: pre-wrap;">{{ selectedBug.remark }}</div>
+                <div
+                  style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); color: #34d399; padding: 12px; border-radius: 6px; font-size: 13px; line-height: 1.6; white-space: pre-wrap;">
+                  {{ selectedBug.remark }}</div>
 
               </div>
 
@@ -1374,19 +1329,14 @@
 
                 <label class="form-label">现场快照截图</label>
 
-                <div style="text-align: center; background: #05070d; border-radius: 8px; padding: 10px; border: 1px solid var(--border-color);">
+                <div
+                  style="text-align: center; background: #05070d; border-radius: 8px; padding: 10px; border: 1px solid var(--border-color);">
 
                   <a :href="formatScreenshotUrl(selectedBug.screenshot_path)" target="_blank" title="点击查看大图">
 
-                    <img 
-
-                      :src="formatScreenshotUrl(selectedBug.screenshot_path)" 
-
+                    <img :src="formatScreenshotUrl(selectedBug.screenshot_path)"
                       style="max-width: 100%; max-height: 520px; object-fit: contain; border-radius: 6px;"
-
-                      alt="缺陷案发现场截图"
-
-                    >
+                      alt="缺陷案发现场截图">
 
                   </a>
 
@@ -1404,13 +1354,15 @@
 
                 <button class="btn btn-secondary" @click="selectedBug = null">关闭</button>
 
-                <button class="btn btn-secondary" style="border-color: #00d2ff; color: #00d2ff;" @click="openEditBugModal(selectedBug)">
+                <button class="btn btn-secondary" style="border-color: #00d2ff; color: #00d2ff;"
+                  @click="openEditBugModal(selectedBug)">
 
                   ✏️ 编辑缺陷属性
 
                 </button>
 
-                <button v-if="!selectedBug.zentao_id" class="btn btn-primary" :disabled="selectedBug._syncing" @click="syncZenTao(selectedBug)">
+                <button v-if="!selectedBug.zentao_id" class="btn btn-primary" :disabled="selectedBug._syncing"
+                  @click="syncZenTao(selectedBug)">
                   {{ selectedBug._syncing ? '正在提交至禅道...' : '提交至禅道' }}
                 </button>
 
@@ -1526,7 +1478,8 @@
 
                 <label class="form-label">AI 初诊与排查指引说明</label>
 
-                <textarea class="form-control" rows="5" v-model="editForm.analysis_notes" placeholder="输入根因分析或开发排查指引..."></textarea>
+                <textarea class="form-control" rows="5" v-model="editForm.analysis_notes"
+                  placeholder="输入根因分析或开发排查指引..."></textarea>
 
               </div>
 
@@ -1536,7 +1489,8 @@
 
                 <label class="form-label">📌 备注 / 关闭说明 (非必填)</label>
 
-                <textarea class="form-control" rows="3" v-model="editForm.remark" placeholder="如：核验无误非Bug、关闭原因或补充排查备注..."></textarea>
+                <textarea class="form-control" rows="3" v-model="editForm.remark"
+                  placeholder="如：核验无误非Bug、关闭原因或补充排查备注..."></textarea>
 
               </div>
 
@@ -1566,7 +1520,7 @@
 
     </main>
 
-<!-- 全局现代 Toast 通知层 -->
+    <!-- 全局现代 Toast 通知层 -->
     <div class="toast-container" v-if="toasts && toasts.length">
       <div v-for="t in toasts" :key="t.id" :class="['toast-item', 'toast-' + t.type]">
         <div class="toast-icon">
@@ -1589,9 +1543,8 @@
   <script src="/static/js/app.js"></script>
 
 
-    
+
 
 </body>
 
 </html>
-
