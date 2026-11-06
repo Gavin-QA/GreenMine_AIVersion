@@ -176,6 +176,12 @@ const app = createApp({
 
     });
 
+    // 全局当前权威选中的矿山名称 (用于顶栏、侧边栏和看板联动)
+    const currentAppName = computed(() => {
+      const found = (options.apps || []).find(a => a.key === taskForm.app_name);
+      return found ? found.name : (taskForm.app_name || '待选择');
+    });
+
 
 
     // 监控页面与 ECharts
@@ -2020,6 +2026,8 @@ const app = createApp({
       removeToast,
 
       currentTab,
+
+      currentAppName,
 
       options,
 

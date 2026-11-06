@@ -86,7 +86,7 @@
 
       <div class="sidebar-status">
 
-        <div>目标应用: <b style="color: #00d2ff;">{{ liveSnapshot.app_name }}</b></div>
+        <div>探针目标: <b style="color: #00d2ff;">{{ currentAppName }}</b></div>
 
         <div class="status-badge" :style="{ background: liveSnapshot.ue_online ? 'rgba(0, 230, 118, 0.1)' : 'rgba(255, 82, 82, 0.1)', color: liveSnapshot.ue_online ? '#00e676' : '#ff5252' }">
 
@@ -134,7 +134,7 @@
 
             <span style="font-size: 12px; color: #fff; font-weight: 600;">🎯 目标矿山:</span>
 
-            <select v-model="taskForm.app_name" @change="fetchLiveSnapshot" style="background: #111a2e; color: #00d2ff; border: none; font-weight: 700; font-size: 13px; cursor: pointer; outline: none;">
+            <select v-model="taskForm.app_name" @change="changeLiveApp(taskForm.app_name)" style="background: #111a2e; color: #00d2ff; border: none; font-weight: 700; font-size: 13px; cursor: pointer; outline: none;">
 
               <option v-for="app in options.apps" :key="app.key" :value="app.key">
 
@@ -176,7 +176,7 @@
 
         <div v-show="currentTab === 'dashboard'">
 
-          <!-- 实时环境概览与顶置切换条 -->
+          <!-- 实时环境概览与状态提示条 -->
 
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; background: rgba(13, 20, 36, 0.85); padding: 8px 16px; border-radius: 6px; border: 1px solid #1a253c;">
 
@@ -184,17 +184,7 @@
 
               <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #00d2ff; box-shadow: 0 0 8px #00d2ff;"></span>
 
-              <span style="font-size: 13px; color: #fff; font-weight: 600;">正在实时监控大屏应用：</span>
-
-              <select v-model="taskForm.app_name" @change="changeLiveApp(taskForm.app_name)" style="background: #111a2e; color: #00d2ff; border: 1px solid #00d2ff; padding: 4px 12px; border-radius: 4px; font-weight: 700; font-size: 13px; cursor: pointer; outline: none;">
-
-                <option v-for="app in options.apps" :key="app.key" :value="app.key">
-
-                  {{ app.name }}
-
-                </option>
-
-              </select>
+              <span style="font-size: 13px; color: #fff; font-weight: 600;">大屏实时多核物理指标 ({{ currentAppName }})</span>
 
             </div>
 
@@ -406,7 +396,7 @@
 
                   <label class="form-label">矿山应用选择</label>
 
-                  <select class="form-control" v-model="taskForm.app_name">
+                  <select class="form-control" v-model="taskForm.app_name" @change="changeLiveApp(taskForm.app_name)">
 
                     <option v-for="app in options.apps" :key="app.key" :value="app.key">
 
