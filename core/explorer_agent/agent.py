@@ -395,6 +395,39 @@ class ExplorerAgent:
         except Exception as rep_err:
             logger.warning(f"生成最终报告失败: {rep_err}")
 
+        # 5. 任务完成收尾自洁：清理 raw_bugs 临时目录与 checkpoint 缓存
+        self._cleanup_post_run()
+
+    def _cleanup_post_run(self):
+        """
+        任务完成入库后的自洁收尾机制：
+        1. 自动清理 raw_bugs/ 临时目录 (中间抓取物已全部沉淀入库)；
+        2. 自动清理 checkpoint/ 目录 (核心页面树已归入 page_map_builder 与 root，执行流均有 logs/数据库 保障)。
+        """
+        import shutil
+        # 1. 清理 raw_bugs 临时目录
+        raw_bugs_dir = self.run_dir / "raw_bugs"
+        if raw_bugs_dir.exists():
+            try:
+                shutil.rmtree(raw_bugs_dir, ignore_errors=True)
+                logger.info("🧹 [Cleanup] 任务收尾自洁：已清理 raw_bugs/ 临时中间目录。")
+            except Exception as e:
+                logger.debug(f"清理 raw_bugs 目录跳过: {e}")
+
+        # 2. 清理 checkpoint 目录 (保全 page_tree.json 至运行根目录)
+        chk_dir = self.run_dir / "checkpoint"
+        if chk_dir.exists():
+            try:
+                tree_file = chk_dir / "page_tree.json"
+                if tree_file.exists():
+                    root_tree = self.run_dir / "page_tree.json"
+                    if not root_tree.exists():
+                        shutil.copy2(tree_file, root_tree)
+                shutil.rmtree(chk_dir, ignore_errors=True)
+                logger.info("🧹 [Cleanup] 任务收尾自洁：已清理 checkpoint/ 目录 (历史链路已完整记录于日志与数据库)。")
+            except Exception as e:
+                logger.debug(f"清理 checkpoint 目录跳过: {e}")
+
     def smoke_tour(self, total_menus_limit: Optional[int] = None, context: str = ""):
         """二级菜单全量冒烟巡检模式"""
         from core.explorer_agent.page_map_builder import PageMapBuilder
@@ -506,6 +539,9 @@ class ExplorerAgent:
             logger.info(f"📊 冒烟巡检大盘已生成: file:///{report_file.as_posix()}")
         except Exception:
             pass
+
+        # 任务完成收尾自洁
+        self._cleanup_post_run()
 
     # 兼容历史公开接口命名
     start_exploration = explore

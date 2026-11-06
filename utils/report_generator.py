@@ -242,10 +242,13 @@ class ReportGenerator:
         data["kpi"]["bug_status_counts"] = status_counts
         data["kpi"]["active_bugs_count"] = status_counts.get("激活", 0)
 
-        # 3. 解析页面拓扑树 (checkpoint/page_tree.json 或根目录 page_tree.json)
+        # 3. 解析页面拓扑树 (checkpoint/page_tree.json 或根目录 page_tree.json 或全局拓扑单一真理源)
         tree_cand = self.run_dir / "checkpoint" / "page_tree.json"
         if not tree_cand.exists():
             tree_cand = self.run_dir / "page_tree.json"
+        if not tree_cand.exists():
+            from utils.paths import TOPOLOGY_DIR
+            tree_cand = TOPOLOGY_DIR / f"global_page_tree_{active_app}.json"
         if tree_cand.exists():
             try:
                 with open(tree_cand, "r", encoding="utf-8") as f:
@@ -639,7 +642,9 @@ class ReportGenerator:
         # 序列化供前端 JS 消费的纯数据
         steps_json = json.dumps(data["steps"], ensure_ascii=False)
         bugs_json = json.dumps(data["bugs"], ensure_ascii=False)
-        apis_json = json.dumps(data["api_summary"], ensure_ascii=False)
+        # 接口数据瘦身：表格中已通过 api_rows_html 预渲染展示端点名称；
+        # 避免将几十兆包含 Base64 各种大图的原始响应报文注入 HTML，下载直接走静态文件
+        apis_json = "{}"
         mermaid_raw = data["mermaid_str"]
 
         # 计算当前 report 相对于 reports/runs 根目录的深度与相对前缀 (自适应 1 层或 2 层架构)

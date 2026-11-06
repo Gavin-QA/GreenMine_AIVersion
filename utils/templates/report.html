@@ -1325,7 +1325,7 @@
         <div class="kpi-label">✅ 测试断言通过率</div>
         <div class="kpi-value">{{ pass_rate }}</div>
       </div>
-      <div class="kpi-card bugs-card">
+      <div class="kpi-card bugs-card" onclick="switchTab('tab-bugs')" style="cursor: pointer;" title="点击直达缺陷证据库">
         <div class="kpi-label">🐞 捕获缺陷</div>
         <div class="kpi-value">{{ data['kpi']['bugs_count'] }} <span class="sub">个独立缺陷</span>{% if data['kpi'].get('total_bug_hits', 0) > data['kpi']['bugs_count'] %}<span style="font-size: 13px; color: #f43f5e; font-weight: 600; margin-left: 2px;">({{ data['kpi']['total_bug_hits'] }}次触发)</span>{% endif %}</div>
         <div style="font-size: 11px; margin-top: 6px; display: flex; align-items: center; gap: 4px; flex-wrap: wrap;">
@@ -1386,6 +1386,27 @@
 
     <!-- Tab 2: Bugs Locker -->
     <div id="tab-bugs" class="tab-pane">
+      <!-- AI 智能查重与高频聚合态势横幅 -->
+      <div style="margin-bottom: 16px; background: linear-gradient(135deg, rgba(30,41,59,0.7) 0%, rgba(15,23,42,0.6) 100%); border: 1px solid rgba(244,63,94,0.3); border-radius: 12px; padding: 14px 18px; display: flex; align-items: center; justify-content: space-between; gap: 14px; box-shadow: 0 4px 16px rgba(0,0,0,0.2);">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <div style="width: 38px; height: 38px; border-radius: 8px; background: rgba(244,63,94,0.15); border: 1px solid rgba(244,63,94,0.3); display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0;">
+            🛡️
+          </div>
+          <div>
+            <div style="font-weight: 700; color: #f1f5f9; font-size: 13px; display: flex; align-items: center; gap: 8px;">
+              <span>AI 多模态缺陷归因与去重聚合中枢</span>
+              <span style="font-size: 11px; background: rgba(16,185,129,0.15); color: #34d399; border: 1px solid rgba(16,185,129,0.3); padding: 1px 7px; border-radius: 4px; font-weight: 600;">已聚合沉淀</span>
+            </div>
+            <div style="font-size: 12px; color: #94a3b8; margin-top: 3px;">
+              本次巡检共捕获 <strong style="color: #f43f5e;">{{ data['kpi'].get('total_bug_hits', data['kpi']['bugs_count']) }}</strong> 次底层异常与报错，已智能合并归为 <strong style="color: #38bdf8;">{{ data['kpi']['bugs_count'] }}</strong> 个根因缺陷单据。展开下方卡片可一键切换核验各处复现场景。
+            </div>
+          </div>
+        </div>
+        <div style="font-size: 12px; color: var(--text-dim); text-align: right; flex-shrink: 0;">
+          已阻断 <span style="color: #10b981; font-weight: 700;">{{ [data['kpi'].get('total_bug_hits', data['kpi']['bugs_count']) - data['kpi']['bugs_count'], 0] | max }}</span> 次重复刷屏
+        </div>
+      </div>
+
       <div class="timeline-filter-bar">
         <div class="filter-btn-group">
           <button class="filter-pill active" onclick="filterBugs('激活', event)">激活 ({{ data['kpi'].get('bug_status_counts', {}).get('激活', 0) }})</button>
@@ -2577,16 +2598,16 @@
     }
 
     function downloadApiJson() {
-      const code = JSON.stringify(apisData, null, 2);
-      const blob = new Blob([code], { type: 'application/json' });
-      const url = window.URL.createObjectURL(blob);
+      // 瘦身优化：直接从静态产物 screenshots/api_registry.json 下载，避免在前端内存中维护几十兆原始大对象
       const a = document.createElement('a');
       a.style.display = 'none';
-      a.href = url;
+      a.href = 'screenshots/api_registry.json';
       a.download = 'api_registry.json';
       document.body.appendChild(a);
       a.click();
-      window.URL.revokeObjectURL(url);
+      setTimeout(() => {
+        if (a.parentNode) document.body.removeChild(a);
+      }, 400);
     }
 
     function downloadYaml() {
