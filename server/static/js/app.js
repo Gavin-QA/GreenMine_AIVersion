@@ -2013,7 +2013,11 @@ const app = createApp({
 
       liveSnapshot,
 
+      fetchLiveSnapshot,
+
       tasks,
+
+      fetchTasks,
 
       activeTaskId,
 
@@ -2026,6 +2030,8 @@ const app = createApp({
       bugs,
 
       isBugsLoading,
+
+      fetchBugs,
 
       onBugSearchInput,
 
