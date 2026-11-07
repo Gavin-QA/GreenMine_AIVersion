@@ -4,7 +4,7 @@ import json
 import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Tuple
 
 from config.settings import settings
 from utils.paths import TOPOLOGY_DIR, TOPOLOGY_SNAPSHOTS_DIR, DOCS_DIR
@@ -24,21 +24,21 @@ class PageMapBuilder:
         base_tree = {}
         try:
             from config.settings import settings
-            configured_rules = getattr(settings, "rules_file", None)
-            candidates = []
-            if configured_rules:
-                candidates.extend([
-                    Path(configured_rules),
-                    DOCS_DIR / Path(configured_rules).name,
-                    Path("docs") / Path(configured_rules).name
-                ])
             active_app = getattr(settings, "active_app", "")
+            candidates = []
             if active_app and active_app != "default":
                 app_rules_name = f"explore_rules_{active_app}.md"
                 candidates.extend([
                     DOCS_DIR / app_rules_name,
                     Path("docs") / app_rules_name,
                     Path(__file__).resolve().parent.parent.parent / "docs" / app_rules_name
+                ])
+            configured_rules = getattr(settings, "rules_file", None)
+            if configured_rules:
+                candidates.extend([
+                    Path(configured_rules),
+                    DOCS_DIR / Path(configured_rules).name,
+                    Path("docs") / Path(configured_rules).name
                 ])
             rules_path = None
             for cand in candidates:
@@ -66,6 +66,17 @@ class PageMapBuilder:
         except Exception as e:
             logger.warning(f"加载基准架构底座失败: {e}")
         return copy.deepcopy(base_tree)
+
+    @classmethod
+    def get_all_l2_menus(cls, reload: bool = False) -> List[Tuple[str, str]]:
+        """从基准架构底座中提取全量 (一级菜单, 二级菜单) 有序元组列表"""
+        base_tree = cls.parse_base_rules(reload=reload)
+        menu_items: List[Tuple[str, str]] = []
+        for l1, l2_dict in base_tree.items():
+            if isinstance(l2_dict, dict):
+                for l2 in l2_dict.keys():
+                    menu_items.append((l1, l2))
+        return menu_items
 
     @staticmethod
     def get_baseline_spatial_skeleton(app_name: str, l1: str, l2: str) -> dict:

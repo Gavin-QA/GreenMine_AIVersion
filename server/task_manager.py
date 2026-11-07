@@ -233,6 +233,20 @@ class TaskManager:
                 if task.status != "stopped":
                     task.status = "completed" if exit_code == 0 else "failed"
 
+                if exit_code != 0 and not task.error_message:
+                    with self._lock:
+                        buf = self.log_buffers.get(task_id, [])
+                    err_lines = []
+                    for l in reversed(buf[-50:]):
+                        err_lines.append(l)
+                        if "Traceback" in l:
+                            break
+                    if err_lines:
+                        err_lines.reverse()
+                        task.error_message = "\n".join(err_lines[-10:])
+                    else:
+                        task.error_message = f"Process exited with non-zero code {exit_code}"
+
                 # 尝试扫描最新的 reports/runs/zhaiwan 目录回填产物
                 self._enrich_task_metrics_from_runs(task)
                 db.commit()
