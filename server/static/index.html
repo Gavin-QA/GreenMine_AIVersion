@@ -48,36 +48,50 @@
 
       <ul class="nav-menu">
 
+        <!-- 1. 任务控制台 -->
         <li class="nav-item" :class="{ active: currentTab === 'dashboard' }" @click="currentTab = 'dashboard'">
-
           <span class="nav-icon">📊</span>
-
           <span>任务控制台</span>
-
         </li>
 
+        <!-- 2. 实时监控大屏 -->
         <li class="nav-item" :class="{ active: currentTab === 'monitor' }" @click="currentTab = 'monitor'">
-
           <span class="nav-icon">📈</span>
-
           <span>实时监控大屏</span>
-
         </li>
 
-        <li class="nav-item" :class="{ active: currentTab === 'tasks' }" @click="currentTab = 'tasks'">
-
-          <span class="nav-icon">📁</span>
-
-          <span>任务与产物库</span>
-
+        <!-- 3. 任务与产物库 (二级全部展开) -->
+        <li class="nav-group">
+          <div class="nav-item" :class="{ active: currentTab === 'tasks' && !assetsSubTab }" @click="currentTab = 'tasks'; if (!assetsSubTab) assetsSubTab = 'runs'">
+            <span class="nav-icon">📁</span>
+            <span style="font-weight: 600;">任务与产物库</span>
+          </div>
+          <ul class="sub-nav-menu">
+            <li class="sub-nav-item" :class="{ active: currentTab === 'tasks' && assetsSubTab === 'runs' }"
+              @click="currentTab = 'tasks'; assetsSubTab = 'runs'">
+              <span style="margin-right: 6px;">📑</span>
+              <span>历史巡检任务</span>
+            </li>
+            <li class="sub-nav-item" :class="{ active: currentTab === 'tasks' && assetsSubTab === 'queue' }"
+              @click="currentTab = 'tasks'; assetsSubTab = 'queue'">
+              <span style="margin-right: 6px;">⏱️</span>
+              <span style="flex: 1;">调度执行队列</span>
+              <span v-if="pendingQueueCount > 0" class="badge" style="background: #ff5252; color: #fff; padding: 1px 6px; border-radius: 10px; font-size: 10px;">
+                {{ pendingQueueCount }}
+              </span>
+            </li>
+            <li class="sub-nav-item" :class="{ active: currentTab === 'tasks' && assetsSubTab === 'cases' }"
+              @click="currentTab = 'tasks'; assetsSubTab = 'cases'">
+              <span style="margin-right: 6px;">🧪</span>
+              <span>用例资产管理</span>
+            </li>
+          </ul>
         </li>
 
+        <!-- 4. 缺陷治理中枢 -->
         <li class="nav-item" :class="{ active: currentTab === 'bugs' }" @click="currentTab = 'bugs'">
-
           <span class="nav-icon">🐛</span>
-
           <span>缺陷治理中枢</span>
-
         </li>
 
       </ul>
@@ -853,63 +867,6 @@
         <!-- ============================================================= -->
 
         <div v-show="currentTab === 'tasks'">
-
-          <!-- 任务与产物库顶栏横向切换分段器 (无括号、无数字) -->
-          <div style="display: flex; gap: 12px; margin-bottom: 18px;">
-            <button type="button" @click="assetsSubTab = 'runs'" :style="{
-                background: assetsSubTab === 'runs' ? 'linear-gradient(90deg, rgba(0, 210, 255, 0.2), rgba(58, 123, 213, 0.2))' : 'rgba(13, 20, 36, 0.6)',
-                border: assetsSubTab === 'runs' ? '1px solid #00d2ff' : '1px solid #1a253c',
-                color: assetsSubTab === 'runs' ? '#00d2ff' : '#8b9bb4',
-                padding: '9px 22px',
-                borderRadius: '8px',
-                fontSize: '14px',
-                fontWeight: 600,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                transition: 'all 0.2s ease'
-              }">
-              <span>📑 历史巡检任务</span>
-            </button>
-
-            <button type="button" @click="assetsSubTab = 'queue'" :style="{
-                background: assetsSubTab === 'queue' ? 'linear-gradient(90deg, rgba(0, 210, 255, 0.2), rgba(58, 123, 213, 0.2))' : 'rgba(13, 20, 36, 0.6)',
-                border: assetsSubTab === 'queue' ? '1px solid #00d2ff' : '1px solid #1a253c',
-                color: assetsSubTab === 'queue' ? '#00d2ff' : '#8b9bb4',
-                padding: '9px 22px',
-                borderRadius: '8px',
-                fontSize: '14px',
-                fontWeight: 600,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                transition: 'all 0.2s ease'
-              }">
-              <span>⏱️ 调度执行队列</span>
-              <span v-if="pendingQueueCount > 0" class="badge" style="background: #ff5252; color: #fff; padding: 2px 7px; border-radius: 10px; font-size: 11px;">
-                {{ pendingQueueCount }}
-              </span>
-            </button>
-
-            <button type="button" @click="assetsSubTab = 'cases'" :style="{
-                background: assetsSubTab === 'cases' ? 'linear-gradient(90deg, rgba(0, 210, 255, 0.2), rgba(58, 123, 213, 0.2))' : 'rgba(13, 20, 36, 0.6)',
-                border: assetsSubTab === 'cases' ? '1px solid #00d2ff' : '1px solid #1a253c',
-                color: assetsSubTab === 'cases' ? '#00d2ff' : '#8b9bb4',
-                padding: '9px 22px',
-                borderRadius: '8px',
-                fontSize: '14px',
-                fontWeight: 600,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                transition: 'all 0.2s ease'
-              }">
-              <span>🧪 用例资产管理</span>
-            </button>
-          </div>
 
           <!-- 子模块 1: 历史巡检任务 -->
           <div v-show="assetsSubTab === 'runs'">
