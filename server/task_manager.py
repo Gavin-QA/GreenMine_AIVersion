@@ -37,6 +37,14 @@ class TaskManager:
         with self._lock:
             return self.current_steps.get(task_id)
 
+    def is_running(self, task_id: str) -> bool:
+        """检查指定任务是否仍有活跃进程正在执行"""
+        with self._lock:
+            if task_id in self.active_processes:
+                proc = self.active_processes[task_id]
+                return proc.poll() is None
+            return False
+
     def start_task(self, task_id: str) -> bool:
         """从数据库拉取任务定义并拉起执行子进程与伴生性能采样引擎"""
         with self._lock:

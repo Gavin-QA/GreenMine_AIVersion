@@ -986,6 +986,100 @@ def stop_task_execution(
     return {"code": 200, "message": "任务已安全终止并归档", "task_id": task_id}
 
 
+@app.delete(
+    "/api/tasks/{task_id}",
+    tags=["2. 巡检任务生命周期调度"],
+    summary="安全级联删除指定任务及物理产物",
+    description="从数据库与物理磁盘彻底清理指定任务。若任务正在运行则禁止删除；若包含已提交禅道的有效缺陷，提供保护校验。",
+)
+def delete_task_run(
+    task_id: str = FastPath(..., description="待删除的任务全局识别码"),
+    force: bool = Query(default=False, description="是否强制删除（忽略缺陷保护警报）"),
+    cleanup_disk: bool = Query(default=True, description="是否级联清理磁盘物理运行目录 (reports/runs/<app>/<run_id>)"),
+    db: Session = Depends(get_db),
+):
+    import shutil
+    from utils.paths import PROJECT_ROOT, find_run_dir
+
+    task = db.query(TaskRun).filter(TaskRun.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="未找到指定的任务记录")
+
+    # 1. 运行态安全互斥拦截
+    if task.status == "running" or task_manager.is_running(task_id):
+        raise HTTPException(status_code=400, detail="该任务当前正在运行中，请先点击【终止】停止任务后再执行删除")
+
+    # 2. 缺陷安全保护防呆
+    associated_bugs = db.query(BugRecord).filter(BugRecord.task_id == task_id).all()
+    zentao_bugs = [b for b in associated_bugs if b.zentao_id]
+    if zentao_bugs and not force:
+        raise HTTPException(
+            status_code=409,
+            detail=f"安全保护拦截：该任务关联了 {len(zentao_bugs)} 条已提交至禅道的有效缺陷工单 (如 #{zentao_bugs[0].zentao_id})！如确认放弃这些证据并强行清理，请传递 force=true 参数。"
+        )
+
+    deleted_disk_path = None
+    # 3. 级联清理物理磁盘产物目录
+    if cleanup_disk:
+        target_dir = None
+        if task.run_dir:
+            p = Path(task.run_dir)
+            if not p.is_absolute():
+                p = PROJECT_ROOT / p
+            if p.exists() and p.is_dir():
+                target_dir = p
+        if not target_dir:
+            # 尝试通过 task_id / run_id 探查磁盘真实物理路径
+            r_id = task.id.replace("task_", "explore_")
+            cand = find_run_dir(r_id)
+            if cand and cand.exists() and cand.is_dir():
+                target_dir = cand
+
+        if target_dir and target_dir.exists() and target_dir.is_dir():
+            # 严格防呆围栏：必须在 reports/runs 目录下，绝对禁止误删根目录或其他重要目录
+            from utils.paths import RUNS_DIR
+            try:
+                resolved_target = target_dir.resolve()
+                resolved_runs = RUNS_DIR.resolve()
+                if resolved_runs in resolved_target.parents:
+                    shutil.rmtree(resolved_target, ignore_errors=True)
+                    deleted_disk_path = str(resolved_target)
+                    logger.info(f"🗑️ [TaskDelete] 已彻底物理抹除任务磁盘目录: {resolved_target}")
+                else:
+                    logger.warning(f"⚠️ [TaskDelete] 目标目录 {resolved_target} 不在 reports/runs/ 围栏内，跳过物理删除以防误伤！")
+            except Exception as e:
+                logger.error(f"物理删除磁盘目录失败: {e}")
+
+    # 4. 级联解除或清理关联 Bug
+    if associated_bugs:
+        for b in associated_bugs:
+            if b.zentao_id:
+                # 已提禅道的 Bug 仅解除 task_id 关联，保留其作为历史独立缺陷归档
+                b.task_id = None
+            else:
+                # 未提禅道的草稿/临时 Bug 彻底从数据库删除
+                db.delete(b)
+
+    # 5. 删除任务主记录 (其 steps 和 metrics 会通过 cascade='all, delete-orphan' 自动级联清理)
+    db.delete(task)
+    db.commit()
+
+    # 6. 轻量重构大盘报告，确保大盘 HTML 列表同步剔除
+    try:
+        from utils.report_hub import ReportHub
+        ReportHub().build_index_html()
+    except Exception as he:
+        logger.debug(f"重构大盘报告通知 (可忽略): {he}")
+
+    return {
+        "code": 200,
+        "message": "任务记录及物理产物已彻底安全清除",
+        "task_id": task_id,
+        "deleted_disk_path": deleted_disk_path,
+        "cleaned_bugs_count": len(associated_bugs),
+    }
+
+
 @app.get(
     "/api/tasks/{task_id}/logs",
     tags=["2. 巡检任务生命周期调度"],

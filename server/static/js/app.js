@@ -1002,6 +1002,60 @@ const app = createApp({
 
 
 
+    async function deleteTaskRun(task) {
+      if (!task || !task.id) return;
+      if (task.status === 'running') {
+        alert('该任务当前正在运行中，请先点击【终止】停止任务后再删除！');
+        return;
+      }
+
+      // 安全防线 1: 若任务包含已提禅道或较多 Bug，提供醒目预警
+      let force = false;
+      const bugCount = task.bugs_count || 0;
+      let promptMsg = `确定要彻底删除任务【${task.name}】(${task.id}) 吗？\n\n⚠️ 将同时从数据库中注销，并彻底物理清理磁盘产物目录！`;
+
+      if (bugCount > 0) {
+        promptMsg += `\n\n🚨 注意：该任务关联了 ${bugCount} 条缺陷记录！若其中已有提交至禅道的缺陷，已提交缺陷将予以保留，其余本地草稿证据将被物理删除。`;
+      }
+
+      if (!confirm(promptMsg)) return;
+
+      try {
+        let url = `${apiBase}/api/tasks/${task.id}?cleanup_disk=true`;
+        let res = await fetch(url, { method: 'DELETE' });
+
+        if (res.status === 409) {
+          // 命中已提禅道的高危拦截
+          const errData = await res.json();
+          const detail = errData.detail || '任务包含已提交禅道的缺陷';
+          if (confirm(`${detail}\n\n是否仍然确认强制删除该任务的本地物理产物？(强制删除不会删除禅道上的单据)`)) {
+            url += '&force=true';
+            res = await fetch(url, { method: 'DELETE' });
+          } else {
+            return;
+          }
+        }
+
+        if (res.ok) {
+          const data = await res.json();
+          alert(`✅ 任务已彻底清理完毕！${data.deleted_disk_path ? '\n已清理磁盘目录: ' + data.deleted_disk_path : ''}`);
+
+          // 若当前监控选中了被删除的任务，重置回环境监控
+          if (activeTaskId.value === task.id) {
+            switchToLiveMonitor();
+          }
+          await fetchTasks();
+        } else {
+          const errText = await res.text();
+          alert('删除任务失败: ' + errText);
+        }
+      } catch (e) {
+        alert('删除任务网络异常: ' + e);
+      }
+    }
+
+
+
     function onMonitorTargetChange() {
 
       if (activeTaskId.value === '__live__' || !activeTaskId.value) {
@@ -2278,6 +2332,8 @@ const app = createApp({
       startTask,
 
       stopTask,
+
+      deleteTaskRun,
 
       switchActiveTask,
 
