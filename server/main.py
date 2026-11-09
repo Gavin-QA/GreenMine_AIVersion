@@ -1222,38 +1222,33 @@ def sync_bug_to_zentao(
             format_bug_details_html,
             find_bug_in_databases,
             resolve_bug_assignee,
+            resolve_bug_app_key,
+            APP_NAME_MAP,
         )
 
         from config.settings import settings
 
         zentao = ZenTaoClient()
 
-        # 1. 动态智能判定该 Bug 所属矿山应用
-
-        app_key = "zhaiwan"
-
-        if bug.task and bug.task.app_name:
-            app_key = bug.task.app_name
-
-        elif bug.screenshot_path and "liwutong" in bug.screenshot_path.lower():
-            app_key = "liwutong"
-
-        elif bug.ui_path and (
-            "里伍" in bug.ui_path or "liwutong" in bug.ui_path.lower()
-        ):
-            app_key = "liwutong"
+        # 1. 动态智能判定该 Bug 所属矿山应用 (多级防呆)
+        bug_dict_for_app = {
+            "app": bug.task.app_name if (bug.task and bug.task.app_name) else None,
+            "run_id": bug.task.run_id if bug.task else None,
+            "ui_path": bug.ui_path,
+            "screenshot": bug.screenshot_path,
+            "crash_screenshot": bug.screenshot_path,
+            "target_element": bug.target_element,
+            "title": bug.title,
+            "actual": bug.actual_error,
+        }
+        app_key = resolve_bug_app_key(bug_dict_for_app)
 
         # 2. 读取对应矿山应用专属的禅道产品/项目/迭代归属三元组
-
         app_mapping = settings.get_zentao_app_mapping(app_key)
-
         product_id = app_mapping["product_id"]
-
         project_id = app_mapping["project_id"]
-
         execution_id = app_mapping["execution_id"]
-
-        app_chinese = "里伍铜矿" if app_key == "liwutong" else "寨湾矿山"
+        app_chinese = APP_NAME_MAP.get(app_key, "寨湾矿山")
 
         target_assignee = assignee or bug.assignee or "陈贻雄"
 

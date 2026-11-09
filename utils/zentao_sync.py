@@ -220,6 +220,63 @@ class ZenTaoClient:
         return resp.json()
 
 
+def resolve_bug_app_key(
+    bug: Optional[Dict[str, Any]],
+    explicit_app: Optional[str] = None,
+    global_file: Optional[Path] = None,
+    run_files: Optional[List[Path]] = None,
+) -> str:
+    """
+    智能解析 Bug 所属矿山项目 (zhaiwan / tianrui / liwutong)：
+    防呆四级降级机制：
+    1. 用户显式命令行参数或请求入参 (explicit_app)
+    2. Bug 自身属性 (bug['app'])
+    3. 全局库物理文件名 (global_file: 如 global_bugs_zhaiwan.json)
+    4. 关联运行目录 / 截图路径 (run_files / screenshot: 如 reports/runs/zhaiwan/...)
+    5. 关联设备或内容上下文识别 (如 zhaiwan_fan_xxx)
+    6. 最终兜底 settings.active_app
+    """
+    # 1. 显式参数
+    if explicit_app and explicit_app.strip():
+        app_c = explicit_app.strip().lower()
+        if app_c in APP_NAME_MAP:
+            return app_c
+
+    # 2. Bug 自身字段
+    if bug and isinstance(bug, dict):
+        raw_app = bug.get("app")
+        if raw_app and str(raw_app).strip().lower() in APP_NAME_MAP:
+            return str(raw_app).strip().lower()
+
+    # 3. 来源全局库物理文件名
+    if global_file:
+        gf_str = str(global_file.name).lower()
+        for k in APP_NAME_MAP:
+            if f"global_bugs_{k}" in gf_str:
+                return k
+
+    # 4. 运行目录路径
+    if run_files:
+        for rf in run_files:
+            rf_str = rf.as_posix().lower()
+            for k in APP_NAME_MAP:
+                if f"/runs/{k}/" in rf_str or f"\\runs\\{k}\\" in rf_str:
+                    return k
+
+    # 5. 上下文与设备/路径识别
+    if bug and isinstance(bug, dict):
+        text_corp = f"{bug.get('run_id', '')} {bug.get('ui_path', '')} {bug.get('screenshot', '')} {bug.get('crash_screenshot', '')} {bug.get('target_element', '')} {bug.get('title', '')} {bug.get('actual', '')}".lower()
+        if any(w in text_corp for w in ("zhaiwan", "寨湾", "寨湾二期")):
+            return "zhaiwan"
+        if any(w in text_corp for w in ("tianrui", "天瑞", "马边")):
+            return "tianrui"
+        if any(w in text_corp for w in ("liwutong", "里伍", "里伍铜")):
+            return "liwutong"
+
+    # 6. 最终回退
+    return getattr(settings, "active_app", "zhaiwan") or "zhaiwan"
+
+
 def find_bug_in_databases(bug_id: str, app_name: Optional[str] = None) -> tuple[Optional[Dict[str, Any]], Optional[Path], List[Path]]:
     """在全局库与运行目录中精准定位 Bug 数据与对应的物理文件路径"""
     matched_bug: Optional[Dict[str, Any]] = None
@@ -793,9 +850,7 @@ def main():
             print(f"❌ 缺陷 [{bug_id}] 尚未关联禅道单号，请先使用 --submit-bug 提交！")
             sys.exit(1)
 
-        app_key = args.app or getattr(settings, "active_app", "zhaiwan")
-        if not args.app and g_file and "liwutong" in g_file.name:
-            app_key = "liwutong"
+        app_key = resolve_bug_app_key(bug, explicit_app=args.app, global_file=g_file, run_files=r_files)
         app_chinese = APP_NAME_MAP.get(app_key, "寨湾矿山")
         app_cfg = settings.get_app_config(app_key)
 
@@ -867,9 +922,7 @@ def main():
             print(f"❌ 在本地缺陷知识库及运行目录中未找到 Bug: {bug_id}")
             sys.exit(1)
 
-        app_key = args.app or getattr(settings, "active_app", "zhaiwan")
-        if not args.app and g_file and "liwutong" in g_file.name:
-            app_key = "liwutong"
+        app_key = resolve_bug_app_key(bug, explicit_app=args.app, global_file=g_file, run_files=r_files)
         app_chinese = APP_NAME_MAP.get(app_key, "寨湾矿山")
         app_cfg = settings.get_app_config(app_key)
 
