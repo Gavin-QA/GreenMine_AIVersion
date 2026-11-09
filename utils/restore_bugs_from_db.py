@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-scripts/restore_bugs_from_db.py —— 缺陷数据灾备一键恢复工具
+utils/restore_bugs_from_db.py —— 缺陷数据灾备一键恢复工具 (Bug DB Restore)
 
-功能：
-当本地 artifacts/bugs/ 目录或各批次 reports/runs/ 的缺陷数据被误删、损坏时，
-从 SQLite 数据库 (BugRecord) 100% 提取全量数据，一键重新生成本地 JSON 与静态报告 report.html。
+核心职责：
+1. 灾备数据逆向恢复：当本地 artifacts/bugs/ 目录或 reports/runs/ 运行目录被误删时，从 SQLite 数据库全量恢复缺陷数据。
+2. 案发现场图片重建：将数据库内的 WebP Base64 重新逆向解码写入磁盘 bugs/*.png。
+3. 离线报告自动重渲：按需触发重新编译生成 static report.html 与 report_hub。
 """
 
 import sys

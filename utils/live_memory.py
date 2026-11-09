@@ -1,8 +1,13 @@
 # -*- coding: utf-8 -*-
 """
-实时双轨内存穿透交互式巡检工具 (Live Dual-Track Memory Inspector)
-直观展示：物理工作集 (RAM) + 专用提交量 (Private Bytes/Commit)，穿透 Pagefile 假象
+utils/live_memory.py —— 实时双轨内存穿透交互式巡检工具 (Live Dual-Track Memory Inspector)
+
+核心职责：
+1. 内存双轨穿透监测：同时采样 Electron 渲染层与伴生 UE 进程的【物理工作集 (Working Set/RAM)】与【专用提交量 (Private Bytes/Commit)】，穿透 Windows Pagefile 压缩假象。
+2. 宿主机健康负载感知：实时监控全机内存占用率与可用物理内存余量。
+3. 交互式命令行输出：供工程师随时在终端输入命令直接查看瞬时内存水位。
 """
+
 import os
 import sys
 import time

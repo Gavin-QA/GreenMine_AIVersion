@@ -1,3 +1,13 @@
+# -*- coding: utf-8 -*-
+"""
+utils/env_checker.py —— 启动前置环境准入巡检与版本一致性校验器
+
+核心职责：
+1. 后端接口基地址校验：解析 Electron 启动器配置文件中的 nplusoneUrl，判断当前处于生产环境(prod)还是测试环境(test)。
+2. 前端代码包版本校验：提取前端分发静态资源目录与包名特征，校验前端包是否过期。
+3. 严格准入拦截(strict)：若环境与预期基线不符，按配置直接熔断退出，杜绝在过期前端包或错误环境中通宵盲跑。
+"""
+
 import json
 import logging
 import os
@@ -32,7 +42,7 @@ def detect_environment_type(nplusone_url: str, custom_environments: Optional[Dic
         return "unknown", "未配置后端地址 (Unknown)"
 
     clean_url = nplusone_url.strip().rstrip("/")
-    
+
     # 1. 优先根据当前应用配置中的 environments 匹配
     if custom_environments and isinstance(custom_environments, dict):
         for env_k, env_val in custom_environments.items():

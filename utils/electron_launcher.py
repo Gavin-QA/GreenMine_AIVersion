@@ -1,3 +1,13 @@
+# -*- coding: utf-8 -*-
+"""
+utils/electron_launcher.py —— Electron 客户端进程管理与 CDP 智能托管底座
+
+核心职责：
+1. 进程生命周期管理：根据路径拉起目标 Electron Launcher 启动器、清理孤儿进程、优雅关闭与安全冷重启。
+2. CDP 调试直连保障：探测并等待 Chromium Remote Debugging Port (--remote-debugging-port)，直连 CDP 杜绝环境变量代理干扰。
+3. Playwright 机械臂底座：连接活跃页面、自动激活/前置窗口、处理崩溃断流与超时恢复。
+"""
+
 import os
 import subprocess
 import time
@@ -110,7 +120,7 @@ class ElectronLauncher:
             page = self.connect_playwright()
             context = self.browser.contexts[0] if self.browser.contexts else self.browser.new_context()
             return context, page
-        
+
         context = self.browser.contexts[0] if self.browser.contexts else self.browser.new_context()
         pages = [p for p in context.pages if not p.is_closed()]
         page = pages[0] if pages else context.new_page()
@@ -123,7 +133,7 @@ class ElectronLauncher:
             if self.is_cdp_alive():
                 logger.info("CDP 调试端口已就绪。")
                 return
-            
+
             # 进程意外崩溃快速失败，避免无效等待
             if self.process and self.process.poll() is not None:
                 exit_code = self.process.poll()
@@ -242,7 +252,7 @@ class ElectronLauncher:
                     logger.warning(f"⚠️ [UE Process Probe] 检测到 UE 进程瞬时未响应 (第 {consecutive_hung}/3 次)，等待重试...")
                 else:
                     consecutive_hung = 0
-                
+
                 # 解析工作集内存 (例如 "922,688 K" -> 901 MB)
                 mem_mb = proc.get("mem_kb", 0.0) / 1024.0
                 if mem_mb == 0.0:
@@ -277,7 +287,7 @@ class ElectronLauncher:
         """
         logger.info(f"⏳ [Page Transition Probe] 正在等待页面跃迁至大屏主界面 (URL关键词: '{expected_url_keyword}', 标题关键词: '{expected_title_keyword}', 超时: {timeout}s)...")
         start_t = time.time()
-        
+
         while time.time() - start_t < timeout:
             if not self.browser or not self.browser.contexts:
                 time.sleep(1.0)
@@ -285,18 +295,18 @@ class ElectronLauncher:
 
             context = self.browser.contexts[0]
             pages = [p for p in context.pages if not p.is_closed()]
-            
+
             for p in pages:
                 try:
                     curr_url = p.url or ""
                     curr_title = p.title() or ""
-                    
+
                     if curr_url.startswith("devtools://") or curr_url == "about:blank":
                         continue
-                    
+
                     url_ok = (expected_url_keyword in curr_url) if expected_url_keyword else True
                     title_ok = (expected_title_keyword in curr_title) if expected_title_keyword else True
-                    
+
                     # 只有当指定的过滤条件全部满足时（两者均指定需同时满足，单项指定满足单项），才判定跃迁完成
                     if url_ok and title_ok:
                         logger.info(f"✅ [Page Transition Probe] 页面跃迁成功！已锁定大屏主界面: URL='{curr_url}', Title='{curr_title}'")
@@ -304,7 +314,7 @@ class ElectronLauncher:
                 except Exception:
                     pass
             time.sleep(1.0)
-            
+
         logger.warning(f"⚠️ [Page Transition Probe] 未能在 {timeout} 秒内精确命中目标页面，将回退选定当前第一个非空白页面。")
         context = self.browser.contexts[0]
         for p in context.pages:
@@ -522,7 +532,7 @@ class ElectronLauncher:
                     logger.warning("⚠️ Electron 进程仍未响应，坚决不执行暴力强杀以保护 WEB 端缓存与端口干净，请稍后人工确认。")
             except Exception as e:
                 logger.warning(f"等待进程退出时发生异常: {e}")
-            
+
             # 启动器关闭时，伴生 UE 引擎会随之正常退出，不需要再用 taskkill 暴力强杀，避免导致显卡驱动蓝屏 (BSOD)。
 
             time.sleep(1.5)  # 物理等待 1.5s 确保 Windows 回收 9222 端口，防止连抽用例时端口死锁

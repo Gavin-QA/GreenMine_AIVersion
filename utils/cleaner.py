@@ -76,7 +76,7 @@ def print_disk_usage_info():
     # 1. 全局资产
     art_size, art_count = get_dir_size_and_count(ARTIFACTS_DIR)
     print(f"💎 全局持久资产库 [artifacts/]: {format_size(art_size)} ({art_count} 个核心资产文件)")
-    
+
     gb_size, _ = get_dir_size_and_count(GLOBAL_BUGS_DIR)
     top_size, _ = get_dir_size_and_count(TOPOLOGY_DIR)
     print(f"   ├── 全局 Bug 库: {format_size(gb_size)}")
@@ -118,7 +118,7 @@ def clean_temp_screenshots(retain_days: int = 7, dry_run: bool = False):
 
     cutoff_date = datetime.now() - timedelta(days=retain_days)
     run_folders = get_all_run_folders()
-    
+
     cleaned_bytes = 0
     cleaned_files = 0
 

@@ -148,7 +148,7 @@ class ReportGenerator:
                 try:
                     with open(bug_json, "r", encoding="utf-8") as f:
                         b_info = json.load(f)
-                    
+
                     # 匹配截图相对路径
                     bug_id = b_info.get("id", bug_json.stem)
                     img_cand = bugs_dir / f"{bug_json.stem}.png"
@@ -158,7 +158,7 @@ class ReportGenerator:
                         img_cands = list(bugs_dir.glob(f"{bug_id}*.png"))
                         if img_cands:
                             img_cand = img_cands[0]
-                    
+
                     b_info["rel_screenshot"] = f"bugs/{img_cand.name}" if img_cand.exists() else None
                     b_info["card_id"] = bug_json.stem
                     b_info.setdefault("run_id", data["run_id"])
@@ -253,7 +253,7 @@ class ReportGenerator:
             try:
                 with open(tree_cand, "r", encoding="utf-8") as f:
                     data["page_tree"] = json.load(f)
-                
+
                 try:
                     from core.explorer_agent.page_map_builder import PageMapBuilder
                     # 直接复用原生的纯 Markdown 组件拓扑树
@@ -391,7 +391,7 @@ class ReportGenerator:
             macro_match = re.search(r"探题目[:：]\s*(.*?)(?=\n|\Z)", text)
         if not macro_match:
             macro_match = re.search(r"▶️ 开始执行巡检用例:\s*(.*?)(?=\n|\Z)", text)
-        
+
         if macro_match:
             data["macro_objective"] = macro_match.group(1).strip().strip("'\"")
         else:
@@ -404,34 +404,34 @@ class ReportGenerator:
 
         # 提取 Planner 和 Worker 单步
         shots_dir = self.run_dir / "screenshots"
-        
+
         # 按 Planner Phase 切分
         planner_blocks = re.split(r"🧠 \[Planner Phase(?:\s+\d+)?\] 开始(?:宏观)?规划", text)
         if len(planner_blocks) > 1:
             for p_idx, p_block in enumerate(planner_blocks[1:]):
                 planner_phase_num = p_idx + 1
-                
+
                 # 解析 Planner 信息
                 ts_m = re.search(r"^，当前.*?进度.*?\n(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})", p_block) or re.search(r"\n(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})", p_block)
                 ts = ts_m.group(1) if ts_m else ""
-                
+
                 prog_m = re.search(r"^，当前(?:总步数)?进度[：:]\s*(.*?)(?=\n)", p_block)
                 global_prog = prog_m.group(1).strip() if prog_m else ""
-                
+
                 plan_shot_m = re.search(r"截图已保存至: .*?screenshots[\\/](plan_step_\d+\.png)", p_block)
                 plan_shot_path = f"screenshots/{plan_shot_m.group(1)}" if plan_shot_m else None
-                
+
                 th_m = re.search(r"💡 \[Planner\] 思考链: (.*?)(?=\n\d{4}|\n💡|\Z)", p_block, re.DOTALL)
                 thought = th_m.group(1).strip() if th_m else ""
-                
+
                 target_m = re.search(r"🎯 \[Planner\] 下达新任务: ['\"](.*?)['\"]", p_block)
                 if not target_m:
                     target_m = re.search(r"🎯 最终状态: (.*?)(?=\n|\Z)", p_block)
                 target = target_m.group(1).strip() if target_m else "未解析到明确目标"
-                
+
                 budget_m = re.search(r"预算步数[:：]\s*(\d+)", p_block)
                 budget = int(budget_m.group(1)) if budget_m else 0
-                
+
                 data["steps"].append({
                     "type": "planner",
                     "step": planner_phase_num,
@@ -444,7 +444,7 @@ class ReportGenerator:
                     "screenshot": plan_shot_path,
                     "has_bug": False
                 })
-                
+
                 # 提取此 Phase 下的所有 Worker Step
                 pattern = re.compile(
                     r"--- \[Worker Step (\d+)/(\d+)\] \(Global: (\d+)/(\d+)\) ---\n"
@@ -487,14 +487,14 @@ class ReportGenerator:
                     has_bug = "🚨 [" in block
                     bug_report_m = re.search(r"缺陷报告固化完毕:.*?bugs[\\/](.*?\.json)", block)
                     bug_card_id = Path(bug_report_m.group(1)).stem if bug_report_m else None
-                    
+
                     shot_file = f"explore_step_{g_step}.png"
                     shot_path = f"screenshots/{shot_file}" if (shots_dir / shot_file).exists() else None
                     hover_file = f"explore_step_{g_step}_hover.png"
                     hover_path = f"screenshots/{hover_file}" if (shots_dir / hover_file).exists() else None
                     after_file = f"explore_step_{g_step}_after.png"
                     after_path = f"screenshots/{after_file}" if (shots_dir / after_file).exists() else None
-                    
+
                     data["steps"].append({
                         "type": "worker",
                         "step": g_step,
@@ -525,11 +525,11 @@ class ReportGenerator:
                 budget = int(m.group(2))
                 step_type = m.group(3)
                 block = m.group(4)
-                
+
                 # 时间戳
                 ts_m = re.search(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})", block)
                 ts = ts_m.group(1) if ts_m else ""
-                
+
                 # 子目标/指令提取
                 sub = ""
                 sub_m1 = re.search(r"(?:执行断言指令|寻找元素指令|对比两张图).*?: ['\"](.*)['\"]$", block, re.MULTILINE)
@@ -540,18 +540,18 @@ class ReportGenerator:
                     sub = sub_m2.group(1).strip()
                 else:
                     sub = f"YAML 操作: {step_type}"
-                
+
                 # 思维链
                 th_m = re.search(r"💡 AI 思考链(?: \(纯视觉\))?: (.*?)(?=\n\d{4}|\Z)", block, re.DOTALL)
                 thought = th_m.group(1).strip() if th_m else ""
-                
+
                 # 动作与目标
                 action = step_type.upper()
                 # 强制令 target 等于子目标指令，即 YAML prompt
                 target = sub
-                
+
                 has_bug = "❌ 步骤" in block or "🐞 捕获到缺陷异常" in block or "断言失败" in block
-                
+
                 shot_path = None
                 if shots_dir.exists():
                     crash_imgs = list(shots_dir.glob(f"*_step_{g_step}.png"))
@@ -587,32 +587,32 @@ class ReportGenerator:
                 step_num = int(m.group(1))
                 module_name = m.group(2)
                 block = m.group(3)
-                
+
                 has_bug = "❌ [Smoke Jump]" in block or "🐞 捕获到缺陷异常" in block or "⚠️ [Smoke Planner]" in block
-                
+
                 sub = f"冒烟巡检: {module_name}"
-                
+
                 th_m = re.search(r"💡 \[Smoke Planner\] 页面诊断与思考: (.*?)(?=\n)", block)
                 thought = th_m.group(1).strip() if th_m else "尚未完成规划或遭遇跳转失败"
-                
+
                 shot_path = None
                 hover_path = None
-                
+
                 if shots_dir.exists():
                     jump_imgs = list(shots_dir.glob(f"smoke_jump_{step_num}_click.png"))
                     if not jump_imgs:
                         jump_imgs = list(shots_dir.glob(f"smoke_jump_{step_num}_hover.png"))
                     if jump_imgs:
                         shot_path = f"screenshots/{jump_imgs[0].name}"
-                        
+
                     plan_imgs = list(shots_dir.glob(f"smoke_page_{step_num}_plan.png"))
                     if plan_imgs:
                         hover_path = f"screenshots/{plan_imgs[0].name}"
-                
+
                 # 寻找时间戳
                 ts_m = re.search(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})", block)
                 ts = ts_m.group(1) if ts_m else ""
-                
+
                 data["steps"].append({
                     "step": step_num,
                     "worker_step": step_num,
@@ -675,18 +675,18 @@ class ReportGenerator:
         is_yaml_mode = data['run_id'].startswith("yaml_")
         hero_title = "⚡ Electron Vision AI · 自动化回归测试报告" if is_yaml_mode else "⚡ Electron Vision AI · 自主探索测试报告"
         badge_text = "YAML 强校验模式" if is_yaml_mode else "自主探索驱动"
-        
+
         planner_kpi_style_attr = 'style="display:none;"' if is_yaml_mode else ''
         pass_rate_kpi_style_attr = '' if is_yaml_mode else 'style="display:none;"'
-        
+
         pass_count = data['kpi']['total_steps'] - data['kpi']['bugs_count']
         pass_rate = f"{int(pass_count / data['kpi']['total_steps'] * 100)}%" if data['kpi']['total_steps'] > 0 else "100%"
-        
+
         tab_topology_style = "display:none;" if is_yaml_mode else ""
         tab_yaml_style = "display:none;" if is_yaml_mode else ""
         hero_meta_style = 'style="display:none;"' if is_yaml_mode else ''
         timeline_tab_name = "🎬 用例执行链路" if is_yaml_mode else "🎬 Planner-Worker 执行树"
-        
+
         # 安全处理时间字符串
         start_t = data.get('start_time', '未知')
         end_t = data.get('end_time', '未知')
@@ -779,13 +779,13 @@ class ReportGenerator:
                 report_base_url = config.get("reports", {}).get("report_base_url", report_base_url)
         except Exception as e:
             logger.debug(f"读取 config.yaml 获取 webhook 失败: {e}")
-            
+
         if not webhook_url:
             logger.debug("未配置飞书 webhook，跳过推送")
             return
         bugs_count = data['kpi'].get('bugs_count', 0)
         template = "red" if int(bugs_count) > 0 else "blue"
-        
+
         import time
         import hashlib
         import base64

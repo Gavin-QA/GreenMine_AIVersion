@@ -1,3 +1,13 @@
+# -*- coding: utf-8 -*-
+"""
+utils/bug_enricher.py —— 缺陷元数据智能增强、规范化与快照萃取器
+
+核心职责：
+1. 元数据智能抽取：从测试步骤文本中自动提取规范的 UI 路径、交互动作类型(action_type)与目标元素。
+2. 严重级别对齐：将中英文、数字等多种等级表示统一归一化为禅道标准 1~4 级（致命、严重、一般、轻微）。
+3. 快照凭证萃取：在运行产物中自动关联案发现场高精切片(ROI)与全屏原图，补齐 Bug 证据链。
+"""
+
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional

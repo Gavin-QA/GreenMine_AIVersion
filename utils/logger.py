@@ -52,7 +52,7 @@ except ImportError:
 class LoggerManager:
     """
     用于管理全局日志系统的单例管理器。
-    
+
     提供集中的日志配置，支持：
     - 彩色控制台输出（如果 colorlog 可用）
     - Windows Unicode 编码安全容错
@@ -139,7 +139,7 @@ class LoggerManager:
             if isinstance(handler, logging.FileHandler):
                 self._logger.removeHandler(handler)
                 handler.close()
-                
+
         # 挂载新的 FileHandler
         if getattr(settings, 'log_to_file', True):
             file_handler = self._create_file_handler(case_name)
@@ -172,7 +172,7 @@ class LoggerManager:
 def setup_logging() -> logging.Logger:
     """
     初始化并配置应用的日志记录系统。
-    
+
     返回:
         logging.Logger: 配置好的日志记录器实例。
     """
@@ -183,10 +183,10 @@ def setup_logging() -> logging.Logger:
 def get_logger(name: str) -> logging.Logger:
     """
     获取指定名称的日志记录器实例。
-    
+
     参数:
         name: 日志记录器名称（通常为模块名或 __name__）。
-        
+
     返回:
         logging.Logger: 指定名称的日志记录器实例。
     """
@@ -204,7 +204,7 @@ _logger = setup_logging()
 def log_test_step(message: str, level: str = "INFO") -> None:
     """
     记录带时间戳的测试步骤。
-    
+
     参数:
         message: 要记录的信息。
         level: 日志级别 (DEBUG, INFO, WARNING, ERROR, CRITICAL)。
@@ -217,7 +217,7 @@ def log_test_step(message: str, level: str = "INFO") -> None:
 def log_action(action: str, details: Optional[str] = None) -> None:
     """
     记录测试操作及可选的详细信息。
-    
+
     参数:
         action: 执行的操作说明。
         details: 可选的附加详细信息。
@@ -231,7 +231,7 @@ def log_action(action: str, details: Optional[str] = None) -> None:
 def log_assertion(description: str, passed: bool, expected: str = "", actual: str = "") -> None:
     """
     记录断言验证结果。
-    
+
     参数:
         description: 断言检查项说明。
         passed: 断言是否通过。

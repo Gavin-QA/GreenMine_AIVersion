@@ -76,19 +76,19 @@ def find_run_dir(run_identifier: str) -> Optional[Path]:
     """智能定位单次运行目录，兼容历史单层结构与新版多项目分层结构 (reports/runs/<app>/<run_id>/)"""
     if not run_identifier:
         return None
-    
+
     # 1. 直接传入了绝对路径或相对路径
     p = Path(run_identifier)
     if p.exists() and p.is_dir():
         return p.resolve()
-    
+
     clean_id = run_identifier.strip(" /\\")
-    
+
     # 2. RUNS_DIR / clean_id (例如直接命中 reports/runs/explore_xxx 或 reports/runs/liwutong/explore_xxx)
     direct_cand = RUNS_DIR / clean_id
     if direct_cand.exists() and direct_cand.is_dir():
         return direct_cand.resolve()
-    
+
     # 3. 在 RUNS_DIR 的各子应用目录 (如 liwutong, zhaiwan) 下递归/遍历查找
     if RUNS_DIR.exists():
         for sub in RUNS_DIR.iterdir():
@@ -108,20 +108,20 @@ def get_all_run_folders() -> List[Path]:
     folders = []
     if not RUNS_DIR.exists():
         return folders
-    
+
     for p in RUNS_DIR.iterdir():
         if not p.is_dir() or p.name.startswith((".", "__")):
             continue
-        
+
         # 探测 p 是否包含子运行目录 (如 reports/runs/zhaiwan/explore_xxx)
         sub_run_dirs = [
-            sub for sub in p.iterdir() 
+            sub for sub in p.iterdir()
             if sub.is_dir() and not sub.name.startswith((".", "__")) and (
-                (sub / "report.html").exists() or 
+                (sub / "report.html").exists() or
                 any(sub.name.startswith(pre) for pre in ["explore_", "smoke_", "yaml_", "202"])
             )
         ]
-        
+
         if sub_run_dirs:
             # 说明 p 是被测应用归类目录 (如 zhaiwan, liwutong)，收敛其下的全部单次运行
             folders.extend([s.resolve() for s in sub_run_dirs])
@@ -136,12 +136,12 @@ def get_all_run_folders() -> List[Path]:
 def get_run_dir(run_id: Optional[str] = None, app: Optional[str] = None) -> Path:
     """获取单次运行的专属工作目录: 优先定位已有目录，若新建则按应用分层 reports/runs/<app>/<run_id>/"""
     rid = run_id or report_run_id()
-    
+
     # 1. 若该 run_id 已在物理磁盘上存在，直接复用其目录（防止迁移后路径断裂）
     existing = find_run_dir(rid)
     if existing:
         return existing
-    
+
     # 2. 新建运行目录：检测目标应用
     target_app = app
     if not target_app:
@@ -150,7 +150,7 @@ def get_run_dir(run_id: Optional[str] = None, app: Optional[str] = None) -> Path
             target_app = getattr(settings, "active_app", None)
         except Exception:
             target_app = None
-    
+
     if target_app and target_app != "default":
         p = RUNS_DIR / target_app / rid
     else:

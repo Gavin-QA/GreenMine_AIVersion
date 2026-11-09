@@ -53,7 +53,6 @@ APP_NAME_MAP = {
 from utils.bug_enricher import extract_ui_path_from_step, normalize_severity, enrich_bug_metadata
 
 
-
 class ReportHub:
     def __init__(self, runs_dir: Optional[Path | str] = None):
         self.runs_dir = Path(runs_dir).resolve() if runs_dir else RUNS_DIR.resolve()
@@ -258,7 +257,7 @@ class ReportHub:
                     # 严格校验当前批次截图真实存在性，并以原子元组方式更新，严禁跨批次状态污染
                     valid_rel_shot = rel_shot if (rel_shot and target_run_dir and (target_run_dir / rel_shot).exists()) else ""
                     valid_before_shot = before_shot if (before_shot and target_run_dir and (target_run_dir / before_shot).exists()) else ""
-                    
+
                     is_auth_run = (r_id == all_bugs_dict[b_id].get("run_id"))
                     curr_has_shots = bool(all_bugs_dict[b_id].get("rel_screenshot") or all_bugs_dict[b_id].get("before_screenshot"))
                     cand_has_shots = bool(valid_rel_shot or valid_before_shot)
@@ -276,7 +275,7 @@ class ReportHub:
                         all_bugs_dict[b_id]["before_screenshot"] = valid_before_shot
                         if step_num is not None:
                             all_bugs_dict[b_id]["step_num"] = step_num
-                    
+
                     # 若已有的 ui_path 缺失或为首页，尝试用 run 中的数据补充
                     if (all_bugs_dict[b_id]["ui_path"] in ("", "无", "首页")) and b.get("ui_path"):
                         all_bugs_dict[b_id]["ui_path"] = b.get("ui_path")
@@ -344,7 +343,7 @@ class ReportHub:
                         "zentao_id": b.get("zentao_id", "")
                     }
                     enrich_bug_metadata(all_bugs_dict[b_id])
-                    
+
         # 3. 最终健全性巡检：严格核验所有 Bug 快照在其绑定的 rel_run_path 下真实存在，杜绝悬挂路径与 404
         for b_entry in all_bugs_dict.values():
             run_p = b_entry.get("rel_run_path") or b_entry.get("run_id", "")
@@ -427,13 +426,13 @@ class ReportHub:
         )
         out_file.write_text(html_content, encoding="utf-8")
         logger.info(f"🎉 统一巡检门户大盘已生成: {out_file}")
-        
+
         # 同时生成一份独立的 runs_data.js 供各个子报告的左侧边栏使用（轻量化数据源）
         js_content = f"window.GLOBAL_RUNS_LIST = {runs_json};\n"
         js_file = self.runs_dir / "runs_data.js"
         js_file.write_text(js_content, encoding="utf-8")
         logger.info(f"✅ 生成全局数据源: {js_file}")
-        
+
         return out_file
 
     def serve(self, port: int = 8000):
@@ -541,7 +540,7 @@ class ReportHub:
                 logger.info(f"[{idx}/{len(subdirs)}] ✅ 成功刷新: {d.name}/report.html")
             except Exception as e:
                 logger.error(f"[{idx}/{len(subdirs)}] ❌ 刷新 {d.name} 失败: {e}")
-        
+
         self.build_index_html()
         logger.info(f"🎉 全部 {count} 份独立报告及统一巡检门户已全量刷新完成！")
         return count

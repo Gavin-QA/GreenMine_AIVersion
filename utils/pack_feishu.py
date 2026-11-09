@@ -60,7 +60,7 @@ def find_target_run(run_arg: str) -> Path:
     ]
     if not runs:
         raise FileNotFoundError(f"在 {RUNS_DIR} 下未找到任何包含 report.html 的测试运行！")
-    
+
     return runs[0]
 
 
@@ -127,7 +127,7 @@ def pack_feishu_site(
     # (a) 缺陷现场截图 (allBugs)
     m_bugs = re.search(r'const allBugs\s*=\s*(\[.*?\]);\s*const apisData', report_content, flags=re.DOTALL)
     bugs_data = json.loads(m_bugs.group(1)) if m_bugs else []
-    
+
     needed_images = set()
     bug_rel_images = set()
     for b in bugs_data:
@@ -343,7 +343,7 @@ def pack_feishu_site(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="飞书网页托管极速瘦身打包工具")
     parser.add_argument("--run", type=str, default="latest", help="指定打包的运行ID (默认 latest)")
-    parser.add_argument("--mode", type=str, choices=["bugs", "keyframes", "full"], default="bugs", 
+    parser.add_argument("--mode", type=str, choices=["bugs", "keyframes", "full"], default="bugs",
                         help="打包模式: bugs (仅缺陷证据，超轻量 ~35MB); keyframes (缺陷 + Planner关键帧 ~70MB)")
     parser.add_argument("--max-width", type=int, default=1280, help="图片最大宽度缩放 (默认 1280)")
     parser.add_argument("--quality", type=int, default=60, help="WebP 压缩质量 (默认 60)")
