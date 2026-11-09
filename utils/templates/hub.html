@@ -1505,10 +1505,11 @@
       if (b.assignee && b.assignee !== 'Unassigned') {
         const isFe = b.assignee.includes('陈贻雄') || b.assignee.toLowerCase().includes('chenyixiong');
         const isBe = b.assignee.includes('梅本霞') || b.assignee.toLowerCase().includes('meibenxia');
-        const roleBadge = isFe ? '👨‍💻 陈贻雄 (前端)' : (isBe ? '👩‍💻 梅本霞 (后端)' : escapeHtml(b.assignee));
-        const color = isFe ? '#38bdf8' : (isBe ? '#fbbf24' : '#f8fafc');
-        const bg = isFe ? 'rgba(56,189,248,0.15)' : (isBe ? 'rgba(245,158,11,0.15)' : 'rgba(255,255,255,0.1)');
-        const border = isFe ? 'rgba(56,189,248,0.3)' : (isBe ? 'rgba(245,158,11,0.3)' : 'rgba(255,255,255,0.2)');
+        const isData = b.assignee.includes('李云骢') || b.assignee.toLowerCase().includes('liyuncong') || b.assignee.includes('靳正武') || b.assignee.toLowerCase().includes('jinzhengwu');
+        const roleBadge = isFe ? '👨‍💻 陈贻雄 (前端)' : (isBe ? '👩‍💻 梅本霞 (后端)' : (isData ? '📡 ' + escapeHtml(b.assignee) + ' (数据接入)' : escapeHtml(b.assignee)));
+        const color = isFe ? '#38bdf8' : (isBe ? '#fbbf24' : (isData ? '#34d399' : '#f8fafc'));
+        const bg = isFe ? 'rgba(56,189,248,0.15)' : (isBe ? 'rgba(245,158,11,0.15)' : (isData ? 'rgba(52,211,153,0.15)' : 'rgba(255,255,255,0.1)'));
+        const border = isFe ? 'rgba(56,189,248,0.3)' : (isBe ? 'rgba(245,158,11,0.3)' : (isData ? 'rgba(52,211,153,0.3)' : 'rgba(255,255,255,0.2)'));
         assigneeHtml = `<span style="background:${bg};color:${color};border:1px solid ${border};padding:2px 8px;border-radius:4px;font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:4px;">${roleBadge}</span>`;
       }
       document.getElementById('modalAssignee').innerHTML = assigneeHtml;

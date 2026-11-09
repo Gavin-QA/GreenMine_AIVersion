@@ -291,6 +291,11 @@ def resolve_bug_assignee(bug: Dict[str, Any], override: Optional[str] = None) ->
         "meibenxia": ("梅本霞", "meibenxia", "后端"),
         "梅本霞": ("梅本霞", "meibenxia", "后端"),
         "后端": ("梅本霞", "meibenxia", "后端"),
+        "liyuncong": ("李云骢", "liyuncong", "数据接入"),
+        "李云骢": ("李云骢", "liyuncong", "数据接入"),
+        "jinzhengwu": ("靳正武", "jinzhengwu", "数据接入"),
+        "靳正武": ("靳正武", "jinzhengwu", "数据接入"),
+        "数据接入": ("李云骢", "liyuncong", "数据接入"),
     }
 
     # 1. 人工显式传参指定
@@ -572,7 +577,12 @@ def format_bug_details_html(
     from utils.bug_analysis_expert import markdown_to_zentao_rich_html
     analysis_rich_html = markdown_to_zentao_rich_html(raw_analysis)
 
-    assignee_role = "前端开发" if any(k in assignee_account or k in assignee_name for k in ("chenyixiong", "陈贻雄", "tongjiabao", "童佳宝")) else "后端开发"
+    if any(k in assignee_account or k in assignee_name for k in ("chenyixiong", "陈贻雄", "tongjiabao", "童佳宝")):
+        assignee_role = "前端开发"
+    elif any(k in assignee_account or k in assignee_name for k in ("liyuncong", "李云骢", "jinzhengwu", "靳正武")):
+        assignee_role = "数据接入"
+    else:
+        assignee_role = "后端开发"
 
     # 智能查找案发现场截图：优先使用预上传至禅道的服务器URL，若未上传则回退到本地压缩Base64
     shot_file = screenshot_path or find_bug_screenshot(bug, run_files)
