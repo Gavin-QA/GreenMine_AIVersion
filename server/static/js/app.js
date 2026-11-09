@@ -97,6 +97,16 @@ const app = createApp({
 
     const activeTask = ref(null);
 
+    // 调度执行队列与预约定时
+    const taskQueue = ref([]);
+    const pendingQueueCount = ref(0);
+    const showEnqueueModal = ref(false);
+    const isSubmittingEnqueue = ref(false);
+    const enqueueForm = reactive({
+      priority: 100,
+      scheduledTime: ''
+    });
+
     // 任务列表分页
     const taskPage = ref(1);
     const taskPageSize = ref(10);
@@ -1053,6 +1063,117 @@ const app = createApp({
         alert('删除任务网络异常: ' + e);
       }
     }
+
+
+
+    // =========================================================================
+    // RPA 执行器：调度执行队列操作
+    // =========================================================================
+
+    async function fetchTaskQueue() {
+      try {
+        const res = await fetch(`${apiBase}/api/tasks/queue?limit=50`);
+        if (res.ok) {
+          taskQueue.value = await res.json();
+          pendingQueueCount.value = taskQueue.value.filter(q => q.status === 'pending').length;
+        }
+      } catch (e) {
+        console.warn('获取调度队列异常:', e);
+      }
+    }
+
+    function openEnqueueModal() {
+      enqueueForm.priority = 100;
+      enqueueForm.scheduledTime = '';
+      showEnqueueModal.value = true;
+    }
+
+    async function confirmEnqueueTask() {
+      isSubmittingEnqueue.value = true;
+      try {
+        // 1. 率先生成并创建 TaskRun
+        const payload = {
+          name: taskForm.name,
+          app_name: taskForm.app_name,
+          mode: taskForm.mode,
+          macro_objective: taskForm.macro_objective,
+          max_steps: taskForm.max_steps,
+          max_times: taskForm.max_times,
+          reset_memory: taskForm.reset_memory,
+          ignore_errors: taskForm.ignore_errors,
+          explore_context: taskForm.explore_context,
+          case_path: taskForm.case_path,
+          tour: taskForm.tour,
+          resume_from: taskForm.resume_from || null,
+          reexplore: taskForm.reexplore || null,
+          start_delay: taskForm.start_delay,
+          wait_ready: taskForm.wait_ready || null,
+          wait_timeout: taskForm.wait_timeout,
+          ignore_env_check: taskForm.ignore_env_check,
+        };
+
+        const taskRes = await fetch(`${apiBase}/api/tasks`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (!taskRes.ok) {
+          alert('创建任务失败: ' + (await taskRes.text()));
+          isSubmittingEnqueue.value = false;
+          return;
+        }
+
+        const createdTask = await taskRes.json();
+
+        // 2. 将创建好的任务推入执行队列
+        let scheduledUtc = null;
+        if (enqueueForm.scheduledTime) {
+          scheduledUtc = new Date(enqueueForm.scheduledTime).toISOString();
+        }
+
+        const queueRes = await fetch(`${apiBase}/api/tasks/queue`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            task_id: createdTask.id,
+            priority: enqueueForm.priority,
+            scheduled_at: scheduledUtc
+          })
+        });
+
+        if (queueRes.ok) {
+          showEnqueueModal.value = false;
+          alert(`🎉 任务【${createdTask.name}】已成功加入执行队列！\n执行器将在前序任务结束后自动调度拉起。`);
+          await fetchTasks();
+          await fetchTaskQueue();
+          // 自动平滑切至调度队列看板
+          currentTab.value = 'tasks';
+          assetsSubTab.value = 'queue';
+        } else {
+          alert('加入队列失败: ' + (await queueRes.text()));
+        }
+      } catch (e) {
+        alert('加入队列网络异常: ' + e);
+      } finally {
+        isSubmittingEnqueue.value = false;
+      }
+    }
+
+    async function removeFromQueue(queueItem) {
+      if (!confirm(`确定要将任务【${queueItem.task_name || queueItem.task_id}】移出执行队列吗？`)) return;
+      try {
+        const res = await fetch(`${apiBase}/api/tasks/queue/${queueItem.id}`, { method: 'DELETE' });
+        if (res.ok) {
+          await fetchTaskQueue();
+        } else {
+          alert('移出队列失败: ' + (await res.text()));
+        }
+      } catch (e) {
+        alert('移出队列异常: ' + e);
+      }
+    }
+
 
 
 
@@ -2185,6 +2306,8 @@ const app = createApp({
     watch(assetsSubTab, (newSub) => {
       if (newSub === 'cases') {
         fetchCases();
+      } else if (newSub === 'queue') {
+        fetchTaskQueue();
       } else {
         fetchTasks();
       }
@@ -2196,6 +2319,7 @@ const app = createApp({
       fetchLiveAppsStatus();
       fetchTasks(); // 启动时预载任务库，保证任何页面（含监控大屏维度）均可即刻使用任务数据
       fetchCases(); // 预载用例资产清单
+      fetchTaskQueue(); // 预载调度执行队列状态
 
       // 根据初始默认 Tab 按需加载首屏数据与启动必要监控
       if (currentTab.value === 'dashboard') {
@@ -2399,7 +2523,17 @@ const app = createApp({
 
       promoteCase,
 
-      runCaseInDashboard
+      runCaseInDashboard,
+
+      taskQueue,
+      pendingQueueCount,
+      showEnqueueModal,
+      isSubmittingEnqueue,
+      enqueueForm,
+      fetchTaskQueue,
+      openEnqueueModal,
+      confirmEnqueueTask,
+      removeFromQueue
 
     };
 

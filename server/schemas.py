@@ -331,3 +331,36 @@ class AppControlResponse(BaseModel):
     debug_port: Optional[int] = Field(default=None, description="绑定的 CDP 调试端口")
     pid: Optional[int] = Field(default=None, description="拉起的主进程 PID")
 
+
+class QueueItemCreate(BaseModel):
+    """加入调度队列请求模型"""
+    task_id: str = Field(description="目标关联的巡检任务 ID")
+    priority: int = Field(default=100, description="队列排序优先级 (数值越小越优先执行)")
+    scheduled_at: Optional[datetime.datetime] = Field(default=None, description="预约定时触发时间 (UTC ISO8601，留空则立即入队顺序执行)")
+
+
+class QueueItemResponse(BaseModel):
+    """队列项信息响应模型"""
+    id: str = Field(description="队列记录唯一标识")
+    task_id: str = Field(description="关联的任务 ID")
+    task_name: Optional[str] = Field(default=None, description="关联任务名称")
+    app_name: Optional[str] = Field(default=None, description="任务所属矿山应用")
+    mode: Optional[str] = Field(default=None, description="任务运行模式")
+    max_steps: Optional[int] = Field(default=None, description="配置最大步数")
+    max_times: Optional[int] = Field(default=None, description="配置最大时长(分钟)")
+    priority: int = Field(default=100, description="优先级")
+    status: str = Field(description="队列状态：pending/running/completed/failed/canceled")
+    scheduled_at: Optional[datetime.datetime] = Field(default=None, description="预约定时时间")
+    created_at: Optional[datetime.datetime] = Field(default=None, description="创建入队时间")
+    started_at: Optional[datetime.datetime] = Field(default=None, description="开始执行时间")
+    finished_at: Optional[datetime.datetime] = Field(default=None, description="结束时间")
+    error_message: Optional[str] = Field(default=None, description="执行错误说明")
+
+    @field_serializer('scheduled_at', 'created_at', 'started_at', 'finished_at', when_used='json')
+    def serialize_times(self, v: Optional[datetime.datetime]):
+        return _serialize_datetime_utc(v)
+
+    class Config:
+        from_attributes = True
+
+

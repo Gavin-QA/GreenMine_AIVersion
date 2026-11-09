@@ -10,8 +10,9 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set
 import psutil
 
+import time
 from .database import SessionLocal
-from .models import TaskRun
+from .models import TaskRun, TaskQueueItem
 
 logger = logging.getLogger("server.task_manager")
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -31,6 +32,9 @@ class TaskManager:
         self.current_steps: Dict[str, int] = {}
         self.websocket_subscribers: Dict[str, Set[asyncio.Queue]] = {}
         self._lock = threading.Lock()
+        self._queue_worker_thread: Optional[threading.Thread] = None
+        self._stop_queue_event = threading.Event()
+        self.start_queue_worker()
 
     def get_current_step(self, task_id: str) -> Optional[int]:
         """获取任务当前正在执行的步数"""
@@ -259,6 +263,9 @@ class TaskManager:
                 self._enrich_task_metrics_from_runs(task)
                 db.commit()
 
+                # RPA 执行器生命周期联动：同步更新队列项状态
+                self._update_queue_item_on_task_finish(db, task_id, task.status, task.error_message)
+
         except Exception as e:
             logger.error(f"收尾任务 [{task_id}] 数据库记录异常: {e}")
         finally:
@@ -347,6 +354,7 @@ class TaskManager:
                     task.status = "stopped"
                     task.end_time = datetime.datetime.now()
                     db.commit()
+                    self._update_queue_item_on_task_finish(db, task_id, "canceled", "用户手动终止任务")
             finally:
                 db.close()
 
@@ -393,5 +401,127 @@ class TaskManager:
             except Exception:
                 pass
 
+    # =========================================================================
+    # RPA 执行器：串行队列调度器 (Queue Worker & Environment Cleaner)
+    # =========================================================================
+
+    def start_queue_worker(self):
+        """启动队列消费守护线程"""
+        if self._queue_worker_thread and self._queue_worker_thread.is_alive():
+            return
+        self._stop_queue_event.clear()
+        self._queue_worker_thread = threading.Thread(
+            target=self._queue_worker_loop,
+            daemon=True,
+            name="task_queue_executor"
+        )
+        self._queue_worker_thread.start()
+        logger.info("🤖 [QueueExecutor] 任务串行调度执行器守护线程已激活")
+
+    def stop_queue_worker(self):
+        """优雅关闭队列守护线程"""
+        self._stop_queue_event.set()
+
+    def _clean_host_processes_for_app(self, app_name: str):
+        """
+        RPA 标准前置环境清洗：
+        拉起新项目前，彻底关闭同机可能残留的旧 Launcher 进程及伴生 UE 进程，释放 9223 CDP 端口与显存。
+        """
+        logger.info(f"🧹 [QueueExecutor] 正在执行前置环境深度清洗 (目标应用: {app_name})...")
+        launcher_names = ["se-launcher-zhaiwan.exe", "se-launcher-tianrui.exe", "se-launcher-liwutong.exe", "se-launcher.exe"]
+        ue_names = ["zhaiwan.exe", "tianrui.exe", "liwutong.exe"]
+
+        for proc in psutil.process_iter(["pid", "name"]):
+            try:
+                pname = (proc.info["name"] or "").lower()
+                if any(target in pname for target in launcher_names + ue_names):
+                    logger.info(f"   • 正在清理残留进程: {proc.info['name']} (PID: {proc.info['pid']})")
+                    proc.kill()
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+        time.sleep(2.0) # 缓冲等待 Windows 完全回收句柄
+
+    def _update_queue_item_on_task_finish(self, db, task_id: str, status: str, error_message: Optional[str] = None):
+        """任务终态触发队列记录流转"""
+        try:
+            q_item = db.query(TaskQueueItem).filter(
+                TaskQueueItem.task_id == task_id,
+                TaskQueueItem.status.in_(["running", "pending"])
+            ).first()
+            if q_item:
+                q_item.status = "completed" if status == "completed" else ("canceled" if status == "stopped" else "failed")
+                q_item.finished_at = datetime.datetime.utcnow()
+                if error_message:
+                    q_item.error_message = error_message
+                db.commit()
+                logger.info(f"🤖 [QueueExecutor] 队列项 [{q_item.id}] 状态已流转为: {q_item.status}")
+        except Exception as e:
+            logger.debug(f"更新队列项状态异常: {e}")
+
+    def _queue_worker_loop(self):
+        """执行器调度主循环：检查排队与定时任务，串行调度执行"""
+        while not self._stop_queue_event.is_set():
+            try:
+                time.sleep(4.0)
+
+                # 检查当前是否有任务正在执行中 (保证单机独占执行)
+                with self._lock:
+                    has_active = any(p.poll() is None for p in self.active_processes.values())
+                if has_active:
+                    continue
+
+                db = SessionLocal()
+                try:
+                    now_utc = datetime.datetime.utcnow()
+                    # 查找优先级最高、创建最早的 pending 队列项
+                    # 若配置了 scheduled_at，需已到达计划时间
+                    next_item = db.query(TaskQueueItem).filter(
+                        TaskQueueItem.status == "pending",
+                        (TaskQueueItem.scheduled_at == None) | (TaskQueueItem.scheduled_at <= now_utc)
+                    ).order_by(
+                        TaskQueueItem.priority.asc(),
+                        TaskQueueItem.created_at.asc()
+                    ).first()
+
+                    if not next_item:
+                        continue
+
+                    task_id = next_item.task_id
+                    task = db.query(TaskRun).filter(TaskRun.id == task_id).first()
+                    if not task:
+                        next_item.status = "failed"
+                        next_item.error_message = "关联的任务记录不存在"
+                        db.commit()
+                        continue
+
+                    if task.status == "completed":
+                        next_item.status = "completed"
+                        db.commit()
+                        continue
+
+                    # 标记队列项为 running
+                    next_item.status = "running"
+                    next_item.started_at = datetime.datetime.utcnow()
+                    db.commit()
+
+                    logger.info(f"🤖 [QueueExecutor] 命中就绪调度项 [{next_item.id}] 任务: {task.name} ({task.id})，准备拉起...")
+
+                    # 1. 深度环境清洗与端口回收
+                    self._clean_host_processes_for_app(task.app_name)
+
+                    # 2. 拉起任务执行
+                    started = self.start_task(task_id)
+                    if not started:
+                        next_item.status = "failed"
+                        next_item.error_message = "执行器启动子进程失败"
+                        db.commit()
+                finally:
+                    db.close()
+
+            except Exception as e:
+                logger.error(f"🤖 [QueueExecutor] 调度循环异常: {e}")
+                time.sleep(5.0)
+
 
 task_manager = TaskManager()
+

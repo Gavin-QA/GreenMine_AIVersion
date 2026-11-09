@@ -571,6 +571,13 @@
 
                   </button>
 
+                  <button class="btn btn-secondary" style="border-color: #00e676; color: #00e676;"
+                    @click="openEnqueueModal" title="将当前任务加入串行调度执行队列，支持定时预约">
+
+                    ⏱️ 加入排队调度
+
+                  </button>
+
                   <button class="btn btn-primary" style="padding: 10px 24px; font-size: 14px;"
                     @click="submitCreateTask">
 
@@ -866,6 +873,26 @@
               <span>📑 历史巡检任务</span>
             </button>
 
+            <button type="button" @click="assetsSubTab = 'queue'" :style="{
+                background: assetsSubTab === 'queue' ? 'linear-gradient(90deg, rgba(0, 210, 255, 0.2), rgba(58, 123, 213, 0.2))' : 'rgba(13, 20, 36, 0.6)',
+                border: assetsSubTab === 'queue' ? '1px solid #00d2ff' : '1px solid #1a253c',
+                color: assetsSubTab === 'queue' ? '#00d2ff' : '#8b9bb4',
+                padding: '9px 22px',
+                borderRadius: '8px',
+                fontSize: '14px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                transition: 'all 0.2s ease'
+              }">
+              <span>⏱️ 调度执行队列</span>
+              <span v-if="pendingQueueCount > 0" class="badge" style="background: #ff5252; color: #fff; padding: 2px 7px; border-radius: 10px; font-size: 11px;">
+                {{ pendingQueueCount }}
+              </span>
+            </button>
+
             <button type="button" @click="assetsSubTab = 'cases'" :style="{
                 background: assetsSubTab === 'cases' ? 'linear-gradient(90deg, rgba(0, 210, 255, 0.2), rgba(58, 123, 213, 0.2))' : 'rgba(13, 20, 36, 0.6)',
                 border: assetsSubTab === 'cases' ? '1px solid #00d2ff' : '1px solid #1a253c',
@@ -1030,7 +1057,88 @@
 
           </div>
 
-          <!-- 子模块 2: 用例资产管理 -->
+          <!-- 子模块 2: 调度执行队列 (RPA Worker 看板) -->
+          <div v-show="assetsSubTab === 'queue'">
+            <div class="card">
+              <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                <div class="card-title">⏱️ 调度执行队列与定时任务</div>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                  <button class="btn btn-secondary" style="font-size: 12px; padding: 5px 12px;" @click="fetchTaskQueue">
+                    🔄 刷新队列
+                  </button>
+                </div>
+              </div>
+
+              <div style="padding: 12px 20px; background: rgba(0, 210, 255, 0.05); border-bottom: 1px solid #1a253c; font-size: 13px; color: var(--text-muted); display: flex; align-items: center; gap: 8px;">
+                <span>💡 <strong>执行器机制说明：</strong> 系统单机独占运行，待执行任务将按顺序依次拉起。前序任务结束或终止后，执行器会自动深度清洗进程环境、释放显存并无缝执行下一个项目。</span>
+              </div>
+
+              <div class="table-responsive">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th style="width: 80px;">优先级</th>
+                      <th>所属应用</th>
+                      <th>任务名称与模式</th>
+                      <th>步数/时长</th>
+                      <th>队列状态</th>
+                      <th>计划预约时间</th>
+                      <th>入队时间</th>
+                      <th style="width: 140px;">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-if="!taskQueue || taskQueue.length === 0">
+                      <td colspan="8" style="text-align: center; padding: 28px; color: var(--text-muted);">
+                        ⏱️ 当前暂无排队中的调度任务。在发起任务时点击【加入排队调度】即可预约排队！
+                      </td>
+                    </tr>
+                    <tr v-else v-for="q in taskQueue" :key="q.id">
+                      <td>
+                        <span class="badge" style="background: rgba(0, 210, 255, 0.15); color: #00d2ff; font-weight: 600;">
+                          P{{ q.priority }}
+                        </span>
+                      </td>
+                      <td>
+                        <span style="font-weight: 600; color: #fff;">{{ q.app_name }}</span>
+                      </td>
+                      <td>
+                        <div style="font-weight: 600;">{{ q.task_name || q.task_id }}</div>
+                        <div style="font-size: 11px; color: var(--text-muted); font-family: monospace;">模式: {{ q.mode }} | ID: {{ q.task_id }}</div>
+                      </td>
+                      <td style="font-size: 12px; color: #a0aec0;">
+                        {{ q.max_steps }} 步 / {{ q.max_times }} 分
+                      </td>
+                      <td>
+                        <span class="badge" :class="'badge-' + (q.status === 'pending' ? 'pending' : (q.status === 'running' ? 'running' : (q.status === 'completed' ? 'completed' : 'failed')))">
+                          {{ q.status === 'pending' ? '⏳ 排队中' : (q.status === 'running' ? '🚀 正在执行' : (q.status === 'completed' ? '✅ 已完成' : (q.status === 'canceled' ? '🛑 已取消' : '❌ 失败'))) }}
+                        </span>
+                      </td>
+                      <td style="font-size: 12px; color: #ffb300; font-family: monospace;">
+                        {{ q.scheduled_at ? formatDateTime(q.scheduled_at) : '立即就绪' }}
+                      </td>
+                      <td style="font-size: 12px; color: #a0aec0; font-family: monospace;">
+                        {{ formatDateTime(q.created_at) }}
+                      </td>
+                      <td>
+                        <button v-if="q.status === 'running'" class="btn btn-secondary" style="padding: 3px 8px; font-size: 12px; border-color: #ff5252; color: #ff5252;"
+                          @click="stopTask(q.task_id)">
+                          终止执行
+                        </button>
+                        <button v-else-if="q.status === 'pending'" class="btn btn-secondary" style="padding: 3px 8px; font-size: 12px; border-color: #ff5252; color: #ff5252;"
+                          @click="removeFromQueue(q)">
+                          移出队列
+                        </button>
+                        <span v-else style="color: var(--text-muted); font-size: 12px;">-</span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- 子模块 3: 用例资产管理 -->
           <div v-show="assetsSubTab === 'cases'">
 
             <div class="card">
@@ -2075,7 +2183,47 @@
           </div>
         </div>
 
+        <!-- 调度入队预约弹窗 -->
+        <div class="modal-overlay" v-if="showEnqueueModal" @click.self="showEnqueueModal = false">
+          <div class="modal-content" style="max-width: 520px;">
+            <div class="modal-header">
+              <h3 style="display: flex; align-items: center; gap: 8px;">
+                <span>⏱️ 加入调度执行队列 (RPA 调度器)</span>
+              </h3>
+              <button class="modal-close" @click="showEnqueueModal = false">&times;</button>
+            </div>
 
+            <div style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px; line-height: 1.6;">
+              系统将根据当前表单创建巡检任务并加入排队。当前机器空闲或前序任务结束时，执行器将自动启动该任务。
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">优先级 (Priority)</label>
+              <select class="form-control" v-model.number="enqueueForm.priority">
+                <option :value="10">🔥 P10 (紧急最高优先)</option>
+                <option :value="50">⚡ P50 (高优先级)</option>
+                <option :value="100">📋 P100 (普通标准排队)</option>
+                <option :value="200">⏳ P200 (次要低优先级)</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">预约定时执行时间 (可选)</label>
+              <input type="datetime-local" class="form-control" v-model="enqueueForm.scheduledTime"
+                placeholder="留空则按排队顺序立即就绪执行">
+              <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
+                💡 留空表示“加入后排队立即可跑”；选择时间（如晚间 21:00）表示到达该时间后才允许被执行器拉起。
+              </div>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
+              <button class="btn btn-secondary" @click="showEnqueueModal = false">取消</button>
+              <button class="btn btn-primary" :disabled="isSubmittingEnqueue" @click="confirmEnqueueTask">
+                {{ isSubmittingEnqueue ? '正在加入队列...' : '确认加入排队' }}
+              </button>
+            </div>
+          </div>
+        </div>
 
       </div>
 

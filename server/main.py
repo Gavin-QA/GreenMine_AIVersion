@@ -35,7 +35,7 @@ from sqlalchemy.orm import Session
 
 from .database import get_db, init_db
 
-from .models import TaskRun, BugRecord, PerformanceMetric, PresetTaskRecord
+from .models import TaskRun, BugRecord, PerformanceMetric, PresetTaskRecord, TaskQueueItem
 
 from .schemas import (
     TaskCreate,
@@ -48,6 +48,8 @@ from .schemas import (
     ConfigOptionsResponse,
     PresetTaskResponse,
     PresetTaskCreate,
+    QueueItemCreate,
+    QueueItemResponse,
 )
 
 from .task_manager import task_manager
@@ -912,6 +914,133 @@ def list_tasks(
         q = q.filter(TaskRun.status == status)
 
     return q.offset(offset).limit(limit).all()
+
+
+# =============================================================================
+# 2.5 任务执行调度队列与定时预约 API (RPA 调度执行器，必须置于 /{task_id} 之前优先匹配)
+# =============================================================================
+
+
+@app.get(
+    "/api/tasks/queue",
+    response_model=List[QueueItemResponse],
+    tags=["2. 巡检任务生命周期调度"],
+    summary="查询当前任务串行执行队列看板",
+    description="获取所有排队中、执行中或历史已完成的调度队列项，按优先级与排队顺序升序排列。",
+)
+def get_task_queue(
+    status: Optional[str] = Query(default=None, description="状态筛选: pending/running/completed/failed/canceled"),
+    limit: int = Query(default=50, ge=1, le=100),
+    db: Session = Depends(get_db),
+):
+    from .models import TaskQueueItem
+    q = db.query(TaskQueueItem)
+    if status:
+        q = q.filter(TaskQueueItem.status == status)
+    # pending 优先放前面，再按 priority 与创建时间排序
+    items = q.order_by(
+        TaskQueueItem.status.desc(), # running/pending 会排在前面
+        TaskQueueItem.priority.asc(),
+        TaskQueueItem.created_at.asc()
+    ).limit(limit).all()
+
+    result = []
+    for item in items:
+        resp_item = {
+            "id": item.id,
+            "task_id": item.task_id,
+            "task_name": item.task.name if item.task else None,
+            "app_name": item.task.app_name if item.task else None,
+            "mode": item.task.mode if item.task else None,
+            "max_steps": item.task.max_steps if item.task else None,
+            "max_times": item.task.max_times if item.task else None,
+            "priority": item.priority,
+            "status": item.status,
+            "scheduled_at": item.scheduled_at,
+            "created_at": item.created_at,
+            "started_at": item.started_at,
+            "finished_at": item.finished_at,
+            "error_message": item.error_message,
+        }
+        result.append(resp_item)
+    return result
+
+
+@app.post(
+    "/api/tasks/queue",
+    response_model=QueueItemResponse,
+    tags=["2. 巡检任务生命周期调度"],
+    summary="将巡检任务加入串行调度执行队列 (支持预约定时)",
+    description="把已有任务加入串行队列，执行器将自动轮流单机独占拉起。若配置 scheduled_at 则在到达设定时间后触发。",
+)
+def enqueue_task(payload: QueueItemCreate, db: Session = Depends(get_db)):
+    from .models import TaskQueueItem
+    task = db.query(TaskRun).filter(TaskRun.id == payload.task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="未找到指定的关联任务")
+
+    # 检查是否已经在排队或执行中
+    existing = db.query(TaskQueueItem).filter(
+        TaskQueueItem.task_id == payload.task_id,
+        TaskQueueItem.status.in_(["pending", "running"])
+    ).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="该任务已在调度队列中，请勿重复加入")
+
+    import uuid
+    queue_id = f"queue_{datetime.datetime.utcnow().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
+    q_item = TaskQueueItem(
+        id=queue_id,
+        task_id=payload.task_id,
+        priority=payload.priority,
+        status="pending",
+        scheduled_at=payload.scheduled_at,
+        created_at=datetime.datetime.utcnow(),
+    )
+    db.add(q_item)
+    db.commit()
+    db.refresh(q_item)
+
+    return {
+        "id": q_item.id,
+        "task_id": q_item.task_id,
+        "task_name": task.name,
+        "app_name": task.app_name,
+        "mode": task.mode,
+        "max_steps": task.max_steps,
+        "max_times": task.max_times,
+        "priority": q_item.priority,
+        "status": q_item.status,
+        "scheduled_at": q_item.scheduled_at,
+        "created_at": q_item.created_at,
+        "started_at": q_item.started_at,
+        "finished_at": q_item.finished_at,
+        "error_message": q_item.error_message,
+    }
+
+
+@app.delete(
+    "/api/tasks/queue/{queue_id}",
+    tags=["2. 巡检任务生命周期调度"],
+    summary="从调度队列中取消或移出任务",
+)
+def remove_from_queue(queue_id: str = FastPath(...), db: Session = Depends(get_db)):
+    from .models import TaskQueueItem
+    q_item = db.query(TaskQueueItem).filter(TaskQueueItem.id == queue_id).first()
+    if not q_item:
+        raise HTTPException(status_code=404, detail="未找到指定的队列记录")
+
+    if q_item.status == "running":
+        # 正在执行的任务联动终止
+        task_manager.stop_task(q_item.task_id)
+        q_item.status = "canceled"
+        q_item.finished_at = datetime.datetime.utcnow()
+        db.commit()
+        return {"code": 200, "message": "正在执行的队列任务已终止并移出", "queue_id": queue_id}
+
+    db.delete(q_item)
+    db.commit()
+    return {"code": 200, "message": "已从调度队列中成功移出", "queue_id": queue_id}
 
 
 @app.get(

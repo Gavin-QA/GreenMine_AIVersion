@@ -232,3 +232,21 @@ class PresetTaskRecord(Base):
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
+
+class TaskQueueItem(Base):
+    """任务调度执行队列模型表 (RPA 调度执行器)"""
+    __tablename__ = "task_queue"
+
+    id = Column(String(64), primary_key=True, index=True) # 如 queue_20261109_163000_xxxx
+    task_id = Column(String(64), ForeignKey("task_runs.id"), nullable=False, index=True)
+    priority = Column(Integer, default=100) # 排序权重，数值越小越靠前
+    status = Column(String(32), default="pending", index=True) # pending(排队中), running(执行中), completed(已完成), failed(失败), canceled(已取消)
+    scheduled_at = Column(DateTime, nullable=True) # 预约定时触发时间 (为空则入队后按序立即执行)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    started_at = Column(DateTime, nullable=True)
+    finished_at = Column(DateTime, nullable=True)
+    error_message = Column(Text, nullable=True)
+
+    task = relationship("TaskRun")
+
+
