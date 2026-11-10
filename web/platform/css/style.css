@@ -29,9 +29,10 @@ body {
   overflow-x: hidden;
 }
 
-/* 布局结构 */
+/* 布局结构与防闪烁处理 */
 [v-cloak] {
-  display: none !important;
+  opacity: 0 !important;
+  pointer-events: none;
 }
 
 #app {

@@ -262,12 +262,16 @@ def redirect_to_report_hub():
 
 @app.get("/", include_in_schema=False)
 def serve_index():
-    """Web 控制台首页面入口"""
+    """Web 控制台首页面入口 (强制不缓存 HTML，确保更新后即刻生效)"""
 
     index_file = STATIC_DIR / "index.html"
 
     if index_file.exists():
-        return FileResponse(str(index_file))
+        resp = FileResponse(str(index_file))
+        resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        resp.headers["Pragma"] = "no-cache"
+        resp.headers["Expires"] = "0"
+        return resp
 
     return {"message": "Vision Platform API Server Running"}
 

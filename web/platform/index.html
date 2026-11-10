@@ -12,13 +12,32 @@
 
   <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
 
-  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="stylesheet" href="/static/css/style.css?v=20261110_03">
+
+  <script>
+    // 全局防假死/报错拦截守卫：防止任何前端脚本加载失败或缓存错乱导致页面彻底黑屏/一闪而过
+    window.addEventListener('error', function(e) {
+      console.error('[VisionPlatform ErrorGuard]', e);
+      var appEl = document.getElementById('app');
+      if (appEl && appEl.hasAttribute('v-cloak')) {
+        appEl.removeAttribute('v-cloak');
+        var errBox = document.getElementById('platform-fatal-error-banner');
+        if (!errBox) {
+          errBox = document.createElement('div');
+          errBox.id = 'platform-fatal-error-banner';
+          errBox.style = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#ff5252;color:#fff;padding:16px 24px;border-radius:8px;z-index:999999;font-family:sans-serif;box-shadow:0 8px 30px rgba(0,0,0,0.6);font-size:14px;line-height:1.6;';
+          errBox.innerHTML = '<strong>⚠️ 前端模块加载或渲染异常：</strong> ' + (e.message || e) + '<br><span style="font-size:12px;opacity:0.9;">💡 检测到可能存在浏览器旧版静态资源缓存，请按 <b>Ctrl + F5</b> 强制刷新！</span>';
+          document.body.appendChild(errBox);
+        }
+      }
+    });
+  </script>
 
   <!-- 离线/内嵌本地依赖 (无外网亦可顺畅运行) -->
 
-  <script src="/static/js/vue.global.prod.js"></script>
+  <script src="/static/js/vue.global.prod.js?v=20261110_03"></script>
 
-  <script src="/static/js/echarts.min.js"></script>
+  <script src="/static/js/echarts.min.js?v=20261110_03"></script>
 
 </head>
 
@@ -2120,7 +2139,7 @@
 
 
 
-  <script src="/static/js/app.js"></script>
+  <script src="/static/js/app.js?v=20261110_03"></script>
 
 
 

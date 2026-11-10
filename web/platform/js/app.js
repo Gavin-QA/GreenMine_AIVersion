@@ -2499,5 +2499,17 @@ const app = createApp({
 
 
 
+app.config.errorHandler = (err, instance, info) => {
+  console.error('[Vue ErrorHandler]', err, info);
+  const fatalBanner = document.getElementById('platform-fatal-error-banner');
+  if (!fatalBanner) {
+    const banner = document.createElement('div');
+    banner.id = 'platform-fatal-error-banner';
+    banner.style = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#ff5252;color:#fff;padding:16px 24px;border-radius:8px;z-index:999999;font-family:sans-serif;box-shadow:0 8px 30px rgba(0,0,0,0.6);font-size:14px;line-height:1.6;';
+    banner.innerHTML = `<strong>⚠️ 界面渲染拦截到异常：</strong> ${err && err.message ? err.message : String(err)}<br><span style="font-size:12px;opacity:0.9;">💡 建议按 <b>Ctrl + F5</b> 强制清除浏览器缓存后重试。</span>`;
+    document.body.appendChild(banner);
+  }
+};
+
 app.mount('#app');
 
