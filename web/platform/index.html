@@ -12,7 +12,7 @@
 
   <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
 
-  <link rel="stylesheet" href="/static/css/style.css?v=20261110_07">
+  <link rel="stylesheet" href="/static/css/style.css?v=20261110_08">
 
   <script>
     // 全局防假死/报错拦截守卫：防止任何前端脚本加载失败或缓存错乱导致页面彻底黑屏/一闪而过
@@ -2118,37 +2118,31 @@
                 </button>
               </div>
 
-              <!-- 快捷时间胶囊预设 -->
-              <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px;">
+              <!-- 快捷时间胶囊预设 (4个刚好单行排满不折行) -->
+              <div style="display: flex; gap: 8px; margin-bottom: 12px; align-items: center;">
                 <button type="button" class="btn btn-secondary"
-                  style="padding: 5px 12px; font-size: 12px; border-radius: 16px; transition: all 0.2s;"
+                  style="flex: 1; padding: 6px 10px; font-size: 12px; border-radius: 16px; transition: all 0.2s; white-space: nowrap; justify-content: center;"
                   :style="!enqueueForm.scheduledTime ? 'border-color: #00d2ff; color: #00d2ff; background: rgba(0,210,255,0.15); font-weight: 700;' : 'opacity: 0.75;'"
                   @click="setQuickSchedule('immediate')">
                   ⚡ 立即排队
                 </button>
                 <button type="button" class="btn btn-secondary"
-                  style="padding: 5px 12px; font-size: 12px; border-radius: 16px; transition: all 0.2s;"
+                  style="flex: 1; padding: 6px 10px; font-size: 12px; border-radius: 16px; transition: all 0.2s; white-space: nowrap; justify-content: center;"
                   :style="isQuickSelected('tonight_20') ? 'border-color: #00e676; color: #00e676; background: rgba(0,230,118,0.15); font-weight: 700;' : 'opacity: 0.75;'"
                   @click="setQuickSchedule('tonight_20')">
                   🌙 今晚 20:00
                 </button>
                 <button type="button" class="btn btn-secondary"
-                  style="padding: 5px 12px; font-size: 12px; border-radius: 16px; transition: all 0.2s;"
+                  style="flex: 1; padding: 6px 10px; font-size: 12px; border-radius: 16px; transition: all 0.2s; white-space: nowrap; justify-content: center;"
                   :style="isQuickSelected('tonight_22') ? 'border-color: #00e676; color: #00e676; background: rgba(0,230,118,0.15); font-weight: 700;' : 'opacity: 0.75;'"
                   @click="setQuickSchedule('tonight_22')">
                   🌙 今晚 22:00
                 </button>
                 <button type="button" class="btn btn-secondary"
-                  style="padding: 5px 12px; font-size: 12px; border-radius: 16px; transition: all 0.2s;"
+                  style="flex: 1; padding: 6px 10px; font-size: 12px; border-radius: 16px; transition: all 0.2s; white-space: nowrap; justify-content: center;"
                   :style="isQuickSelected('tomorrow_02') ? 'border-color: #ffb300; color: #ffb300; background: rgba(255,179,0,0.15); font-weight: 700;' : 'opacity: 0.75;'"
                   @click="setQuickSchedule('tomorrow_02')">
                   🌙 明晨 02:00
-                </button>
-                <button type="button" class="btn btn-secondary"
-                  style="padding: 5px 12px; font-size: 12px; border-radius: 16px; transition: all 0.2s;"
-                  :style="isQuickSelected('tomorrow_08') ? 'border-color: #ffb300; color: #ffb300; background: rgba(255,179,0,0.15); font-weight: 700;' : 'opacity: 0.75;'"
-                  @click="setQuickSchedule('tomorrow_08')">
-                  ☀️ 明晨 08:00
                 </button>
               </div>
 
@@ -2208,7 +2202,7 @@
 
 
 
-  <script src="/static/js/app.js?v=20261110_07"></script>
+  <script src="/static/js/app.js?v=20261110_08"></script>
 
 
 

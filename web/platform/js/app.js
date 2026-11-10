@@ -1081,9 +1081,6 @@ const app = createApp({
       } else if (type === 'tomorrow_02') {
         target.setDate(target.getDate() + 1);
         target.setHours(2, 0, 0, 0);
-      } else if (type === 'tomorrow_08') {
-        target.setDate(target.getDate() + 1);
-        target.setHours(8, 0, 0, 0);
       }
       const Y = target.getFullYear();
       const M = String(target.getMonth() + 1).padStart(2, '0');
@@ -1101,7 +1098,6 @@ const app = createApp({
       if (type === 'tonight_20' && timePart === '20:00') return true;
       if (type === 'tonight_22' && timePart === '22:00') return true;
       if (type === 'tomorrow_02' && timePart === '02:00') return true;
-      if (type === 'tomorrow_08' && timePart === '08:00') return true;
       return false;
     }
 
