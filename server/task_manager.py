@@ -450,7 +450,7 @@ class TaskManager:
             ).first()
             if q_item:
                 q_item.status = "completed" if status == "completed" else ("canceled" if status == "stopped" else "failed")
-                q_item.finished_at = datetime.datetime.utcnow()
+                q_item.finished_at = datetime.datetime.now()
                 if error_message:
                     q_item.error_message = error_message
                 db.commit()
@@ -472,12 +472,12 @@ class TaskManager:
 
                 db = SessionLocal()
                 try:
-                    now_utc = datetime.datetime.utcnow()
+                    now_local = datetime.datetime.now()
                     # 查找优先级最高、创建最早的 pending 队列项
                     # 若配置了 scheduled_at，需已到达计划时间
                     next_item = db.query(TaskQueueItem).filter(
                         TaskQueueItem.status == "pending",
-                        (TaskQueueItem.scheduled_at == None) | (TaskQueueItem.scheduled_at <= now_utc)
+                        (TaskQueueItem.scheduled_at == None) | (TaskQueueItem.scheduled_at <= now_local)
                     ).order_by(
                         TaskQueueItem.priority.asc(),
                         TaskQueueItem.created_at.asc()
@@ -501,7 +501,7 @@ class TaskManager:
 
                     # 标记队列项为 running
                     next_item.status = "running"
-                    next_item.started_at = datetime.datetime.utcnow()
+                    next_item.started_at = datetime.datetime.now()
                     db.commit()
 
                     logger.info(f"🤖 [QueueExecutor] 命中就绪调度项 [{next_item.id}] 任务: {task.name} ({task.id})，准备拉起...")

@@ -1161,10 +1161,13 @@ const app = createApp({
 
         const createdTask = await taskRes.json();
 
-        // 2. 将创建好的任务推入执行队列
-        let scheduledUtc = null;
+        // 2. 将创建好的任务推入执行队列 (使用本地真实时间，杜绝时区减8小时)
+        let scheduledTimeStr = null;
         if (enqueueForm.scheduledTime) {
-          scheduledUtc = new Date(enqueueForm.scheduledTime).toISOString();
+          scheduledTimeStr = enqueueForm.scheduledTime.replace('T', ' ');
+          if (scheduledTimeStr.length === 16) {
+            scheduledTimeStr += ':00';
+          }
         }
 
         const queueRes = await fetch(`${apiBase}/api/tasks/queue`, {
@@ -1173,7 +1176,7 @@ const app = createApp({
           body: JSON.stringify({
             task_id: createdTask.id,
             priority: enqueueForm.priority,
-            scheduled_at: scheduledUtc
+            scheduled_at: scheduledTimeStr
           })
         });
 

@@ -925,14 +925,14 @@ def enqueue_task(payload: QueueItemCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="该任务已在调度队列中，请勿重复加入")
 
     import uuid
-    queue_id = f"queue_{datetime.datetime.utcnow().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
+    queue_id = f"queue_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
     q_item = TaskQueueItem(
         id=queue_id,
         task_id=payload.task_id,
         priority=payload.priority,
         status="pending",
         scheduled_at=payload.scheduled_at,
-        created_at=datetime.datetime.utcnow(),
+        created_at=datetime.datetime.now(),
     )
     db.add(q_item)
     db.commit()
@@ -971,7 +971,7 @@ def remove_from_queue(queue_id: str = FastPath(...), db: Session = Depends(get_d
         # 正在执行的任务联动终止
         task_manager.stop_task(q_item.task_id)
         q_item.status = "canceled"
-        q_item.finished_at = datetime.datetime.utcnow()
+        q_item.finished_at = datetime.datetime.now()
         db.commit()
         return {"code": 200, "message": "正在执行的队列任务已终止并移出", "queue_id": queue_id}
 

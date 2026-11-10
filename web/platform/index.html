@@ -1008,7 +1008,7 @@
                 <table class="data-table">
                   <thead>
                     <tr>
-                      <th style="width: 80px;">优先级</th>
+                      <th style="width: 110px; min-width: 100px;">优先级</th>
                       <th>所属应用</th>
                       <th>任务名称与模式</th>
                       <th>步数/时长</th>
@@ -1027,7 +1027,7 @@
                     <tr v-else v-for="q in taskQueue" :key="q.id">
                       <td>
                         <span class="badge"
-                          :style="{ background: formatPriorityLabel(q.priority).bg, color: formatPriorityLabel(q.priority).color, fontWeight: '700' }">
+                          :style="{ background: formatPriorityLabel(q.priority).bg, color: formatPriorityLabel(q.priority).color, fontWeight: '700', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '4px 10px', minWidth: '76px' }">
                           {{ formatPriorityLabel(q.priority).text }}
                         </span>
                       </td>
