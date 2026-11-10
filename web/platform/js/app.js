@@ -2083,6 +2083,45 @@ const app = createApp({
 
 
 
+    const deletingBugId = ref(null);
+
+    async function deleteBug(bug) {
+      if (!bug || !bug.id) return;
+      if (bug.zentao_id) {
+        showToast('⚠️ 安全拦截', `缺陷 [${bug.id}] 已提交至禅道 (#${bug.zentao_id})，受控单据禁止删除！`, 'warning', 5000);
+        return;
+      }
+
+      const bugLabel = `[${bug.id}] ${bug.title || ''}`;
+      if (!confirm(`确定要彻底删除未提单缺陷 ${bugLabel} 吗？\n\n⚠️ 此操作将永久抹除该缺陷记录，不可恢复！`)) {
+        return;
+      }
+
+      deletingBugId.value = bug.id;
+      try {
+        const res = await fetch(`${apiBase}/api/bugs/${encodeURIComponent(bug.id)}`, {
+          method: 'DELETE'
+        });
+        const data = await res.json();
+        if (res.ok) {
+          // 乐观更新：立即在前端列表中过滤剔除
+          if (bugs.value) {
+            bugs.value = bugs.value.filter(b => b.id !== bug.id);
+          }
+          if (selectedBug.value && selectedBug.value.id === bug.id) {
+            selectedBug.value = null;
+          }
+          showToast('🗑️ 删除成功', `未提单缺陷 [${bug.id}] 已彻底物理清理。`, 'success', 3500);
+        } else {
+          showToast('⚠️ 删除失败', data.detail || '接口响应异常', 'error', 5000);
+        }
+      } catch (err) {
+        showToast('⚠️ 网络异常', `请求删除缺陷失败: ${err.message}`, 'error', 5000);
+      } finally {
+        deletingBugId.value = null;
+      }
+    }
+
     async function syncZenTao(bug) {
       if (!confirm(`确定要将缺陷 [${bug.id}] 提交到禅道吗？`)) return;
       bug._syncing = true;
@@ -2513,6 +2552,9 @@ const app = createApp({
       formatDuration,
 
       formatReportUrl,
+
+      deleteBug,
+      deletingBugId,
 
       syncZenTao,
 

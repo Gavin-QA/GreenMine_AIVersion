@@ -1544,7 +1544,8 @@
 
                   </tr>
 
-                  <tr v-else v-for="b in paginatedBugs" :key="b.id">
+                  <tr v-else v-for="b in paginatedBugs" :key="b.id"
+                    :style="deletingBugId === b.id ? 'opacity: 0.45; transition: opacity 0.3s; pointer-events: none;' : ''">
 
                     <td style="font-family: monospace; font-weight: 600; color: #00d2ff;">{{ b.id }}</td>
 
@@ -1587,7 +1588,7 @@
 
                     <td>{{ b.occurrences }} 次</td>
 
-                    <td>
+                    <td style="white-space: nowrap;">
 
                       <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px;"
                         @click="viewBugDetail(b)">
@@ -1608,6 +1609,17 @@
                         style="padding: 4px 8px; font-size: 12px; margin-left: 6px;" :disabled="b._syncing"
                         @click="syncZenTao(b)">
                         {{ b._syncing ? '提单中...' : '推禅道' }}
+                      </button>
+
+                      <!-- 仅未提交禅道的缺陷开放物理删除权限，已提单缺陷严禁随意删除 -->
+                      <button v-if="!b.zentao_id" class="btn btn-secondary"
+                        style="padding: 4px 8px; font-size: 12px; margin-left: 6px; border-color: #ff5252; color: #ff5252;"
+                        :disabled="deletingBugId === b.id"
+                        @click="deleteBug(b)"
+                        :title="'彻底清理未提单缺陷 ' + b.id">
+                        <span v-if="deletingBugId === b.id" class="spinner-icon"></span>
+                        <span v-if="deletingBugId === b.id">清理中</span>
+                        <span v-else>🗑️ 删除</span>
                       </button>
 
                     </td>
@@ -2259,7 +2271,7 @@
 
 
 
-  <script src="/static/js/app.js?v=20261110_09"></script>
+  <script src="/static/js/app.js?v=20261110_10"></script>
 
 
 

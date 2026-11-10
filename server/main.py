@@ -1362,6 +1362,46 @@ def update_bug(
     return bug
 
 
+@app.delete(
+    "/api/bugs/{bug_id}",
+    tags=["3. 缺陷治理与禅道同步"],
+    summary="物理注销/删除单条缺陷记录",
+    description="彻底从数据库、全局 JSON 库及测试运行报告中清理缺陷记录。若缺陷已提交至禅道，则触发安全红线拦截，禁止删除。",
+)
+def delete_bug(
+    bug_id: str = FastPath(..., description="待删除的缺陷全局唯一编号，如 BUG-20261101-002"),
+    db: Session = Depends(get_db),
+):
+    bug = db.query(BugRecord).filter(BugRecord.id == bug_id).first()
+    if not bug:
+        raise HTTPException(
+            status_code=404, detail=f"未找到编号为 '{bug_id}' 的缺陷记录"
+        )
+
+    # 核心安全铁律防线：已提交至禅道的缺陷为正式受控单据，严禁删除
+    if bug.zentao_id:
+        raise HTTPException(
+            status_code=403,
+            detail=f"安全保护拦截：缺陷 '{bug_id}' 已同步推送到禅道系统 (工单 #{bug.zentao_id})，作为受控缺陷禁止直接物理删除！如需作废请在禅道系统中进行状态流转。"
+        )
+
+    from utils.bug_updater import delete_bug_record
+    result = delete_bug_record(bug_id)
+
+    # 如果数据库里还残留（例如之前未被 bug_updater 涵盖的 Session），确保当前 session 也清理
+    curr_bug = db.query(BugRecord).filter(BugRecord.id == bug_id).first()
+    if curr_bug:
+        db.delete(curr_bug)
+        db.commit()
+
+    return {
+        "code": 200,
+        "message": f"缺陷 {bug_id} 已成功彻底物理删除",
+        "bug_id": bug_id,
+        "deleted_targets": result.get("deleted_targets", []),
+    }
+
+
 @app.post(
     "/api/bugs/{bug_id}/sync_zentao",
     tags=["3. 缺陷治理与禅道同步"],

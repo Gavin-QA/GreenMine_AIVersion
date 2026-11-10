@@ -151,3 +151,62 @@ def update_bug_record(data: Dict[str, Any]) -> Dict[str, Any]:
         return {"success": True, "bug_id": bug_id, "updated": updated_targets}
     return {"success": False, "bug_id": bug_id, "error": f"未找到编号为 '{bug_id}' 的缺陷记录"}
 
+
+def delete_bug_record(bug_id: str) -> Dict[str, Any]:
+    """统一物理注销/删除缺陷，同步清理 JSON 文件与数据库记录
+
+    :param bug_id: 缺陷唯一编号，如 BUG-20261101-002
+    :return: 包含 success, bug_id, deleted_targets 或 error 的字典
+    """
+    if not bug_id:
+        return {"success": False, "error": "缺少必要的 bug_id 参数"}
+
+    deleted_targets: List[str] = []
+
+    # 1. 从全局缺陷知识库 (artifacts/bugs/global_bugs*.json) 中剔除
+    if GLOBAL_BUGS_DIR.exists():
+        for bug_file in GLOBAL_BUGS_DIR.glob("global_bugs*.json"):
+            try:
+                with open(bug_file, "r", encoding="utf-8") as f:
+                    bugs = json.load(f)
+                orig_len = len(bugs)
+                bugs = [b for b in bugs if b.get("id") != bug_id]
+                if len(bugs) < orig_len:
+                    with open(bug_file, "w", encoding="utf-8") as f:
+                        json.dump(bugs, f, ensure_ascii=False, indent=2)
+                    deleted_targets.append(bug_file.name)
+            except Exception as e:
+                logger.warning(f"从全局缺陷库 {bug_file.name} 删除 Bug {bug_id} 异常: {e}")
+
+    # 2. 从单次运行目录 (reports/runs/<app>/<run_id>/bugs/<bug_id>.json) 中抹除文件
+    for run_dir in get_all_run_folders():
+        run_bug_file = run_dir / "bugs" / f"{bug_id}.json"
+        if run_bug_file.exists():
+            try:
+                run_bug_file.unlink(missing_ok=True)
+                deleted_targets.append(f"{run_dir.name}/bugs/{bug_id}.json")
+                try:
+                    from utils.report_generator import ReportGenerator
+                    ReportGenerator(run_dir).generate_html(disable_push=True, update_hub=False)
+                    deleted_targets.append(f"{run_dir.name}/report.html")
+                except Exception as rge:
+                    logger.debug(f"删除缺陷后重新渲染 {run_dir.name}/report.html 跳过: {rge}")
+            except Exception as e:
+                logger.warning(f"删除运行目录 Bug 文件异常 ({run_bug_file}): {e}")
+
+    # 3. 从数据库中彻底删除记录
+    try:
+        from server.database import SessionLocal
+        from server.models import BugRecord
+        db = SessionLocal()
+        b_rec = db.query(BugRecord).filter(BugRecord.id == bug_id).first()
+        if b_rec:
+            db.delete(b_rec)
+            db.commit()
+            deleted_targets.append("database.BugRecord")
+        db.close()
+    except Exception as de:
+        logger.debug(f"从数据库删除 Bug 记录异常 (非致命): {de}")
+
+    return {"success": True, "bug_id": bug_id, "deleted_targets": deleted_targets}
+
