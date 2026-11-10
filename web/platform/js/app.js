@@ -1073,10 +1073,10 @@ const app = createApp({
       const now = new Date();
       let target = new Date();
       if (type === 'tonight_20') {
-        target.setHours(20, 0, 0, 0);
+        target.setHours(18, 25, 0, 0);
         if (target <= now) target.setDate(target.getDate() + 1);
       } else if (type === 'tonight_22') {
-        target.setHours(22, 0, 0, 0);
+        target.setHours(18, 35, 0, 0);
         if (target <= now) target.setDate(target.getDate() + 1);
       } else if (type === 'tomorrow_02') {
         target.setDate(target.getDate() + 1);
@@ -1095,8 +1095,8 @@ const app = createApp({
       const parts = enqueueForm.scheduledTime.split('T');
       if (parts.length < 2) return false;
       const timePart = parts[1].slice(0, 5);
-      if (type === 'tonight_20' && timePart === '20:00') return true;
-      if (type === 'tonight_22' && timePart === '22:00') return true;
+      if (type === 'tonight_20' && timePart === '18:25') return true;
+      if (type === 'tonight_22' && timePart === '18:35') return true;
       if (type === 'tomorrow_02' && timePart === '02:00') return true;
       return false;
     }
