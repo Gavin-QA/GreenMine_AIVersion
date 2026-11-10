@@ -761,12 +761,19 @@ const app = createApp({
 
 
     async function saveCurrentFormAsPreset(overwriteExisting = false) {
-      let defaultTitle = taskForm.name || '我的定制巡检预设';
+      let title = '';
       if (overwriteExisting && taskForm.preset_id) {
-        defaultTitle = taskForm.preset_title || taskForm.name || '定制巡检预设';
+        // 覆盖模式：优先直接读取用户在表单【任务名称】中修改好的新名称，若为空则保留原预设标题
+        title = (taskForm.name && taskForm.name.trim()) || taskForm.preset_title || '定制巡检预设';
+      } else {
+        // 保存为新预设：若表单中已输入任务名称，直接作为预设标题，不再二次弹窗；只有完全未填写时才轻量询问
+        if (taskForm.name && taskForm.name.trim()) {
+          title = taskForm.name.trim();
+        } else {
+          title = prompt('请输入要保存的预设任务名称:', '我的定制巡检预设');
+          if (!title) return;
+        }
       }
-      const title = prompt(overwriteExisting ? '请输入覆盖更新后的预设名称:' : '请输入要保存的预设任务名称:', defaultTitle);
-      if (!title) return;
 
       const payload = {
         id: (overwriteExisting && taskForm.preset_id) ? taskForm.preset_id : null,
@@ -800,13 +807,19 @@ const app = createApp({
           const saved = await res.json();
           taskForm.preset_id = saved.id;
           taskForm.preset_title = saved.title;
-          alert(`✅ 预设【${saved.title}】${overwriteExisting ? '覆盖' : '保存'}成功！已稳定固化在预设库中！`);
+          taskForm.name = saved.title;
+          showToast(
+            overwriteExisting ? '预设已成功覆盖' : '新预设已保存',
+            `预设【<strong>${saved.title}</strong>】${overwriteExisting ? '覆盖更新' : '固化'}成功！已稳定保存在预设库。`,
+            'success',
+            5000
+          );
           await fetchPresetTasks();
         } else {
-          alert('保存预设失败: ' + (await res.text()));
+          showToast('保存预设失败', await res.text(), 'error', 6000);
         }
       } catch (e) {
-        alert('保存预设异常: ' + e);
+        showToast('保存预设异常', String(e), 'error', 6000);
       }
     }
 
@@ -817,17 +830,17 @@ const app = createApp({
       try {
         const res = await fetch(`${apiBase}/api/tasks/presets/${preset.id}`, { method: 'DELETE' });
         if (res.ok) {
-          alert('预设删除成功！');
+          showToast('已删除预设', `预设【${preset.title}】已从预设库中移除`, 'info', 4000);
           if (taskForm.preset_id === preset.id) {
             taskForm.preset_id = null;
             taskForm.preset_title = '';
           }
           await fetchPresetTasks();
         } else {
-          alert('删除失败: ' + (await res.text()));
+          showToast('删除预设失败', await res.text(), 'error', 6000);
         }
       } catch (e) {
-        alert('删除异常: ' + e);
+        showToast('删除预设异常', String(e), 'error', 6000);
       }
     }
 
