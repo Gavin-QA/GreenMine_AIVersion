@@ -1089,7 +1089,7 @@ def delete_task_run(
     background_tasks: BackgroundTasks = None,
     db: Session = Depends(get_db),
 ):
-    from utils.paths import PROJECT_ROOT, find_run_dir
+    from utils.paths import PROJECT_ROOT, RUNS_DIR, find_run_dir
 
     task = db.query(TaskRun).filter(TaskRun.id == task_id).first()
     if not task:
@@ -1109,20 +1109,26 @@ def delete_task_run(
         )
 
     target_dir = None
-    # 3. 探查物理磁盘产物目录路径
+    # 3. 探查物理磁盘产物目录路径 (严格兼容 RUNS_DIR 相对路径与 PROJECT_ROOT 相对路径)
     if cleanup_disk:
         if task.run_dir:
-            p = Path(task.run_dir)
+            p = Path(task.run_dir.replace("\\", "/").strip("/"))
             if not p.is_absolute():
-                p = PROJECT_ROOT / p
-            if p.exists() and p.is_dir():
+                if (RUNS_DIR / p).exists() and (RUNS_DIR / p).is_dir():
+                    target_dir = RUNS_DIR / p
+                elif (PROJECT_ROOT / p).exists() and (PROJECT_ROOT / p).is_dir():
+                    target_dir = PROJECT_ROOT / p
+            elif p.exists() and p.is_dir():
                 target_dir = p
         if not target_dir:
-            # 尝试通过 task_id / run_id 探查磁盘真实物理路径
-            r_id = task.id.replace("task_", "explore_")
-            cand = find_run_dir(r_id)
-            if cand and cand.exists() and cand.is_dir():
-                target_dir = cand
+            # 尝试通过 task_id / run_id 探查磁盘真实物理路径 (支持 explore_、smoke_、yaml_)
+            clean_id = task.id.replace("task_", "")
+            for prefix in ["", "explore_", "smoke_", "yaml_"]:
+                cand_id = f"{prefix}{clean_id}" if prefix else clean_id
+                cand = find_run_dir(cand_id)
+                if cand and cand.exists() and cand.is_dir():
+                    target_dir = cand
+                    break
 
     # 4. 级联解除或清理关联 Bug
     if associated_bugs:
