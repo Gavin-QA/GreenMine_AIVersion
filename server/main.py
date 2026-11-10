@@ -222,7 +222,8 @@ async def on_shutdown():
 
 # 静态文件挂载：平台前端 UI 静态资源与测试产物报告截图
 
-STATIC_DIR = CURRENT_DIR / "static"
+WEB_DIR = PROJECT_ROOT / "web"
+STATIC_DIR = WEB_DIR / "platform" if (WEB_DIR / "platform").exists() else CURRENT_DIR / "static"
 
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")

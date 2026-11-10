@@ -401,7 +401,8 @@ class ReportHub:
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         from jinja2 import Environment, FileSystemLoader
-        templates_dir = Path(__file__).parent / "templates"
+        web_tpl_dir = PROJECT_ROOT / "web" / "templates"
+        templates_dir = web_tpl_dir if web_tpl_dir.exists() else Path(__file__).parent / "templates"
         jinja_env = Environment(loader=FileSystemLoader(str(templates_dir)), autoescape=False)
         template = jinja_env.get_template("hub.html")
         html_content = template.render(
