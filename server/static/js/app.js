@@ -143,7 +143,9 @@ const app = createApp({
     }
 
 
-    const liveSelectedApp = ref('tianrui');
+    // 矿山应用权威选中状态 (优先从本地缓存读取，默认寨湾)
+    const storedApp = localStorage.getItem('vision_platform_app_name') || 'zhaiwan';
+    const liveSelectedApp = ref(storedApp);
 
     const liveTimeSpan = ref('24h');
 
@@ -174,8 +176,9 @@ const app = createApp({
 
     const taskForm = reactive({
       preset_id: null, // 记录当前是否绑定某个预设 (用于回写保存)
+      preset_title: '', // 当前绑定的预设名称
       name: '',
-      app_name: 'tianrui',
+      app_name: storedApp,
       mode: 'explore', // explore | case
       tour: false, // 是否启用二级菜单全量冒烟巡检策略 (--tour)
       case_path: '',
@@ -184,7 +187,7 @@ const app = createApp({
       max_times: 60,
       reset_memory: false,
       ignore_errors: true,
-      explore_context: 'docs/explore_rules_tianrui.md',
+      explore_context: `docs/explore_rules_${storedApp}.md`,
       // 进阶参数调优 (对应 main.py CLI 选项)
       show_advanced: false,
       resume_from: '',
@@ -366,22 +369,34 @@ const app = createApp({
 
 
     async function fetchPresetTasks() {
-
       try {
-
         const res = await fetch(`${apiBase}/api/tasks/presets`);
-
-        presetTasks.value = await res.json();
-
+        const list = await res.json();
+        if (Array.isArray(list)) {
+          // 严格按 ID 升序稳定排序，确保用户编辑后位置固定
+          list.sort((a, b) => (a.id || '').localeCompare(b.id || ''));
+          presetTasks.value = list;
+        }
       } catch (e) {
-
         console.error('获取预设任务列表失败:', e);
-
       }
-
     }
 
+    function getPresetModeLabel(preset) {
+      if (preset.tour || preset.mode === 'smoke') return '🤖 极速冒烟';
+      if (preset.mode === 'case') return '📋 YAML 回归';
+      return '🔍 自主探索';
+    }
 
+    function getAppName(appKey) {
+      const found = (options.apps || []).find(a => a.key === appKey);
+      return found ? found.name : (appKey || '未指定');
+    }
+
+    function clearLoadedPreset() {
+      taskForm.preset_id = null;
+      taskForm.preset_title = '';
+    }
 
     function getSpanHours(span) {
       if (span === '15m') return 0.25;
@@ -397,19 +412,7 @@ const app = createApp({
           const data = await res.json();
           if (Array.isArray(data) && data.length > 0) {
             liveAppsStatus.value = data;
-
-            // 🎯 活体自适应智能对焦：
-            // 若当前选中的矿山不在线，而有且仅有另一个矿山应用正处于在线绿灯状态，自动对焦并无缝切换到运行中的应用
-            const currentAppObj = data.find(x => x.app_name === liveSelectedApp.value);
-            const onlineApps = data.filter(x => x.online);
-            if ((!currentAppObj || !currentAppObj.online) && onlineApps.length === 1) {
-              const activeApp = onlineApps[0].app_name;
-              console.log(`[Auto-Focus] 🎯 自动对焦到本机唯一在线矿山应用: ${activeApp}`);
-              liveSelectedApp.value = activeApp;
-              taskForm.app_name = activeApp;
-              await loadLiveAmbientHistory(activeApp, getSpanHours(liveTimeSpan.value));
-              await fetchLiveSnapshot();
-            }
+            // 纯粹更新状态，严禁私自篡改用户手动选中的矿山应用
           }
         }
       } catch (e) {
@@ -452,8 +455,13 @@ const app = createApp({
     }
 
     async function changeLiveApp(appName) {
+      if (!appName) return;
       liveSelectedApp.value = appName;
       taskForm.app_name = appName;
+      taskForm.explore_context = `docs/explore_rules_${appName}.md`;
+      // 永久持久化至本地存储，保障页面刷新绝对不飘移
+      localStorage.setItem('vision_platform_app_name', appName);
+
       if (taskForm.name && /^【.*?】/.test(taskForm.name)) {
         const shortName = getAppShortName(appName);
         taskForm.name = taskForm.name.replace(/^【.*?】\s*/, `【${shortName}】`);
@@ -713,14 +721,16 @@ const app = createApp({
 
 
     function loadPresetToForm(preset) {
-      taskForm.preset_id = preset.is_system ? null : preset.id; // 系统预设载入默认另存，自定义预设保留id可直接回写
+      taskForm.preset_id = preset.id;
+      taskForm.preset_title = preset.title;
 
-      // 1. 去除预设可能残留的前缀标签，并根据当前已选矿山应用动态组装【矿山名】
-      const cleanTitle = (preset.title || '').replace(/^【.*?】\s*/, '').trim();
-      const shortName = getAppShortName(taskForm.app_name);
-      taskForm.name = shortName ? `【${shortName}】${cleanTitle}` : cleanTitle;
+      // 1. 还原预设名称
+      taskForm.name = preset.title || '';
 
-      // 2. 严禁覆盖 taskForm.app_name，严格保持用户当前选择的目标矿山
+      // 2. 联动预设的目标矿山
+      if (preset.app_name) {
+        changeLiveApp(preset.app_name);
+      }
 
       // 3. 模式与目标
       taskForm.mode = (preset.mode === 'case' ? 'case' : 'explore');
@@ -751,35 +761,24 @@ const app = createApp({
 
 
     async function saveCurrentFormAsPreset(overwriteExisting = false) {
-
-      const title = prompt('请输入要保存的预设任务名称:', taskForm.name || '我的定制巡检预设');
-
+      let defaultTitle = taskForm.name || '我的定制巡检预设';
+      if (overwriteExisting && taskForm.preset_id) {
+        defaultTitle = taskForm.preset_title || taskForm.name || '定制巡检预设';
+      }
+      const title = prompt(overwriteExisting ? '请输入覆盖更新后的预设名称:' : '请输入要保存的预设任务名称:', defaultTitle);
       if (!title) return;
 
-
-
       const payload = {
-
         id: (overwriteExisting && taskForm.preset_id) ? taskForm.preset_id : null,
-
         title: title,
-
         app_name: taskForm.app_name,
-
         mode: taskForm.mode,
-
         badge: '自定义',
-
         macro_objective: taskForm.macro_objective,
-
         max_steps: taskForm.max_steps,
-
         max_times: taskForm.max_times,
-
         reset_memory: taskForm.reset_memory,
-
         ignore_errors: taskForm.ignore_errors,
-
         case_path: taskForm.mode === 'case' ? (taskForm.case_path || null) : null,
         tour: taskForm.mode === 'explore' ? taskForm.tour : false,
         resume_from: taskForm.resume_from || null,
@@ -789,76 +788,48 @@ const app = createApp({
         wait_timeout: taskForm.wait_timeout,
         ignore_env_check: taskForm.ignore_env_check,
         description: `用户自定义预设: ${taskForm.app_name} / ${taskForm.mode} / ${taskForm.max_steps}步`
-
       };
 
-
-
       try {
-
         const res = await fetch(`${apiBase}/api/tasks/presets`, {
-
           method: 'POST',
-
           headers: { 'Content-Type': 'application/json' },
-
           body: JSON.stringify(payload)
-
         });
-
         if (res.ok) {
-
           const saved = await res.json();
-
           taskForm.preset_id = saved.id;
-
-          alert(`✅ 预设【${saved.title}】保存成功！已加入常用预设任务库！`);
-
+          taskForm.preset_title = saved.title;
+          alert(`✅ 预设【${saved.title}】${overwriteExisting ? '覆盖' : '保存'}成功！已稳定固化在预设库中！`);
           await fetchPresetTasks();
-
         } else {
-
           alert('保存预设失败: ' + (await res.text()));
-
         }
-
       } catch (e) {
-
         alert('保存预设异常: ' + e);
-
       }
-
     }
 
 
 
     async function deletePreset(preset) {
-
-      if (preset.is_system) {
-
-        alert('系统内置预设不可删除！');
-
-        return;
-
-      }
-
-      if (!confirm(`确定要删除自定义预设【${preset.title}】吗？`)) return;
-
+      if (!confirm(`确定要彻底删除预设【${preset.title}】吗？`)) return;
       try {
-
         const res = await fetch(`${apiBase}/api/tasks/presets/${preset.id}`, { method: 'DELETE' });
-
         if (res.ok) {
-
           alert('预设删除成功！');
-
           if (taskForm.preset_id === preset.id) {
-
             taskForm.preset_id = null;
-
+            taskForm.preset_title = '';
           }
-
           await fetchPresetTasks();
+        } else {
+          alert('删除失败: ' + (await res.text()));
+        }
+      } catch (e) {
+        alert('删除异常: ' + e);
+      }
+    }
 
         } else {
 
@@ -2442,13 +2413,12 @@ const app = createApp({
       formatScreenshotUrl,
 
       launchPreset,
-
       loadPresetToForm,
-
       saveCurrentFormAsPreset,
-
       deletePreset,
-
+      getPresetModeLabel,
+      getAppName,
+      clearLoadedPreset,
       applyTemplate,
 
       submitCreateTask,

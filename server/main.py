@@ -511,76 +511,13 @@ DEFAULT_PRESET_TASKS = [
     response_model=List[PresetTaskResponse],
     tags=["1. 平台基础与选项"],
     summary="获取预置的标准巡检任务库 (系统预设 + 用户自定义预设)",
-    description="提供系统默认验证的常用巡检任务模板，以及用户在界面中自行保存/编辑的个性化预设方案。",
+    description="提供常用巡检任务模板，以及用户在界面中自行保存/编辑的个性化预设方案，按 ID 升序保持固定顺序。",
 )
 def get_preset_tasks(db: Session = Depends(get_db)):
-
-    # 1. 确保系统预设已装载到数据库中并与代码保持实时同步
-
-    for p in DEFAULT_PRESET_TASKS:
-        exist = (
-            db.query(PresetTaskRecord).filter(PresetTaskRecord.id == p["id"]).first()
-        )
-
-        if not exist:
-            rec = PresetTaskRecord(
-                id=p["id"],
-                title=p["title"],
-                app_name=p["app_name"],
-                mode=p["mode"],
-                badge=p["badge"],
-                description=p.get("description"),
-                macro_objective=p["macro_objective"],
-                max_steps=p["max_steps"],
-                max_times=p["max_times"],
-                reset_memory=p.get("reset_memory", False),
-                ignore_errors=p.get("ignore_errors", True),
-                case_path=p.get("case_path"),
-                tour=p.get("tour", False),
-                is_system=True,
-            )
-
-            db.add(rec)
-
-        elif exist.is_system:
-            # 允许用户在源码 DEFAULT_PRESET_TASKS 中直接修改，并自动热同步至数据库
-
-            exist.title = p["title"]
-
-            exist.app_name = p["app_name"]
-
-            exist.mode = p["mode"]
-
-            exist.tour = p.get("tour", False)
-
-            exist.badge = p["badge"]
-
-            exist.description = p.get("description")
-
-            exist.macro_objective = p["macro_objective"]
-
-            exist.max_steps = p["max_steps"]
-
-            exist.max_times = p["max_times"]
-
-            exist.reset_memory = p.get("reset_memory", False)
-
-            exist.ignore_errors = p.get("ignore_errors", True)
-
-            exist.case_path = p.get("case_path")
-
-    # 清洗历史遗留的带有固定矿山前缀的标题
-    for r in db.query(PresetTaskRecord).all():
-        if r.title and re.match(r"^【(?:寨湾|里伍铜|天瑞)】", r.title):
-            r.title = re.sub(r"^【.*?】\s*", "", r.title)
-
-    db.commit()
-
-    # 2. 查询全部预设（系统预设优先，用户自定义按更新时间倒序）
-
+    # 按照 ID 升序稳定排列，避免编辑后顺序乱跳
     return (
         db.query(PresetTaskRecord)
-        .order_by(PresetTaskRecord.is_system.desc(), PresetTaskRecord.updated_at.desc())
+        .order_by(PresetTaskRecord.id.asc())
         .all()
     )
 
@@ -686,8 +623,8 @@ def save_or_update_preset_task(
 @app.delete(
     "/api/tasks/presets/{preset_id}",
     tags=["1. 平台基础与选项"],
-    summary="删除自定义预设任务模板",
-    description="删除用户创建的个性化预设模板 (系统内置预设禁止删除)。",
+    summary="删除预设任务模板",
+    description="删除指定的个性化预设模板。",
 )
 def delete_preset_task(
     preset_id: str = FastPath(..., description="预设模板 ID"),
@@ -700,11 +637,6 @@ def delete_preset_task(
 
     if not existing:
         raise HTTPException(status_code=404, detail="预设未找到")
-
-    if existing.is_system:
-        raise HTTPException(
-            status_code=403, detail="系统内置预设禁止删除，可载入后另存为新预设"
-        )
 
     db.delete(existing)
 

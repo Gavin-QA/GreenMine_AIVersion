@@ -199,204 +199,81 @@
 
         <div v-show="currentTab === 'dashboard'">
 
-          <!-- 实时环境概览与状态提示条 -->
-
-          <div
-            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; background: rgba(13, 20, 36, 0.85); padding: 8px 16px; border-radius: 6px; border: 1px solid #1a253c;">
-
-            <div style="display: flex; align-items: center; gap: 10px;">
-
-              <span
-                style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #00d2ff; box-shadow: 0 0 8px #00d2ff;"></span>
-
-              <span style="font-size: 13px; color: #fff; font-weight: 600;">大屏实时多核物理指标 ({{ currentAppName }})</span>
-
-            </div>
-
-            <div style="font-size: 12px; color: var(--text-muted);">
-
-              <span>伴生 UE 进程: <strong style="color: #00e676;">{{ taskForm.app_name }}.exe</strong> | 调试端口: <strong
-                  style="color: #00d2ff;">9223</strong></span>
-
-            </div>
-
-          </div>
-
-
-
-          <div class="grid-4" style="margin-bottom: 20px;">
-
-            <div class="kpi-card"
-              :title="liveSnapshot.cdp_online ? 'Chromium CDP 协议探针在线，实时抓取 2D 页面 DOM 树与事件监听器' : 'CDP 调试端口 (9223) 未激活\n启动大屏附带参数 --remote-debugging-port=9223 即可秒级点亮此卡片'"
-              style="cursor: help;">
-
-              <div class="kpi-title">CHROMIUM DOM 节点</div>
-
-              <div class="kpi-val" style="color: #00d2ff;">{{ liveSnapshot.dom_count.toLocaleString() }}</div>
-
-              <div class="kpi-sub">
-
-                事件监听器: {{ liveSnapshot.listeners_count.toLocaleString() }}
-
-                <span v-if="!liveSnapshot.cdp_online"
-                  style="font-size: 10px; color: #ffb300; margin-left: 4px;">(端口离线)</span>
-
-              </div>
-
-            </div>
-
-            <div class="kpi-card purple"
-              :title="liveSnapshot.cdp_online ? 'V8 引擎堆内存实时水位，反映大屏前端是否存在内存泄漏' : 'CDP 调试端口未连接 (显示为安全退避 0 值)'"
-              style="cursor: help;">
-
-              <div class="kpi-title">V8 JS 堆内存</div>
-
-              <div class="kpi-val" style="color: #9d4edd;">{{ liveSnapshot.js_heap_mb }} <span
-                  style="font-size: 14px;">MB</span></div>
-
-              <div class="kpi-sub">总容量: {{ liveSnapshot.js_heap_total_mb }} MB</div>
-
-            </div>
-
-            <div class="kpi-card green"
-              :title="`Windows 任务管理器全景视点:\n物理内存 (RAM/WorkingSet): ${liveSnapshot.ue_memory_mb || 0} MB\n专用提交量 (Private Commit): ${liveSnapshot.ue_commit_mb ? (liveSnapshot.ue_commit_mb / 1024).toFixed(2) + ' GB (' + liveSnapshot.ue_commit_mb + ' MB)' : '0 MB'}\n整机虚拟提交负荷: ${liveSnapshot.host_commit_load_percent || 0}% (防 OOM 核心指标)\n整机物理内存负荷: ${liveSnapshot.host_ram_load_percent || 0}%\nCPU 占用: ${liveSnapshot.ue_cpu_percent || 0}% (${liveSnapshot.cpu_cores || 12}核对齐)`"
-              style="cursor: help;">
-
-              <div class="kpi-title">伴生 UE5 (Commit / RAM)</div>
-
-              <div class="kpi-val" style="color: #00e676;">
-
-                <span v-if="liveSnapshot.ue_commit_mb" style="color: #ff9100;">{{ (liveSnapshot.ue_commit_mb /
-                  1024).toFixed(1) }} <span style="font-size: 13px;">GB Commit</span></span>
-
-                <span v-else>{{ liveSnapshot.ue_memory_mb || 0 }} <span style="font-size: 14px;">MB</span></span>
-
-                <span style="font-size: 12px; color: #a0aec0; margin-left: 6px;">/ {{ liveSnapshot.ue_memory_mb || 0 }}M
-                  RAM</span>
-
-              </div>
-
-              <div class="kpi-sub">
-
-                CPU: {{ liveSnapshot.ue_cpu_percent || 0 }}% | 宿主机Commit: {{ liveSnapshot.host_commit_load_percent || 0
-                }}%
-
-              </div>
-
-            </div>
-
-            <div class="kpi-card warning"
-              :title="`NVIDIA 官方驱动实时 3D 核心硬件负载: ${liveSnapshot.gpu_usage_percent || 0}%\n采样源: nvidia-smi 驱动级瞬时切片 (包含 UE5 渲染引擎、DWM 桌面窗口管理器与 Chromium 画面合成器总计；任务管理器单进程估算约 24% 左右)`"
-              style="cursor: help;">
-
-              <div class="kpi-title">GPU 3D 渲染 / 显存</div>
-
-              <div class="kpi-val" style="color: #ffb300;">{{ liveSnapshot.gpu_usage_percent || 0 }}%</div>
-
-              <div class="kpi-sub">显存已用: {{ liveSnapshot.gpu_memory_mb || 0 }} MB <span
-                  style="font-size: 11px; opacity: 0.8;">ℹ️</span></div>
-
-            </div>
-
-          </div>
-
-
-
           <!-- 🌟 常用预设任务库卡片列表 -->
-
           <div class="card" style="border-left: 4px solid #00d2ff;">
-
             <div class="card-header">
-
               <div class="card-title">🌟 标准预设巡检任务库 (免输入一键快速启动)</div>
-
-              <span style="font-size: 12px; color: var(--text-muted);">经过生产验证的标准模式组合，点击按钮直接启动或载入微调</span>
-
+              <span style="font-size: 12px; color: var(--text-muted);">用户自定义配置并永久保留的专属预设方案，按 ID 顺序固定排列</span>
             </div>
 
+            <div v-if="presetTasks.length === 0" style="padding: 24px; text-align: center; color: var(--text-muted); font-size: 13px;">
+              暂无预设任务。您可以在下方【自定义巡检任务配置】中按需配置参数并点击【💾 保存为新预设】。
+            </div>
 
-
-            <div class="grid-3">
-
+            <div v-else class="grid-3">
               <div v-for="p in presetTasks" :key="p.id" class="card"
                 style="background: #0d1424; margin-bottom: 0; display: flex; flex-direction: column; justify-content: space-between; border-color: #1a253c;">
-
                 <div>
-
                   <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-
+                    <span style="font-size: 11px; color: #64748b; font-family: monospace;">#{{ p.id }}</span>
+                    <!-- 右上角仅保留运行模式 -->
                     <span class="badge"
-                      :class="p.badge === '推荐' ? 'badge-running' : (p.badge === '抗压' ? 'badge-high' : 'badge-low')">
-
-                      {{ p.badge }}
-
+                      :class="p.tour ? 'badge-running' : (p.mode === 'case' ? 'badge-low' : 'badge-high')">
+                      {{ getPresetModeLabel(p) }}
                     </span>
+                  </div>
 
-                    <span style="font-size: 11px; color: var(--text-muted); font-family: monospace;">{{ p.app_name }} /
-                      {{ p.mode }}</span>
-
+                  <!-- 运行的矿山应用明确展示 -->
+                  <div style="font-size: 12px; color: #00d2ff; font-weight: 600; margin-bottom: 6px;">
+                    🎯 运行矿山: <span style="color: #fff;">{{ getAppName(p.app_name) }} ({{ p.app_name }})</span>
                   </div>
 
                   <div style="font-weight: 700; font-size: 14px; margin-bottom: 6px; color: #fff;">{{ p.title }}</div>
-
                   <div style="font-size: 12px; color: var(--text-muted); line-height: 1.5; margin-bottom: 12px;">{{
-                    p.description }}</div>
-
+                    p.description || '用户定制预设巡检方案' }}</div>
                   <div style="font-size: 11px; color: #8b9bb4; margin-bottom: 14px;">
-
                     <span>步数: <b style="color: #00d2ff;">{{ p.max_steps }}</b> 步</span> &nbsp;|&nbsp;
-
                     <span>时限: <b style="color: #ffb300;">{{ p.max_times }}</b> 分钟</span>
-
                   </div>
-
                 </div>
-
-
 
                 <div
                   style="display: flex; gap: 8px; margin-top: auto; border-top: 1px solid #1a253c; padding-top: 10px;">
-
                   <button class="btn btn-primary"
                     style="flex: 1; padding: 6px 10px; font-size: 12px; justify-content: center;"
                     @click="launchPreset(p)">
-
                     🚀 一键拉起
-
                   </button>
-
                   <button class="btn btn-secondary" style="padding: 6px 10px; font-size: 12px;"
-                    @click="loadPresetToForm(p)" title="载入到下方表单修改并可另存">
-
+                    @click="loadPresetToForm(p)" title="载入到下方表单修改并可直接覆盖或另存">
                     ✏️ 载入微调
-
                   </button>
-
-                  <button v-if="!p.is_system" class="btn btn-danger" style="padding: 6px 8px; font-size: 12px;"
-                    @click="deletePreset(p)" title="删除此自定义预设">
-
+                  <button class="btn btn-danger" style="padding: 6px 8px; font-size: 12px;"
+                    @click="deletePreset(p)" title="删除此预设">
                     🗑️
-
                   </button>
-
                 </div>
-
               </div>
-
             </div>
-
           </div>
 
-
-
           <!-- 任务发起选项配置表单 -->
-
           <div class="card" id="taskFormCard">
-
             <div class="card-header">
-
               <div class="card-title">📝 自定义巡检任务配置 (灵活调参)</div>
+            </div>
 
+            <!-- 当前编辑预设状态提示条 -->
+            <div v-if="taskForm.preset_id"
+              style="margin-bottom: 16px; background: rgba(0, 210, 255, 0.08); border: 1px solid #00d2ff; padding: 10px 16px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center;">
+              <span style="font-size: 13px; color: #00d2ff;">
+                📌 正在微调载入的预设: <strong style="color: #fff;">【{{ taskForm.preset_title || taskForm.name }}】</strong>
+                <span style="font-size: 11px; color: var(--text-muted); margin-left: 8px;">(ID: {{ taskForm.preset_id }})</span>
+              </span>
+              <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 12px; border-color: #64748b; color: #cbd5e1;"
+                @click="clearLoadedPreset" title="解除当前预设绑定，切换为全新任务配置">
+                ✕ 取消微调 / 切换为新建
+              </button>
             </div>
 
 
@@ -568,35 +445,28 @@
 
 
                 <div
-                  style="margin-top: 24px; display: flex; justify-content: flex-end; gap: 12px; align-items: center;">
+                  style="margin-top: 24px; display: flex; justify-content: flex-end; gap: 12px; align-items: center; flex-wrap: wrap;">
 
                   <button class="btn btn-secondary" style="border-color: #00d2ff; color: #00d2ff;"
-                    @click="saveCurrentFormAsPreset(false)" title="将当前填写的全部配置持久化保存为常用预设">
-
+                    @click="saveCurrentFormAsPreset(false)" title="将当前填写的全部配置持久化保存为独立的新预设">
                     💾 保存为新预设
-
                   </button>
 
                   <button v-if="taskForm.preset_id" class="btn btn-secondary"
-                    style="border-color: #ffb300; color: #ffb300;" @click="saveCurrentFormAsPreset(true)"
-                    title="直接回写覆盖当前载入的原预设">
-
+                    style="border-color: #ffb300; color: #ffb300; background: rgba(255, 179, 0, 0.1);"
+                    @click="saveCurrentFormAsPreset(true)"
+                    title="直接回写覆盖当前载入的原预设（保持预设 ID 与卡片排序不变）">
                     🔄 覆盖当前预设
-
                   </button>
 
                   <button class="btn btn-secondary" style="border-color: #00e676; color: #00e676;"
                     @click="openEnqueueModal" title="将当前任务加入串行调度执行队列，支持定时预约">
-
                     ⏱️ 加入排队调度
-
                   </button>
 
                   <button class="btn btn-primary" style="padding: 10px 24px; font-size: 14px;"
                     @click="submitCreateTask">
-
                     🚀 立即创建并启动巡检
-
                   </button>
 
                 </div>
@@ -796,6 +666,50 @@
                   {{ span.name }}
                 </button>
               </div>
+            </div>
+          </div>
+
+          <!-- 实时多核物理指标卡片 (环境与探针实时水位) -->
+          <div class="grid-4" style="margin-bottom: 16px;">
+            <div class="kpi-card"
+              :title="liveSnapshot.cdp_online ? 'Chromium CDP 协议探针在线，实时抓取 2D 页面 DOM 树与事件监听器' : 'CDP 调试端口 (9223) 未激活\n启动大屏附带参数 --remote-debugging-port=9223 即可秒级点亮此卡片'"
+              style="cursor: help;">
+              <div class="kpi-title">CHROMIUM DOM 节点</div>
+              <div class="kpi-val" style="color: #00d2ff;">{{ liveSnapshot.dom_count.toLocaleString() }}</div>
+              <div class="kpi-sub">
+                事件监听器: {{ liveSnapshot.listeners_count.toLocaleString() }}
+                <span v-if="!liveSnapshot.cdp_online" style="font-size: 10px; color: #ffb300; margin-left: 4px;">(端口离线)</span>
+              </div>
+            </div>
+
+            <div class="kpi-card purple"
+              :title="liveSnapshot.cdp_online ? 'V8 引擎堆内存实时水位，反映大屏前端是否存在内存泄漏' : 'CDP 调试端口未连接 (显示为安全退避 0 值)'"
+              style="cursor: help;">
+              <div class="kpi-title">V8 JS 堆内存</div>
+              <div class="kpi-val" style="color: #9d4edd;">{{ liveSnapshot.js_heap_mb }} <span style="font-size: 14px;">MB</span></div>
+              <div class="kpi-sub">总容量: {{ liveSnapshot.js_heap_total_mb }} MB</div>
+            </div>
+
+            <div class="kpi-card green"
+              :title="`Windows 任务管理器全景视点:\n物理内存 (RAM/WorkingSet): ${liveSnapshot.ue_memory_mb || 0} MB\n专用提交量 (Private Commit): ${liveSnapshot.ue_commit_mb ? (liveSnapshot.ue_commit_mb / 1024).toFixed(2) + ' GB (' + liveSnapshot.ue_commit_mb + ' MB)' : '0 MB'}\n整机虚拟提交负荷: ${liveSnapshot.host_commit_load_percent || 0}% (防 OOM 核心指标)\n整机物理内存负荷: ${liveSnapshot.host_ram_load_percent || 0}%\nCPU 占用: ${liveSnapshot.ue_cpu_percent || 0}% (${liveSnapshot.cpu_cores || 12}核对齐)`"
+              style="cursor: help;">
+              <div class="kpi-title">伴生 UE5 (Commit / RAM)</div>
+              <div class="kpi-val" style="color: #00e676;">
+                <span v-if="liveSnapshot.ue_commit_mb" style="color: #ff9100;">{{ (liveSnapshot.ue_commit_mb / 1024).toFixed(1) }} <span style="font-size: 13px;">GB Commit</span></span>
+                <span v-else>{{ liveSnapshot.ue_memory_mb || 0 }} <span style="font-size: 14px;">MB</span></span>
+                <span style="font-size: 12px; color: #a0aec0; margin-left: 6px;">/ {{ liveSnapshot.ue_memory_mb || 0 }}M RAM</span>
+              </div>
+              <div class="kpi-sub">
+                CPU: {{ liveSnapshot.ue_cpu_percent || 0 }}% | 宿主机Commit: {{ liveSnapshot.host_commit_load_percent || 0 }}%
+              </div>
+            </div>
+
+            <div class="kpi-card warning"
+              :title="`NVIDIA 官方驱动实时 3D 核心硬件负载: ${liveSnapshot.gpu_usage_percent || 0}%\n采样源: nvidia-smi 驱动级瞬时切片 (包含 UE5 渲染引擎、DWM 桌面窗口管理器与 Chromium 画面合成器总计；任务管理器单进程估算约 24% 左右)`"
+              style="cursor: help;">
+              <div class="kpi-title">GPU 3D 渲染 / 显存</div>
+              <div class="kpi-val" style="color: #ffb300;">{{ liveSnapshot.gpu_usage_percent || 0 }}%</div>
+              <div class="kpi-sub">显存已用: {{ liveSnapshot.gpu_memory_mb || 0 }} MB <span style="font-size: 11px; opacity: 0.8;">ℹ️</span></div>
             </div>
           </div>
 
