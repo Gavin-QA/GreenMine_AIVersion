@@ -12,7 +12,7 @@
 
   <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
 
-  <link rel="stylesheet" href="/static/css/style.css?v=20261110_08">
+  <link rel="stylesheet" href="/static/css/style.css?v=20261110_09">
 
   <script>
     // 全局防假死/报错拦截守卫：防止任何前端脚本加载失败或缓存错乱导致页面彻底黑屏/一闪而过
@@ -872,7 +872,8 @@
                         📁 暂无历史巡检任务记录
                       </td>
                     </tr>
-                    <tr v-else v-for="t in paginatedTasks" :key="t.id">
+                    <tr v-else v-for="t in paginatedTasks" :key="t.id"
+                      :style="deletingTaskId === t.id ? 'opacity: 0.45; transition: opacity 0.3s; pointer-events: none;' : ''">
                       <td>
                         <div style="font-weight: 600;">{{ t.name }}</div>
                         <div style="font-size: 11px; color: var(--text-muted); font-family: monospace;">{{ t.id }}</div>
@@ -922,13 +923,13 @@
                         </button>
 
                         <button class="btn btn-secondary"
-                          style="padding: 4px 10px; font-size: 12px; margin-left: 6px; border-color: #ff5252; color: #ff5252;"
-                          :disabled="t.status === 'running'"
+                          style="padding: 4px 10px; font-size: 12px; margin-left: 6px; border-color: #ff5252; color: #ff5252; min-width: 76px; justify-content: center;"
+                          :disabled="t.status === 'running' || deletingTaskId === t.id"
                           :title="t.status === 'running' ? '正在运行的任务不可直接删除，请先终止' : '彻底清理该任务记录及磁盘产物'"
                           @click="deleteTaskRun(t)">
-
-                          🗑️ 删除
-
+                          <span v-if="deletingTaskId === t.id" class="spinner-icon"></span>
+                          <span v-if="deletingTaskId === t.id">清理中...</span>
+                          <span v-else>🗑️ 删除</span>
                         </button>
 
                       </td>
@@ -2258,7 +2259,7 @@
 
 
 
-  <script src="/static/js/app.js?v=20261110_08"></script>
+  <script src="/static/js/app.js?v=20261110_09"></script>
 
 
 

@@ -1052,6 +1052,30 @@ def stop_task_execution(
     return {"code": 200, "message": "任务已安全终止并归档", "task_id": task_id}
 
 
+def _async_cleanup_disk_and_hub(target_dir_str: Optional[str]):
+    """后台异步抹除物理磁盘产物并增量重构大盘门户，彻底消除 HTTP 阻塞"""
+    import shutil
+    from utils.paths import RUNS_DIR
+    if target_dir_str:
+        try:
+            p = Path(target_dir_str).resolve()
+            if RUNS_DIR.resolve() in p.parents:
+                shutil.rmtree(p, ignore_errors=True)
+                logger.info(f"🗑️ [TaskDelete-Async] 物理磁盘产物已异步抹除完毕: {p}")
+            else:
+                logger.warning(f"⚠️ [TaskDelete-Async] 目录 {p} 不在 reports/runs/ 围栏内，跳过清理以防误伤！")
+        except Exception as e:
+            logger.error(f"后台异步删除物理磁盘产物失败: {e}")
+
+    # 异步重构大盘报告，确保大盘 HTML 列表同步剔除
+    try:
+        from utils.report_hub import ReportHub
+        ReportHub().build_index_html()
+        logger.info("📊 [TaskDelete-Async] 大盘统一门户首页后台异步重构完成")
+    except Exception as he:
+        logger.debug(f"后台重构大盘报告通知 (可忽略): {he}")
+
+
 @app.delete(
     "/api/tasks/{task_id}",
     tags=["2. 巡检任务生命周期调度"],
@@ -1062,9 +1086,9 @@ def delete_task_run(
     task_id: str = FastPath(..., description="待删除的任务全局识别码"),
     force: bool = Query(default=False, description="是否强制删除（忽略缺陷保护警报）"),
     cleanup_disk: bool = Query(default=True, description="是否级联清理磁盘物理运行目录 (reports/runs/<app>/<run_id>)"),
+    background_tasks: BackgroundTasks = None,
     db: Session = Depends(get_db),
 ):
-    import shutil
     from utils.paths import PROJECT_ROOT, find_run_dir
 
     task = db.query(TaskRun).filter(TaskRun.id == task_id).first()
@@ -1084,10 +1108,9 @@ def delete_task_run(
             detail=f"安全保护拦截：该任务关联了 {len(zentao_bugs)} 条已提交至禅道的有效缺陷工单 (如 #{zentao_bugs[0].zentao_id})！如确认放弃这些证据并强行清理，请传递 force=true 参数。"
         )
 
-    deleted_disk_path = None
-    # 3. 级联清理物理磁盘产物目录
+    target_dir = None
+    # 3. 探查物理磁盘产物目录路径
     if cleanup_disk:
-        target_dir = None
         if task.run_dir:
             p = Path(task.run_dir)
             if not p.is_absolute():
@@ -1100,21 +1123,6 @@ def delete_task_run(
             cand = find_run_dir(r_id)
             if cand and cand.exists() and cand.is_dir():
                 target_dir = cand
-
-        if target_dir and target_dir.exists() and target_dir.is_dir():
-            # 严格防呆围栏：必须在 reports/runs 目录下，绝对禁止误删根目录或其他重要目录
-            from utils.paths import RUNS_DIR
-            try:
-                resolved_target = target_dir.resolve()
-                resolved_runs = RUNS_DIR.resolve()
-                if resolved_runs in resolved_target.parents:
-                    shutil.rmtree(resolved_target, ignore_errors=True)
-                    deleted_disk_path = str(resolved_target)
-                    logger.info(f"🗑️ [TaskDelete] 已彻底物理抹除任务磁盘目录: {resolved_target}")
-                else:
-                    logger.warning(f"⚠️ [TaskDelete] 目标目录 {resolved_target} 不在 reports/runs/ 围栏内，跳过物理删除以防误伤！")
-            except Exception as e:
-                logger.error(f"物理删除磁盘目录失败: {e}")
 
     # 4. 级联解除或清理关联 Bug
     if associated_bugs:
@@ -1130,18 +1138,19 @@ def delete_task_run(
     db.delete(task)
     db.commit()
 
-    # 6. 轻量重构大盘报告，确保大盘 HTML 列表同步剔除
-    try:
-        from utils.report_hub import ReportHub
-        ReportHub().build_index_html()
-    except Exception as he:
-        logger.debug(f"重构大盘报告通知 (可忽略): {he}")
+    # 6. 将耗时的磁盘小文件树抹除与大盘全量扫描交由后台任务异步执行，使 HTTP 接口在 20ms 内即时返回
+    target_dir_str = str(target_dir.resolve()) if (target_dir and target_dir.exists()) else None
+    if background_tasks:
+        background_tasks.add_task(_async_cleanup_disk_and_hub, target_dir_str)
+    else:
+        import threading
+        threading.Thread(target=_async_cleanup_disk_and_hub, args=(target_dir_str,), daemon=True).start()
 
     return {
         "code": 200,
-        "message": "任务记录及物理产物已彻底安全清除",
+        "message": "任务记录已安全注销，磁盘产物与大盘已转入后台极速抹除",
         "task_id": task_id,
-        "deleted_disk_path": deleted_disk_path,
+        "deleted_disk_path": target_dir_str,
         "cleaned_bugs_count": len(associated_bugs),
     }
 

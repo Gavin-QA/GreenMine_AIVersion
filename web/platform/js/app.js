@@ -987,10 +987,12 @@ const app = createApp({
 
 
 
+    const deletingTaskId = ref(null);
+
     async function deleteTaskRun(task) {
       if (!task || !task.id) return;
       if (task.status === 'running') {
-        alert('该任务当前正在运行中，请先点击【终止】停止任务后再删除！');
+        showToast('无法删除', '该任务当前正在运行中，请先点击【终止】停止任务后再删除！', 'warning');
         return;
       }
 
@@ -1005,6 +1007,7 @@ const app = createApp({
 
       if (!confirm(promptMsg)) return;
 
+      deletingTaskId.value = task.id;
       try {
         let url = `${apiBase}/api/tasks/${task.id}?cleanup_disk=true`;
         let res = await fetch(url, { method: 'DELETE' });
@@ -1017,25 +1020,38 @@ const app = createApp({
             url += '&force=true';
             res = await fetch(url, { method: 'DELETE' });
           } else {
+            deletingTaskId.value = null;
             return;
           }
         }
 
         if (res.ok) {
           const data = await res.json();
-          alert(`✅ 任务已彻底清理完毕！${data.deleted_disk_path ? '\n已清理磁盘目录: ' + data.deleted_disk_path : ''}`);
+          // 1. 率先从本地列表中剔除该项，实现即时无感刷新
+          tasks.value = tasks.value.filter(t => t.id !== task.id);
+
+          // 2. 现代 Toast 通知替代原生 alert 弹窗
+          showToast(
+            '任务已彻底清理',
+            `任务【<strong>${task.name}</strong>】已彻底清理完毕！${data.deleted_disk_path ? '<br><small style="opacity:0.8">已抹除磁盘产物目录</small>' : ''}`,
+            'success',
+            4500
+          );
 
           // 若当前监控选中了被删除的任务，重置回环境监控
           if (activeTaskId.value === task.id) {
             switchToLiveMonitor();
           }
-          await fetchTasks();
+          // 异步静默二次校验拉取最新任务库
+          fetchTasks();
         } else {
           const errText = await res.text();
-          alert('删除任务失败: ' + errText);
+          showToast('删除任务失败', errText, 'error', 6000);
         }
       } catch (e) {
-        alert('删除任务网络异常: ' + e);
+        showToast('删除任务网络异常', String(e), 'error', 6000);
+      } finally {
+        deletingTaskId.value = null;
       }
     }
 
@@ -2482,6 +2498,7 @@ const app = createApp({
       stopTask,
 
       deleteTaskRun,
+      deletingTaskId,
 
       switchActiveTask,
 

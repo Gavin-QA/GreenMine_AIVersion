@@ -753,3 +753,21 @@ textarea.form-control {
 .page-jump-input:focus {
   border-color: #00d2ff;
 }
+
+/* 动态旋转菊花加载图标 (Loading Spinner) */
+@keyframes spin-rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.spinner-icon {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(255, 82, 82, 0.25);
+  border-top-color: #ff5252;
+  border-radius: 50%;
+  animation: spin-rotate 0.75s linear infinite;
+  vertical-align: middle;
+  margin-right: 4px;
+}
