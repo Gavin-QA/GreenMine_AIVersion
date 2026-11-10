@@ -1515,6 +1515,7 @@
                     <th>禅道单号</th>
 
                     <th>频次</th>
+                    <th>最近一次出现</th>
 
                     <th>操作</th>
 
@@ -1526,7 +1527,7 @@
 
                   <tr v-if="isBugsLoading && (!bugs || bugs.length === 0)">
 
-                    <td colspan="8" style="text-align: center; padding: 28px; color: #00d2ff;">
+                    <td colspan="9" style="text-align: center; padding: 28px; color: #00d2ff;">
 
                       ⚡ 正在极速检索缺陷资产...
 
@@ -1536,7 +1537,7 @@
 
                   <tr v-else-if="!bugs || bugs.length === 0">
 
-                    <td colspan="8" style="text-align: center; padding: 28px; color: var(--text-muted);">
+                    <td colspan="9" style="text-align: center; padding: 28px; color: var(--text-muted);">
 
                       🔍 未检索到匹配的缺陷记录
 
@@ -1587,6 +1588,10 @@
                     </td>
 
                     <td>{{ b.occurrences }} 次</td>
+
+                    <td style="font-size: 12px; color: #a0aec0; font-family: monospace; white-space: nowrap;">
+                      {{ formatDateTime(b.last_seen) }}
+                    </td>
 
                     <td style="white-space: nowrap;">
 
