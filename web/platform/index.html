@@ -12,7 +12,7 @@
 
   <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
 
-  <link rel="stylesheet" href="/static/css/style.css?v=20261110_06">
+  <link rel="stylesheet" href="/static/css/style.css?v=20261110_07">
 
   <script>
     // 全局防假死/报错拦截守卫：防止任何前端脚本加载失败或缓存错乱导致页面彻底黑屏/一闪而过
@@ -996,8 +996,8 @@
                     </tr>
                     <tr v-else v-for="q in taskQueue" :key="q.id">
                       <td>
-                        <span class="badge" style="background: rgba(0, 210, 255, 0.15); color: #00d2ff; font-weight: 600;">
-                          P{{ q.priority }}
+                        <span class="badge" :style="{ background: formatPriorityLabel(q.priority).bg, color: formatPriorityLabel(q.priority).color, fontWeight: '700' }">
+                          {{ formatPriorityLabel(q.priority).text }}
                         </span>
                       </td>
                       <td>
@@ -2100,20 +2100,78 @@
 
             <div class="form-group">
               <label class="form-label">优先级 (Priority)</label>
-              <select class="form-control" v-model.number="enqueueForm.priority">
-                <option :value="10">🔥 P10 (紧急最高优先)</option>
-                <option :value="50">⚡ P50 (高优先级)</option>
-                <option :value="100">📋 P100 (普通标准排队)</option>
-                <option :value="200">⏳ P200 (次要低优先级)</option>
+              <select class="form-control" v-model.number="enqueueForm.priority" style="background: #05070d; border-color: #1a253c; color: #fff;">
+                <option :value="1">🔥 P1 (最高紧急插队)</option>
+                <option :value="2">⚡ P2 (高优先级执行)</option>
+                <option :value="3">📋 P3 (普通标准排队 - 默认)</option>
+                <option :value="4">⏳ P4 (闲时低优执行)</option>
               </select>
             </div>
 
             <div class="form-group">
-              <label class="form-label">预约定时执行时间 (可选)</label>
-              <input type="datetime-local" class="form-control" v-model="enqueueForm.scheduledTime"
-                placeholder="留空则按排队顺序立即就绪执行">
-              <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
-                💡 留空表示“加入后排队立即可跑”；选择时间（如晚间 21:00）表示到达该时间后才允许被执行器拉起。
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <label class="form-label" style="margin-bottom: 0;">预约定时执行时间 (可选)</label>
+                <button type="button" v-if="enqueueForm.scheduledTime"
+                  style="background: none; border: none; font-size: 11px; color: #ff5252; cursor: pointer; padding: 0;"
+                  @click="setQuickSchedule('immediate')">
+                  ✕ 清空时间 (立即排队)
+                </button>
+              </div>
+
+              <!-- 快捷时间胶囊预设 -->
+              <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px;">
+                <button type="button" class="btn btn-secondary"
+                  style="padding: 5px 12px; font-size: 12px; border-radius: 16px; transition: all 0.2s;"
+                  :style="!enqueueForm.scheduledTime ? 'border-color: #00d2ff; color: #00d2ff; background: rgba(0,210,255,0.15); font-weight: 700;' : 'opacity: 0.75;'"
+                  @click="setQuickSchedule('immediate')">
+                  ⚡ 立即排队
+                </button>
+                <button type="button" class="btn btn-secondary"
+                  style="padding: 5px 12px; font-size: 12px; border-radius: 16px; transition: all 0.2s;"
+                  :style="isQuickSelected('tonight_20') ? 'border-color: #00e676; color: #00e676; background: rgba(0,230,118,0.15); font-weight: 700;' : 'opacity: 0.75;'"
+                  @click="setQuickSchedule('tonight_20')">
+                  🌙 今晚 20:00
+                </button>
+                <button type="button" class="btn btn-secondary"
+                  style="padding: 5px 12px; font-size: 12px; border-radius: 16px; transition: all 0.2s;"
+                  :style="isQuickSelected('tonight_22') ? 'border-color: #00e676; color: #00e676; background: rgba(0,230,118,0.15); font-weight: 700;' : 'opacity: 0.75;'"
+                  @click="setQuickSchedule('tonight_22')">
+                  🌙 今晚 22:00
+                </button>
+                <button type="button" class="btn btn-secondary"
+                  style="padding: 5px 12px; font-size: 12px; border-radius: 16px; transition: all 0.2s;"
+                  :style="isQuickSelected('tomorrow_02') ? 'border-color: #ffb300; color: #ffb300; background: rgba(255,179,0,0.15); font-weight: 700;' : 'opacity: 0.75;'"
+                  @click="setQuickSchedule('tomorrow_02')">
+                  🌙 明晨 02:00
+                </button>
+                <button type="button" class="btn btn-secondary"
+                  style="padding: 5px 12px; font-size: 12px; border-radius: 16px; transition: all 0.2s;"
+                  :style="isQuickSelected('tomorrow_08') ? 'border-color: #ffb300; color: #ffb300; background: rgba(255,179,0,0.15); font-weight: 700;' : 'opacity: 0.75;'"
+                  @click="setQuickSchedule('tomorrow_08')">
+                  ☀️ 明晨 08:00
+                </button>
+              </div>
+
+              <!-- 全域可点击唤醒、暗黑风格定制时间选择输入框 -->
+              <div style="position: relative; cursor: pointer;"
+                onclick="var inp=this.querySelector('input'); inp && (inp.showPicker ? inp.showPicker() : inp.focus());"
+                title="点击整行输入框任意位置均可唤起日期时间选择器">
+                <input type="datetime-local" class="form-control" v-model="enqueueForm.scheduledTime"
+                  style="cursor: pointer; color-scheme: dark; font-family: monospace; font-size: 13px; padding-left: 38px; background: #05070d; border-color: #1a253c; width: 100%; box-sizing: border-box;"
+                  onclick="this.showPicker && this.showPicker()">
+                <span style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); pointer-events: none; font-size: 15px;">
+                  📅
+                </span>
+              </div>
+
+              <div style="font-size: 11px; color: var(--text-muted); margin-top: 6px; display: flex; justify-content: space-between; align-items: center;">
+                <span>💡 提示：点击整行输入框任意位置均可呼出日历时钟面板</span>
+                <span v-if="enqueueForm.scheduledTime" style="color: #00e676; font-weight: 600;">
+                  ✓ 已预约：{{ formatDateTime(enqueueForm.scheduledTime) }} 唤醒
+                </span>
+                <span v-else style="color: #00d2ff; font-weight: 600;">
+                  ⚡ 立即排队模式 (当前机器空闲即跑)
+                </span>
               </div>
             </div>
 
@@ -2150,7 +2208,7 @@
 
 
 
-  <script src="/static/js/app.js?v=20261110_06"></script>
+  <script src="/static/js/app.js?v=20261110_07"></script>
 
 
 

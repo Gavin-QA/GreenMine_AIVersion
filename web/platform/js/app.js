@@ -1057,8 +1057,56 @@ const app = createApp({
       }
     }
 
+    function formatPriorityLabel(p) {
+      if (p === 1 || p === 10) return { text: 'P1 (紧急)', color: '#ff5252', bg: 'rgba(255, 82, 82, 0.15)' };
+      if (p === 2 || p === 50) return { text: 'P2 (优先)', color: '#ffb300', bg: 'rgba(255, 179, 0, 0.15)' };
+      if (p === 3 || p === 100) return { text: 'P3 (标准)', color: '#00d2ff', bg: 'rgba(0, 210, 255, 0.15)' };
+      if (p === 4 || p === 200) return { text: 'P4 (低优)', color: '#8b9bb4', bg: 'rgba(139, 155, 180, 0.15)' };
+      return { text: `P${p}`, color: '#00d2ff', bg: 'rgba(0, 210, 255, 0.15)' };
+    }
+
+    function setQuickSchedule(type) {
+      if (type === 'immediate') {
+        enqueueForm.scheduledTime = '';
+        return;
+      }
+      const now = new Date();
+      let target = new Date();
+      if (type === 'tonight_20') {
+        target.setHours(20, 0, 0, 0);
+        if (target <= now) target.setDate(target.getDate() + 1);
+      } else if (type === 'tonight_22') {
+        target.setHours(22, 0, 0, 0);
+        if (target <= now) target.setDate(target.getDate() + 1);
+      } else if (type === 'tomorrow_02') {
+        target.setDate(target.getDate() + 1);
+        target.setHours(2, 0, 0, 0);
+      } else if (type === 'tomorrow_08') {
+        target.setDate(target.getDate() + 1);
+        target.setHours(8, 0, 0, 0);
+      }
+      const Y = target.getFullYear();
+      const M = String(target.getMonth() + 1).padStart(2, '0');
+      const D = String(target.getDate()).padStart(2, '0');
+      const h = String(target.getHours()).padStart(2, '0');
+      const m = String(target.getMinutes()).padStart(2, '0');
+      enqueueForm.scheduledTime = `${Y}-${M}-${D}T${h}:${m}`;
+    }
+
+    function isQuickSelected(type) {
+      if (!enqueueForm.scheduledTime) return type === 'immediate';
+      const parts = enqueueForm.scheduledTime.split('T');
+      if (parts.length < 2) return false;
+      const timePart = parts[1].slice(0, 5);
+      if (type === 'tonight_20' && timePart === '20:00') return true;
+      if (type === 'tonight_22' && timePart === '22:00') return true;
+      if (type === 'tomorrow_02' && timePart === '02:00') return true;
+      if (type === 'tomorrow_08' && timePart === '08:00') return true;
+      return false;
+    }
+
     function openEnqueueModal() {
-      enqueueForm.priority = 100;
+      enqueueForm.priority = 3;
       enqueueForm.scheduledTime = '';
       showEnqueueModal.value = true;
     }
@@ -1119,14 +1167,19 @@ const app = createApp({
 
         if (queueRes.ok) {
           showEnqueueModal.value = false;
-          alert(`🎉 任务【${createdTask.name}】已成功加入执行队列！\n执行器将在前序任务结束后自动调度拉起。`);
+          showToast(
+            '已加入调度队列',
+            `任务【<strong>${createdTask.name}</strong>】已成功加入执行队列！调度器将自动按序拉起。`,
+            'success',
+            5000
+          );
           await fetchTasks();
           await fetchTaskQueue();
           // 自动平滑切至调度队列看板
           currentTab.value = 'tasks';
           assetsSubTab.value = 'queue';
         } else {
-          alert('加入队列失败: ' + (await queueRes.text()));
+          showToast('加入队列失败', await queueRes.text(), 'error', 6000);
         }
       } catch (e) {
         alert('加入队列网络异常: ' + e);
@@ -2508,7 +2561,10 @@ const app = createApp({
       fetchTaskQueue,
       openEnqueueModal,
       confirmEnqueueTask,
-      removeFromQueue
+      removeFromQueue,
+      formatPriorityLabel,
+      setQuickSchedule,
+      isQuickSelected
 
     };
 
