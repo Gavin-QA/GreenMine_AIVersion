@@ -758,6 +758,11 @@ const app = createApp({
       }
     }
 
+    function enqueuePreset(preset) {
+      loadPresetToForm(preset);
+      openEnqueueModal();
+    }
+
 
 
     async function saveCurrentFormAsPreset(overwriteExisting = false) {
@@ -2412,6 +2417,7 @@ const app = createApp({
       formatScreenshotUrl,
 
       launchPreset,
+      enqueuePreset,
       loadPresetToForm,
       saveCurrentFormAsPreset,
       deletePreset,

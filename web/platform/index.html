@@ -12,7 +12,7 @@
 
   <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
 
-  <link rel="stylesheet" href="/static/css/style.css?v=20261110_05">
+  <link rel="stylesheet" href="/static/css/style.css?v=20261110_06">
 
   <script>
     // 全局防假死/报错拦截守卫：防止任何前端脚本加载失败或缓存错乱导致页面彻底黑屏/一闪而过
@@ -235,11 +235,20 @@
                 <div>
                   <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                     <span style="font-size: 11px; color: #64748b; font-family: monospace;">#{{ p.id }}</span>
-                    <!-- 右上角仅保留运行模式 -->
-                    <span class="badge"
-                      :class="p.tour ? 'badge-running' : (p.mode === 'case' ? 'badge-low' : 'badge-high')">
-                      {{ getPresetModeLabel(p) }}
-                    </span>
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                      <!-- 右上角运行模式徽标 -->
+                      <span class="badge" style="white-space: nowrap;"
+                        :class="p.tour ? 'badge-running' : (p.mode === 'case' ? 'badge-low' : 'badge-high')">
+                        {{ getPresetModeLabel(p) }}
+                      </span>
+                      <!-- 预设快速删除按钮 -->
+                      <button style="background: transparent; border: 1px solid rgba(255,82,82,0.25); border-radius: 4px; color: #ff5252; cursor: pointer; padding: 1px 5px; font-size: 11px; transition: all 0.2s;"
+                        onmouseover="this.style.background='rgba(255,82,82,0.2)'; this.style.borderColor='#ff5252';"
+                        onmouseout="this.style.background='transparent'; this.style.borderColor='rgba(255,82,82,0.25)';"
+                        @click="deletePreset(p)" title="彻底删除此预设">
+                        🗑️
+                      </button>
+                    </div>
                   </div>
 
                   <!-- 运行的矿山应用明确展示 -->
@@ -257,19 +266,21 @@
                 </div>
 
                 <div
-                  style="display: flex; gap: 8px; margin-top: auto; border-top: 1px solid #1a253c; padding-top: 10px;">
+                  style="display: flex; gap: 8px; margin-top: auto; border-top: 1px solid #1a253c; padding-top: 10px; align-items: center;">
                   <button class="btn btn-primary"
-                    style="flex: 1; padding: 6px 10px; font-size: 12px; justify-content: center;"
-                    @click="launchPreset(p)">
+                    style="flex: 1.2; padding: 7px 6px; font-size: 12px; justify-content: center; white-space: nowrap;"
+                    @click="launchPreset(p)" title="立即以当前预设创建并启动巡检任务">
                     🚀 一键拉起
                   </button>
-                  <button class="btn btn-secondary" style="padding: 6px 10px; font-size: 12px;"
+                  <button class="btn btn-secondary"
+                    style="flex: 1.2; padding: 7px 6px; font-size: 12px; justify-content: center; border-color: #00e676; color: #00e676; background: rgba(0, 230, 118, 0.08); white-space: nowrap;"
+                    @click="enqueuePreset(p)" title="将此预设载入并加入调度执行队列，支持优先级排队与定时预约">
+                    ⏱️ 加入排队
+                  </button>
+                  <button class="btn btn-secondary"
+                    style="flex: 1; padding: 7px 6px; font-size: 12px; justify-content: center; white-space: nowrap;"
                     @click="loadPresetToForm(p)" title="载入到下方表单修改并可直接覆盖或另存">
                     ✏️ 载入微调
-                  </button>
-                  <button class="btn btn-danger" style="padding: 6px 8px; font-size: 12px;"
-                    @click="deletePreset(p)" title="删除此预设">
-                    🗑️
                   </button>
                 </div>
               </div>
@@ -2139,7 +2150,7 @@
 
 
 
-  <script src="/static/js/app.js?v=20261110_05"></script>
+  <script src="/static/js/app.js?v=20261110_06"></script>
 
 
 
