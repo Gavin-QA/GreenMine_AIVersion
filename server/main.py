@@ -887,15 +887,19 @@ def get_task_queue(
     ).limit(limit).all()
 
     result = []
+    orphaned_items = []
     for item in items:
+        if not item.task:
+            orphaned_items.append(item)
+            continue
         resp_item = {
             "id": item.id,
             "task_id": item.task_id,
-            "task_name": item.task.name if item.task else None,
-            "app_name": item.task.app_name if item.task else None,
-            "mode": item.task.mode if item.task else None,
-            "max_steps": item.task.max_steps if item.task else None,
-            "max_times": item.task.max_times if item.task else None,
+            "task_name": item.task.name,
+            "app_name": item.task.app_name,
+            "mode": item.task.mode,
+            "max_steps": item.task.max_steps,
+            "max_times": item.task.max_times,
             "priority": item.priority,
             "status": item.status,
             "scheduled_at": item.scheduled_at,
@@ -905,6 +909,16 @@ def get_task_queue(
             "error_message": item.error_message,
         }
         result.append(resp_item)
+
+    # 自动抹除已失去主任务的孤儿历史排队流水
+    if orphaned_items:
+        for orphan in orphaned_items:
+            db.delete(orphan)
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+
     return result
 
 
@@ -1145,11 +1159,15 @@ def delete_task_run(
                 # 未提禅道的草稿/临时 Bug 彻底从数据库删除
                 db.delete(b)
 
-    # 5. 删除任务主记录 (其 steps 和 metrics 会通过 cascade='all, delete-orphan' 自动级联清理)
+    # 5. 级联清理关联的调度队列流水记录 (TaskQueueItem)
+    from .models import TaskQueueItem
+    db.query(TaskQueueItem).filter(TaskQueueItem.task_id == task_id).delete()
+
+    # 6. 删除任务主记录 (其 steps, metrics 与 queue_items 会通过 cascade='all, delete-orphan' 自动级联清理)
     db.delete(task)
     db.commit()
 
-    # 6. 将耗时的磁盘小文件树抹除与大盘全量扫描交由后台任务异步执行，使 HTTP 接口在 20ms 内即时返回
+    # 7. 将耗时的磁盘小文件树抹除与大盘全量扫描交由后台任务异步执行，使 HTTP 接口在 20ms 内即时返回
     target_dir_str = str(target_dir.resolve()) if (target_dir and target_dir.exists()) else None
     if background_tasks:
         background_tasks.add_task(_async_cleanup_disk_and_hub, target_dir_str)

@@ -63,6 +63,7 @@ class TaskRun(Base):
     steps = relationship("StepRecord", back_populates="task", cascade="all, delete-orphan")
     bugs = relationship("BugRecord", back_populates="task")
     metrics = relationship("PerformanceMetric", back_populates="task", cascade="all, delete-orphan")
+    queue_items = relationship("TaskQueueItem", back_populates="task", cascade="all, delete-orphan")
 
 
 class StepRecord(Base):
@@ -247,6 +248,6 @@ class TaskQueueItem(Base):
     finished_at = Column(DateTime, nullable=True)
     error_message = Column(Text, nullable=True)
 
-    task = relationship("TaskRun")
+    task = relationship("TaskRun", back_populates="queue_items")
 
 
