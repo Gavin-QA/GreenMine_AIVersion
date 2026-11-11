@@ -905,6 +905,10 @@ def list_tasks(
 
     if status:
         q = q.filter(TaskRun.status == status)
+    else:
+        # 核心铁律：历史巡检任务列表仅展示真正已拉起执行或已归档的任务
+        # 处于排队中的调度计划只在“执行调度队列看板”中呈现，严禁在未真正执行前占位显示
+        q = q.filter(TaskRun.status != "pending")
 
     return q.offset(offset).limit(limit).all()
 
@@ -1160,6 +1164,11 @@ def remove_from_queue(
         q_item.finished_at = datetime.datetime.now()
         db.commit()
         return {"code": 200, "message": "正在执行的队列任务已终止并移出", "queue_id": queue_id}
+
+    # 若该任务尚未物理执行且无磁盘产物，连带清理任务记录，杜绝残留孤儿脏数据
+    task = db.query(TaskRun).filter(TaskRun.id == q_item.task_id).first()
+    if task and task.status == "pending" and not task.run_dir and not task_manager.is_running(task.id):
+        db.delete(task)
 
     db.delete(q_item)
     db.commit()
