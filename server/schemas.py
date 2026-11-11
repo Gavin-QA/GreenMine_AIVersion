@@ -153,6 +153,14 @@ class BugResponse(BaseModel):
         from_attributes = True
 
 
+class BugListResponse(BaseModel):
+    """缺陷资产记录物理分页响应模型"""
+    total: int = Field(description="满足过滤条件的总记录数")
+    page: int = Field(default=1, description="当前页码 (从1开始)")
+    page_size: int = Field(default=15, description="每页最大拉取记录数")
+    items: List[BugResponse] = Field(default_factory=list, description="当前页缺陷记录列表")
+
+
 class PerformanceMetricResponse(BaseModel):
     """全景性能时序数据单点响应模型"""
     id: int = Field(description="自增主键序号")

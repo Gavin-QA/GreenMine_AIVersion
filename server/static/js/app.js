@@ -102,9 +102,16 @@ const app = createApp({
     const pendingQueueCount = ref(0);
     const showEnqueueModal = ref(false);
     const isSubmittingEnqueue = ref(false);
-    const enqueueForm = reactive({
-      priority: 100,
+    const scheduleForm = reactive({
+      name: '',
+      app_name: 'zhaiwan',
+      preset_id: '',
+      priority: 3,
       scheduledTime: ''
+    });
+
+    const filteredSchedulePresets = computed(() => {
+      return (presetTasks.value || []).filter(p => p.app_name === scheduleForm.app_name);
     });
 
     // 任务列表分页
@@ -228,39 +235,45 @@ const app = createApp({
 
     const isBugsLoading = ref(false);
 
-    // 缺陷列表分页
+    // 缺陷列表服务端物理分页
     const bugPage = ref(1);
     const bugPageSize = ref(15);
     const bugPageSizes = [10, 15, 30, 50];
     const bugPageJump = ref(1);
+    const totalBugs = ref(0);
 
     const totalBugPages = computed(() => {
-      const total = Math.ceil(bugs.value.length / bugPageSize.value);
+      const total = Math.ceil(totalBugs.value / bugPageSize.value);
       return total > 0 ? total : 1;
     });
 
-    const paginatedBugs = computed(() => {
-      const start = (bugPage.value - 1) * bugPageSize.value;
-      return bugs.value.slice(start, start + bugPageSize.value);
-    });
+    // 模板兼容: 当前页数据直接映射
+    const paginatedBugs = computed(() => bugs.value || []);
 
     function setBugPage(p) {
       if (typeof p !== 'number') return;
       if (p < 1) p = 1;
       if (p > totalBugPages.value) p = totalBugPages.value;
+      if (p === bugPage.value) return;
       bugPage.value = p;
       bugPageJump.value = p;
+      fetchBugs();
     }
 
     function onBugPageSizeChange() {
       bugPage.value = 1;
       bugPageJump.value = 1;
+      fetchBugs();
     }
 
     function jumpToBugPage() {
       let p = parseInt(bugPageJump.value, 10);
       if (isNaN(p)) p = 1;
-      setBugPage(p);
+      if (p < 1) p = 1;
+      if (p > totalBugPages.value) p = totalBugPages.value;
+      bugPage.value = p;
+      bugPageJump.value = p;
+      fetchBugs();
     }
 
     // 通用页码按钮生成逻辑 (支持 1 ... 4 5 6 ... 10)
@@ -284,7 +297,7 @@ const app = createApp({
     let bugAbortController = null;
 
     const bugSearch = ref('');
-
+    const bugAppFilter = ref('');
     const bugSeverityFilter = ref('');
 
     const bugAssigneeFilter = ref('');
@@ -611,9 +624,11 @@ const app = createApp({
 
         isBugsLoading.value = true;
 
-        let url = `${apiBase}/api/bugs?limit=300`;
+        let url = `${apiBase}/api/bugs?page=${bugPage.value}&page_size=${bugPageSize.value}`;
 
         if (options && options.sync) url += `&sync=true`;
+
+        if (bugAppFilter.value) url += `&app_name=${encodeURIComponent(bugAppFilter.value)}`;
 
         if (bugSeverityFilter.value) url += `&severity=${encodeURIComponent(bugSeverityFilter.value)}`;
 
@@ -631,7 +646,19 @@ const app = createApp({
 
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-        bugs.value = await res.json();
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          // 容错: 兼容旧版数组
+          bugs.value = data;
+          totalBugs.value = data.length;
+        } else {
+          bugs.value = data.items || [];
+          totalBugs.value = data.total || 0;
+          if (data.page) {
+            bugPage.value = data.page;
+            bugPageJump.value = data.page;
+          }
+        }
         if (bugPage.value > totalBugPages.value) {
           bugPage.value = totalBugPages.value;
           bugPageJump.value = totalBugPages.value;
@@ -658,6 +685,8 @@ const app = createApp({
       if (bugSearchTimer) clearTimeout(bugSearchTimer);
 
       bugSearch.value = '';
+
+      bugAppFilter.value = '';
 
       bugSeverityFilter.value = '';
 
@@ -733,9 +762,17 @@ const app = createApp({
       }
 
       // 3. 模式与目标
-      taskForm.mode = (preset.mode === 'case' ? 'case' : 'explore');
-      taskForm.tour = (preset.mode === 'smoke' || !!preset.tour);
-      taskForm.macro_objective = preset.macro_objective;
+      if (preset.mode === 'smoke' || preset.tour) {
+        taskForm.mode = 'smoke';
+        taskForm.tour = true;
+      } else if (preset.mode === 'case') {
+        taskForm.mode = 'case';
+        taskForm.tour = false;
+      } else {
+        taskForm.mode = 'explore';
+        taskForm.tour = false;
+      }
+      taskForm.macro_objective = (taskForm.mode === 'smoke') ? '' : (preset.macro_objective || '');
       taskForm.max_steps = preset.max_steps;
       taskForm.max_times = preset.max_times;
       taskForm.reset_memory = preset.reset_memory;
@@ -759,8 +796,7 @@ const app = createApp({
     }
 
     function enqueuePreset(preset) {
-      loadPresetToForm(preset);
-      openEnqueueModal();
+      openCreateScheduleModal(preset);
     }
 
 
@@ -780,26 +816,29 @@ const app = createApp({
         }
       }
 
+      const isSmoke = taskForm.mode === 'smoke';
       const payload = {
         id: (overwriteExisting && taskForm.preset_id) ? taskForm.preset_id : null,
         title: title,
         app_name: taskForm.app_name,
-        mode: taskForm.mode,
-        badge: '自定义',
-        macro_objective: taskForm.macro_objective,
-        max_steps: taskForm.max_steps,
+        mode: isSmoke ? 'smoke' : taskForm.mode,
+        badge: isSmoke ? '冒烟' : '自定义',
+        macro_objective: isSmoke ? '' : taskForm.macro_objective,
+        max_steps: isSmoke ? null : taskForm.max_steps,
         max_times: taskForm.max_times,
         reset_memory: taskForm.reset_memory,
         ignore_errors: taskForm.ignore_errors,
         case_path: taskForm.mode === 'case' ? (taskForm.case_path || null) : null,
-        tour: taskForm.mode === 'explore' ? taskForm.tour : false,
+        tour: isSmoke,
         resume_from: taskForm.resume_from || null,
         reexplore: taskForm.reexplore || null,
         start_delay: taskForm.start_delay,
         wait_ready: taskForm.wait_ready || null,
         wait_timeout: taskForm.wait_timeout,
         ignore_env_check: taskForm.ignore_env_check,
-        description: `用户自定义预设: ${taskForm.app_name} / ${taskForm.mode} / ${taskForm.max_steps}步`
+        description: isSmoke
+          ? `极速全量冒烟巡检: ${taskForm.app_name}`
+          : `用户自定义预设: ${taskForm.app_name} / ${taskForm.mode} / ${taskForm.max_steps}步`
       };
 
       try {
@@ -877,14 +916,15 @@ const app = createApp({
 
         }
 
+        const isSmoke = taskForm.mode === 'smoke';
         const payload = {
           name: taskForm.name,
           app_name: taskForm.app_name,
-          mode: taskForm.mode,
-          tour: taskForm.mode === 'explore' ? !!taskForm.tour : false,
+          mode: isSmoke ? 'smoke' : taskForm.mode,
+          tour: isSmoke || (taskForm.mode === 'explore' && !!taskForm.tour),
           case_path: taskForm.mode === 'case' ? (taskForm.case_path || null) : null,
-          macro_objective: taskForm.macro_objective,
-          max_steps: taskForm.max_steps,
+          macro_objective: isSmoke ? '' : taskForm.macro_objective,
+          max_steps: isSmoke ? null : taskForm.max_steps,
           max_times: taskForm.max_times,
           reset_memory: taskForm.reset_memory,
           ignore_errors: taskForm.ignore_errors,
@@ -1083,7 +1123,7 @@ const app = createApp({
 
     function setQuickSchedule(type) {
       if (type === 'immediate') {
-        enqueueForm.scheduledTime = '';
+        scheduleForm.scheduledTime = '';
         return;
       }
       const now = new Date();
@@ -1103,12 +1143,12 @@ const app = createApp({
       const D = String(target.getDate()).padStart(2, '0');
       const h = String(target.getHours()).padStart(2, '0');
       const m = String(target.getMinutes()).padStart(2, '0');
-      enqueueForm.scheduledTime = `${Y}-${M}-${D}T${h}:${m}`;
+      scheduleForm.scheduledTime = `${Y}-${M}-${D}T${h}:${m}`;
     }
 
     function isQuickSelected(type) {
-      if (!enqueueForm.scheduledTime) return type === 'immediate';
-      const parts = enqueueForm.scheduledTime.split('T');
+      if (!scheduleForm.scheduledTime) return type === 'immediate';
+      const parts = scheduleForm.scheduledTime.split('T');
       if (parts.length < 2) return false;
       const timePart = parts[1].slice(0, 5);
       if (type === 'tonight_20' && timePart === '18:25') return true;
@@ -1117,84 +1157,91 @@ const app = createApp({
       return false;
     }
 
-    function openEnqueueModal() {
-      enqueueForm.priority = 3;
-      enqueueForm.scheduledTime = '';
+    function openCreateScheduleModal(preset = null) {
+      if (preset && preset.app_name) {
+        scheduleForm.app_name = preset.app_name;
+        scheduleForm.preset_id = preset.id;
+        scheduleForm.name = `【${getAppName(preset.app_name)}】${preset.title}`;
+      } else {
+        scheduleForm.app_name = taskForm.app_name || (options.apps && options.apps[0]?.key) || storedApp;
+        const appPresets = (presetTasks.value || []).filter(p => p.app_name === scheduleForm.app_name);
+        if (appPresets.length > 0) {
+          scheduleForm.preset_id = appPresets[0].id;
+          scheduleForm.name = `【${getAppName(scheduleForm.app_name)}】${appPresets[0].title}`;
+        } else {
+          scheduleForm.preset_id = '';
+          scheduleForm.name = `【${getAppName(scheduleForm.app_name)}】定时巡检计划`;
+        }
+      }
+      scheduleForm.priority = 3;
+      scheduleForm.scheduledTime = '';
       showEnqueueModal.value = true;
     }
 
-    async function confirmEnqueueTask() {
+    function onScheduleAppChange() {
+      const appPresets = (presetTasks.value || []).filter(p => p.app_name === scheduleForm.app_name);
+      if (appPresets.length > 0) {
+        scheduleForm.preset_id = appPresets[0].id;
+        scheduleForm.name = `【${getAppName(scheduleForm.app_name)}】${appPresets[0].title}`;
+      } else {
+        scheduleForm.preset_id = '';
+        scheduleForm.name = `【${getAppName(scheduleForm.app_name)}】定时巡检计划`;
+      }
+    }
+
+    function onSchedulePresetChange() {
+      const found = (presetTasks.value || []).find(p => p.id === scheduleForm.preset_id);
+      if (found) {
+        scheduleForm.name = `【${getAppName(scheduleForm.app_name)}】${found.title}`;
+      }
+    }
+
+    async function confirmCreateSchedulePlan() {
+      if (!scheduleForm.preset_id) {
+        showToast('请选择关联任务', '必须选择一个预设巡检任务模板作为执行规则', 'warning', 4000);
+        return;
+      }
       isSubmittingEnqueue.value = true;
       try {
-        // 1. 率先生成并创建 TaskRun
+        let scheduledTimeStr = null;
+        if (scheduleForm.scheduledTime) {
+          scheduledTimeStr = scheduleForm.scheduledTime.replace('T', ' ');
+          if (scheduledTimeStr.length === 16) {
+            scheduledTimeStr += ':00';
+          }
+        }
+
         const payload = {
-          name: taskForm.name,
-          app_name: taskForm.app_name,
-          mode: taskForm.mode,
-          macro_objective: taskForm.macro_objective,
-          max_steps: taskForm.max_steps,
-          max_times: taskForm.max_times,
-          reset_memory: taskForm.reset_memory,
-          ignore_errors: taskForm.ignore_errors,
-          explore_context: taskForm.explore_context,
-          case_path: taskForm.case_path,
-          tour: taskForm.tour,
-          resume_from: taskForm.resume_from || null,
-          reexplore: taskForm.reexplore || null,
-          start_delay: taskForm.start_delay,
-          wait_ready: taskForm.wait_ready || null,
-          wait_timeout: taskForm.wait_timeout,
-          ignore_env_check: taskForm.ignore_env_check,
+          name: scheduleForm.name,
+          app_name: scheduleForm.app_name,
+          preset_id: scheduleForm.preset_id,
+          priority: scheduleForm.priority,
+          scheduled_at: scheduledTimeStr
         };
 
-        const taskRes = await fetch(`${apiBase}/api/tasks`, {
+        const res = await fetch(`${apiBase}/api/tasks/queue/schedule`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
 
-        if (!taskRes.ok) {
-          alert('创建任务失败: ' + (await taskRes.text()));
-          isSubmittingEnqueue.value = false;
-          return;
-        }
-
-        const createdTask = await taskRes.json();
-
-        // 2. 将创建好的任务推入执行队列
-        let scheduledUtc = null;
-        if (enqueueForm.scheduledTime) {
-          scheduledUtc = new Date(enqueueForm.scheduledTime).toISOString();
-        }
-
-        const queueRes = await fetch(`${apiBase}/api/tasks/queue`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            task_id: createdTask.id,
-            priority: enqueueForm.priority,
-            scheduled_at: scheduledUtc
-          })
-        });
-
-        if (queueRes.ok) {
+        if (res.ok) {
           showEnqueueModal.value = false;
           showToast(
-            '已加入调度队列',
-            `任务【<strong>${createdTask.name}</strong>】已成功加入执行队列！调度器将自动按序拉起。`,
+            '调度计划已创建',
+            `计划【<strong>${scheduleForm.name}</strong>】已成功加入执行队列！调度器将自动按序单机独占拉起。`,
             'success',
             5000
           );
           await fetchTasks();
           await fetchTaskQueue();
-          // 自动平滑切至调度队列看板
           currentTab.value = 'tasks';
           assetsSubTab.value = 'queue';
         } else {
-          showToast('加入队列失败', await queueRes.text(), 'error', 6000);
+          showToast('创建调度计划失败', await res.text(), 'error', 6000);
         }
       } catch (e) {
-        alert('加入队列网络异常: ' + e);
+        showToast('创建调度计划异常', String(e), 'error', 6000);
       } finally {
         isSubmittingEnqueue.value = false;
       }
@@ -2108,10 +2155,16 @@ const app = createApp({
           if (bugs.value) {
             bugs.value = bugs.value.filter(b => b.id !== bug.id);
           }
+          totalBugs.value = Math.max(0, totalBugs.value - 1);
           if (selectedBug.value && selectedBug.value.id === bug.id) {
             selectedBug.value = null;
           }
           showToast('🗑️ 删除成功', `未提单缺陷 [${bug.id}] 已彻底物理清理。`, 'success', 3500);
+          if (bugs.value.length === 0 && bugPage.value > 1) {
+            setBugPage(bugPage.value - 1);
+          } else {
+            fetchBugs();
+          }
         } else {
           showToast('⚠️ 删除失败', data.detail || '接口响应异常', 'error', 5000);
         }
@@ -2252,11 +2305,9 @@ const app = createApp({
 
                 // 如果当前正在查看该缺陷详情，静默重新拉取
 
-                fetch(`${apiBase}/api/bugs`).then(r => r.json()).then(list => {
+                fetch(`${apiBase}/api/bugs/${encodeURIComponent(selectedBug.value.id)}`).then(r => r.json()).then(detail => {
 
-                  const found = list.find(x => x.id === selectedBug.value.id);
-
-                  if (found) Object.assign(selectedBug.value, found);
+                  if (detail && detail.id) Object.assign(selectedBug.value, detail);
 
                 }).catch(() => { });
 
@@ -2450,6 +2501,7 @@ const app = createApp({
       bugPageSize,
       bugPageSizes,
       bugPageJump,
+      totalBugs,
       totalBugPages,
       paginatedBugs,
       setBugPage,
@@ -2495,7 +2547,7 @@ const app = createApp({
       onBugSearchInput,
 
       bugSearch,
-
+      bugAppFilter,
       bugSeverityFilter,
 
       bugAssigneeFilter,
@@ -2612,10 +2664,16 @@ const app = createApp({
       pendingQueueCount,
       showEnqueueModal,
       isSubmittingEnqueue,
-      enqueueForm,
+      enqueueForm: scheduleForm,
+      scheduleForm,
+      filteredSchedulePresets,
       fetchTaskQueue,
-      openEnqueueModal,
-      confirmEnqueueTask,
+      openEnqueueModal: openCreateScheduleModal,
+      openCreateScheduleModal,
+      onScheduleAppChange,
+      onSchedulePresetChange,
+      confirmEnqueueTask: confirmCreateSchedulePlan,
+      confirmCreateSchedulePlan,
       removeFromQueue,
       formatPriorityLabel,
       setQuickSchedule,

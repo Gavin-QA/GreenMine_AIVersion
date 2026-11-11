@@ -235,39 +235,45 @@ const app = createApp({
 
     const isBugsLoading = ref(false);
 
-    // 缺陷列表分页
+    // 缺陷列表服务端物理分页
     const bugPage = ref(1);
     const bugPageSize = ref(15);
     const bugPageSizes = [10, 15, 30, 50];
     const bugPageJump = ref(1);
+    const totalBugs = ref(0);
 
     const totalBugPages = computed(() => {
-      const total = Math.ceil(bugs.value.length / bugPageSize.value);
+      const total = Math.ceil(totalBugs.value / bugPageSize.value);
       return total > 0 ? total : 1;
     });
 
-    const paginatedBugs = computed(() => {
-      const start = (bugPage.value - 1) * bugPageSize.value;
-      return bugs.value.slice(start, start + bugPageSize.value);
-    });
+    // 模板兼容: 当前页数据直接映射
+    const paginatedBugs = computed(() => bugs.value || []);
 
     function setBugPage(p) {
       if (typeof p !== 'number') return;
       if (p < 1) p = 1;
       if (p > totalBugPages.value) p = totalBugPages.value;
+      if (p === bugPage.value) return;
       bugPage.value = p;
       bugPageJump.value = p;
+      fetchBugs();
     }
 
     function onBugPageSizeChange() {
       bugPage.value = 1;
       bugPageJump.value = 1;
+      fetchBugs();
     }
 
     function jumpToBugPage() {
       let p = parseInt(bugPageJump.value, 10);
       if (isNaN(p)) p = 1;
-      setBugPage(p);
+      if (p < 1) p = 1;
+      if (p > totalBugPages.value) p = totalBugPages.value;
+      bugPage.value = p;
+      bugPageJump.value = p;
+      fetchBugs();
     }
 
     // 通用页码按钮生成逻辑 (支持 1 ... 4 5 6 ... 10)
@@ -618,7 +624,7 @@ const app = createApp({
 
         isBugsLoading.value = true;
 
-        let url = `${apiBase}/api/bugs?limit=300`;
+        let url = `${apiBase}/api/bugs?page=${bugPage.value}&page_size=${bugPageSize.value}`;
 
         if (options && options.sync) url += `&sync=true`;
 
@@ -640,7 +646,19 @@ const app = createApp({
 
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-        bugs.value = await res.json();
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          // 容错: 兼容旧版数组
+          bugs.value = data;
+          totalBugs.value = data.length;
+        } else {
+          bugs.value = data.items || [];
+          totalBugs.value = data.total || 0;
+          if (data.page) {
+            bugPage.value = data.page;
+            bugPageJump.value = data.page;
+          }
+        }
         if (bugPage.value > totalBugPages.value) {
           bugPage.value = totalBugPages.value;
           bugPageJump.value = totalBugPages.value;
@@ -2137,10 +2155,16 @@ const app = createApp({
           if (bugs.value) {
             bugs.value = bugs.value.filter(b => b.id !== bug.id);
           }
+          totalBugs.value = Math.max(0, totalBugs.value - 1);
           if (selectedBug.value && selectedBug.value.id === bug.id) {
             selectedBug.value = null;
           }
           showToast('🗑️ 删除成功', `未提单缺陷 [${bug.id}] 已彻底物理清理。`, 'success', 3500);
+          if (bugs.value.length === 0 && bugPage.value > 1) {
+            setBugPage(bugPage.value - 1);
+          } else {
+            fetchBugs();
+          }
         } else {
           showToast('⚠️ 删除失败', data.detail || '接口响应异常', 'error', 5000);
         }
@@ -2281,11 +2305,9 @@ const app = createApp({
 
                 // 如果当前正在查看该缺陷详情，静默重新拉取
 
-                fetch(`${apiBase}/api/bugs`).then(r => r.json()).then(list => {
+                fetch(`${apiBase}/api/bugs/${encodeURIComponent(selectedBug.value.id)}`).then(r => r.json()).then(detail => {
 
-                  const found = list.find(x => x.id === selectedBug.value.id);
-
-                  if (found) Object.assign(selectedBug.value, found);
+                  if (detail && detail.id) Object.assign(selectedBug.value, detail);
 
                 }).catch(() => { });
 
@@ -2479,6 +2501,7 @@ const app = createApp({
       bugPageSize,
       bugPageSizes,
       bugPageJump,
+      totalBugs,
       totalBugPages,
       paginatedBugs,
       setBugPage,

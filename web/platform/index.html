@@ -1688,9 +1688,9 @@
             </div>
 
             <!-- 缺陷治理中枢分页工具栏 -->
-            <div class="pagination-container" v-if="bugs && bugs.length > 0">
+            <div class="pagination-container" v-if="totalBugs > 0">
               <div class="pagination-left">
-                <span>共筛选出 <strong style="color: #00d2ff;">{{ bugs.length }}</strong> 条缺陷</span>
+                <span>共筛选出 <strong style="color: #00d2ff;">{{ totalBugs }}</strong> 条缺陷</span>
                 <span style="color: var(--border-color);">|</span>
                 <span>每页显示</span>
                 <select class="pagination-select" v-model.number="bugPageSize" @change="onBugPageSizeChange">

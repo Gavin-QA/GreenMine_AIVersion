@@ -41,6 +41,7 @@ from .schemas import (
     TaskCreate,
     TaskResponse,
     BugResponse,
+    BugListResponse,
     BugUpdate,
     PerformanceMetricResponse,
     PerformanceSummaryResponse,
@@ -1348,10 +1349,10 @@ async def websocket_task_logs(websocket: WebSocket, task_id: str):
 
 @app.get(
     "/api/bugs",
-    response_model=List[BugResponse],
+    response_model=BugListResponse,
     tags=["3. 缺陷治理与禅道同步"],
-    summary="多条件检索全局缺陷资产库",
-    description="支持按状态（激活/已提单）、严重度（High/Medium/Low）、责任人（陈贻雄/梅本霞）以及模糊关键词全文检索系统缺陷。",
+    summary="多条件检索全局缺陷资产库 (服务端物理分页)",
+    description="支持按状态、严重度、责任人、矿山应用以及模糊关键词检索，返回 total 与物理分页 items。",
 )
 def list_bugs(
     app_name: Optional[str] = Query(
@@ -1376,8 +1377,10 @@ def list_bugs(
         default=False,
         description="是否在查询前从磁盘执行增量热同步(默认False保障毫秒级极速响应)",
     ),
-    limit: int = Query(default=200, ge=1, le=500, description="最大返回条数"),
-    offset: int = Query(default=0, ge=0, description="偏移量"),
+    page: int = Query(default=1, ge=1, description="页码 (从1开始)"),
+    page_size: int = Query(default=15, ge=1, le=200, description="每页最大拉取条数 (默认15条)"),
+    limit: Optional[int] = Query(default=None, ge=1, le=500, description="兼容旧参数：最大返回条数"),
+    offset: Optional[int] = Query(default=None, ge=0, description="兼容旧参数：偏移量"),
     db: Session = Depends(get_db),
 ):
 
@@ -1421,7 +1424,48 @@ def list_bugs(
                 | (BugRecord.actual_error.like(f"%{search_kw}%"))
             )
 
-    return q.offset(offset).limit(limit).all()
+    # 1. 毫秒级计算满足过滤条件的总条数
+    total = q.count()
+
+    # 2. 分页参数计算与向下兼容
+    if limit is not None:
+        actual_limit = limit
+        actual_offset = offset if offset is not None else 0
+        current_page = (actual_offset // actual_limit) + 1 if actual_limit > 0 else 1
+        current_page_size = actual_limit
+    else:
+        current_page = page
+        current_page_size = page_size
+        actual_offset = (page - 1) * page_size
+        actual_limit = page_size
+
+    items = q.offset(actual_offset).limit(actual_limit).all()
+
+    return {
+        "total": total,
+        "page": current_page,
+        "page_size": current_page_size,
+        "items": items,
+    }
+
+
+@app.get(
+    "/api/bugs/{bug_id}",
+    response_model=BugResponse,
+    tags=["3. 缺陷治理与禅道同步"],
+    summary="获取指定单条缺陷详情",
+    description="根据全局统一缺陷编号精准查询单条缺陷完整元数据与 AI 根因报告。",
+)
+def get_bug(
+    bug_id: str = FastPath(..., description="待查询的缺陷编号，如 BUG-20261101-002"),
+    db: Session = Depends(get_db),
+):
+    bug = db.query(BugRecord).filter(BugRecord.id == bug_id).first()
+    if not bug:
+        raise HTTPException(
+            status_code=404, detail=f"未找到编号为 '{bug_id}' 的缺陷记录"
+        )
+    return bug
 
 
 @app.put(
