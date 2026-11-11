@@ -274,31 +274,63 @@ class TaskManager:
             db.close()
 
     def _enrich_task_metrics_from_runs(self, task: TaskRun):
-        """从最新的运行目录报告中同步统计指标"""
+        """从对应应用的专属运行目录中精准同步统计指标，彻底杜绝多应用串台错挂"""
         try:
             import json
             runs_data_path = PROJECT_ROOT / "reports" / "runs" / "runs_data.js"
-            if runs_data_path.exists():
-                text = runs_data_path.read_text(encoding="utf-8")
-                prefix = "window.GLOBAL_RUNS_LIST = "
-                if text.startswith(prefix):
-                    clean_text = text[len(prefix):].rstrip().rstrip(";")
-                    runs = json.loads(clean_text)
-                    if runs:
-                        latest = runs[0]
-                        kpi = latest.get("kpi", {})
-                        task.total_steps = kpi.get("total_steps", 0)
-                        task.planner_phases = kpi.get("planner_phases", 0)
-                        task.coverage_rate = float(kpi.get("page_coverage_rate", 0.0))
-                        task.bugs_count = kpi.get("bugs_count", 0)
-                        task.apis_count = kpi.get("apis_count", 0)
-                        task.yaml_steps_count = kpi.get("yaml_steps_count", 0)
-                        raw_report_url = latest.get("report_url", "")
-                        # 规范化转换为以 /reports/runs/ 开头的绝对路径，防止相对路径在不同路由层级解析错位
-                        if raw_report_url:
-                            cleaned = raw_report_url.lstrip(".").lstrip("/")
-                            task.report_url = f"/reports/runs/{cleaned}" if not cleaned.startswith("reports/") else f"/{cleaned}"
-                        task.run_dir = latest.get("rel_path")
+            if not runs_data_path.exists():
+                return
+            text = runs_data_path.read_text(encoding="utf-8")
+            prefix = "window.GLOBAL_RUNS_LIST = "
+            if not text.startswith(prefix):
+                return
+            clean_text = text[len(prefix):].rstrip().rstrip(";")
+            runs = json.loads(clean_text)
+            if not runs:
+                return
+
+            # 1. 严格过滤：必须属于当前任务的目标应用 (app_name)
+            target_app = (task.app_name or "").lower()
+            app_matched_runs = [r for r in runs if (r.get("app") or "").lower() == target_app]
+            if not app_matched_runs:
+                logger.debug(f"未找到属于应用 [{target_app}] 的运行报告产物")
+                return
+
+            # 2. 时间窗口防呆：候选产物的起始时间必须吻合当前任务的执行时间 (允许3分钟容差)
+            task_start = task.start_time
+            matched_run = None
+            if task_start:
+                for r in app_matched_runs:
+                    raw_st = r.get("start_time")
+                    if raw_st:
+                        try:
+                            st = datetime.datetime.strptime(raw_st.strip()[:19], "%Y-%m-%d %H:%M:%S")
+                            if st >= (task_start - datetime.timedelta(minutes=3)):
+                                matched_run = r
+                                break
+                        except Exception:
+                            pass
+            if not matched_run and task.status == "completed":
+                matched_run = app_matched_runs[0]
+
+            if not matched_run:
+                logger.info(f"任务 [{task.id}] 运行失败或未生成属于该任务的独立有效产物，不覆写运行目录")
+                return
+
+            kpi = matched_run.get("kpi", {})
+            task.total_steps = kpi.get("total_steps", 0)
+            task.planner_phases = kpi.get("planner_phases", 0)
+            task.coverage_rate = float(kpi.get("page_coverage_rate", 0.0))
+            task.bugs_count = kpi.get("bugs_count", 0)
+            task.apis_count = kpi.get("apis_count", 0)
+            task.yaml_steps_count = kpi.get("yaml_steps_count", 0)
+            raw_report_url = matched_run.get("report_url", "")
+            # 规范化转换为以 /reports/runs/ 开头的绝对路径，防止相对路径在不同路由层级解析错位
+            if raw_report_url:
+                cleaned = raw_report_url.lstrip(".").lstrip("/")
+                task.report_url = f"/reports/runs/{cleaned}" if not cleaned.startswith("reports/") else f"/{cleaned}"
+            task.run_dir = matched_run.get("rel_path")
+            logger.info(f"✅ 成功为任务 [{task.id}] 精准挂载产物: {task.run_dir}")
         except Exception as e:
             logger.debug(f"回填运行产物数据异常: {e}")
 
@@ -422,24 +454,37 @@ class TaskManager:
         """优雅关闭队列守护线程"""
         self._stop_queue_event.set()
 
-    def _clean_host_processes_for_app(self, app_name: str):
+    def _clean_host_processes_for_app(self, app_name: str, target_port: int = 9223):
         """
         RPA 标准前置环境清洗：
-        拉起新项目前，彻底关闭同机可能残留的旧 Launcher 进程及伴生 UE 进程，释放 9223 CDP 端口与显存。
+        拉起新项目前，彻底关闭同机可能残留的旧 Launcher 进程树及伴生 UE 进程，释放 9223 CDP 端口与显存。
         """
         logger.info(f"🧹 [QueueExecutor] 正在执行前置环境深度清洗 (目标应用: {app_name})...")
         launcher_names = ["se-launcher-zhaiwan.exe", "se-launcher-tianrui.exe", "se-launcher-liwutong.exe", "se-launcher.exe"]
         ue_names = ["zhaiwan.exe", "tianrui.exe", "liwutong.exe"]
 
-        for proc in psutil.process_iter(["pid", "name"]):
+        # 1. 递归树形销毁所有矿山启动器与 UE 进程
+        for name in launcher_names + ue_names:
             try:
-                pname = (proc.info["name"] or "").lower()
-                if any(target in pname for target in launcher_names + ue_names):
-                    logger.info(f"   • 正在清理残留进程: {proc.info['name']} (PID: {proc.info['pid']})")
-                    proc.kill()
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                subprocess.run(["taskkill", "/F", "/T", "/IM", name], capture_output=True)
+            except Exception:
                 pass
-        time.sleep(2.0) # 缓冲等待 Windows 完全回收句柄
+
+        # 2. 深度回收 9223 CDP 端口，防止端口残留僵死导致新实例无法绑定调试通道
+        try:
+            for conn in psutil.net_connections(kind="tcp"):
+                if conn.laddr and conn.laddr.port == target_port and conn.status == psutil.CONN_LISTEN:
+                    if conn.pid:
+                        logger.warning(f"⚠️ 发现端口 {target_port} 被僵尸进程 (PID: {conn.pid}) 占用，正在强制回收释放...")
+                        try:
+                            p = psutil.Process(conn.pid)
+                            p.kill()
+                        except Exception:
+                            subprocess.run(["taskkill", "/F", "/T", "/PID", str(conn.pid)], capture_output=True)
+        except Exception as net_e:
+            logger.debug(f"端口占用扫描跳过: {net_e}")
+
+        time.sleep(2.5) # 缓冲等待 Windows 完全回收内核 socket 句柄
 
     def _update_queue_item_on_task_finish(self, db, task_id: str, status: str, error_message: Optional[str] = None):
         """任务终态触发队列记录流转"""
