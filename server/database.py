@@ -1,7 +1,19 @@
+"""
+=============================================================================
+Electron Vision AI - 数据库会话、连接池与平滑迁移管理模块 (Database)
+=============================================================================
+本模块负责平台持久化存储核心基础设施：
+1. 默认基于本地 SQLite (`data/vision_platform.db`) 实现单机开箱即用零运维支持；
+2. 支持环境变量 `VISION_DATABASE_URL` 无缝切换为企业级 MySQL / PostgreSQL 高可用连接池；
+3. 具备热启动物理快照定时冷备机制 (`backup_database`)；
+4. 具备平滑 DDL 迁移能力 (`init_db`)，自动检测并补齐新版本扩展字段。
+"""
+
 import os
 from pathlib import Path
+from typing import Optional, Generator
 from sqlalchemy import create_engine
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.orm import declarative_base, sessionmaker, Session
 
 CURRENT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = CURRENT_DIR.parent

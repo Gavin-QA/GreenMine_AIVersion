@@ -1,3 +1,16 @@
+"""
+=============================================================================
+Electron Vision AI - 服务端 API 数据契约与 Pydantic 校验模型集 (Schemas)
+=============================================================================
+本模块定义了所有供 FastAPI 路由层、前端大盘工作台及第三方系统交互的请求体 (Request)
+与响应体 (Response) Pydantic 数据契约模型。
+
+模型特性：
+1. 全字段 Field 装饰：提供详尽的 description 中文业务说明与 examples 样例，直通 Swagger / OpenAPI。
+2. UTC 时间规范化序列化：统一无时区时间为带 'Z' 后缀的 ISO 8601 标准格式。
+3. ORM 自动解包支持：全面启用 from_attributes = True。
+"""
+
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field, field_serializer
 import datetime
@@ -380,5 +393,258 @@ class QueueItemResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# =============================================================================
+# 6. 系统通用响应与业务子模型 (补全 Swagger 字段级元数据与中文注释)
+# =============================================================================
+
+
+class StandardActionResponse(BaseModel):
+    """标准通用操作结果响应模型"""
+    code: int = Field(default=200, description="业务状态码 (200 为成功)", examples=[200])
+    message: str = Field(description="操作结果描述说明", examples=["操作执行成功"])
+    data: Optional[Any] = Field(default=None, description="携带的附加业务数据")
+
+
+class HealthCheckResponse(BaseModel):
+    """平台健康心跳检查响应模型"""
+    status: str = Field(default="healthy", description="服务健康状态 (healthy)", examples=["healthy"])
+    service: str = Field(default="Electron AI Vision Platform", description="服务名称标识", examples=["Electron AI Vision Platform"])
+    timestamp: str = Field(description="当前 UTC 时间戳 (ISO 8601)", examples=["2026-11-11T09:40:00.000Z"])
+
+
+class BugUpdateCompatibleRequest(BaseModel):
+    """兼容大盘统一门户历史调用的缺陷状态/详情编辑请求体"""
+    bug_id: Optional[str] = Field(default=None, description="缺陷编号 (如 BUG-20261030-001，与 id 等效)", examples=["BUG-20261030-001"])
+    id: Optional[str] = Field(default=None, description="缺陷唯一编号 (与 bug_id 等效)", examples=["BUG-20261030-001"])
+    run_id: Optional[str] = Field(default=None, description="首次发现或复现的运行批次编号", examples=["explore_20261103_183408"])
+    app_name: Optional[str] = Field(default=None, description="归属矿山应用代号 (zhaiwan / liwutong 等)", examples=["zhaiwan"])
+    status: Optional[str] = Field(default=None, description="缺陷生命周期状态: 激活 / 已提单 / 误报 / 已解决 / 已关闭", examples=["已提单"])
+    severity: Optional[str] = Field(default=None, description="严重程度: High / Medium / Low", examples=["High"])
+    assignee: Optional[str] = Field(default=None, description="根据前后端责任分流指派的人员 (陈贻雄 / 梅本霞 等)", examples=["陈贻雄"])
+    zentao_id: Optional[str] = Field(default=None, description="关联的禅道 Bug 编号 (如 1188)", examples=["1188"])
+    analysis_notes: Optional[str] = Field(default=None, description="AI 智能初诊分析、根因推断与排查指引说明", examples=["前端三维视口容器在接收 WebRTC 视频流时未正常监听 resize 事件导致黑屏"])
+    remark: Optional[str] = Field(default=None, description="人工复核备注或关闭原因说明", examples=["已在前端 2.4.1 版本修复"])
+    ui_path: Optional[str] = Field(default=None, description="案发时的页面导航与层级路径", examples=["寨湾矿山/选矿看板/磨矿分级"])
+
+
+class BugUpdateResultResponse(BaseModel):
+    """缺陷更新操作响应模型"""
+    success: bool = Field(description="更新是否成功 (True/False)", examples=[True])
+    message: Optional[str] = Field(default=None, description="操作提示信息", examples=["缺陷记录更新成功"])
+    error: Optional[str] = Field(default=None, description="错误详细原因 (失败时返回)")
+    updated_fields: Optional[Dict[str, Any]] = Field(default=None, description="本次更新持久化的具体字段键值映射")
+
+
+class PresetDeleteResponse(BaseModel):
+    """预设任务模板删除响应模型"""
+    code: int = Field(default=200, description="业务状态码", examples=[200])
+    message: str = Field(description="操作结果描述说明", examples=["预设删除成功"])
+    preset_id: str = Field(description="被删除的预设模板 ID", examples=["preset_user_20261102"])
+
+
+class QueueDeleteResponse(BaseModel):
+    """调度队列项移出响应模型"""
+    code: int = Field(default=200, description="业务状态码", examples=[200])
+    message: str = Field(description="操作结果描述说明", examples=["已从调度队列中成功移出"])
+    queue_id: str = Field(description="被移出的队列项唯一标识", examples=["queue_20261111_001"])
+
+
+class BugDeleteResponse(BaseModel):
+    """缺陷资产删除响应模型"""
+    code: int = Field(default=200, description="状态码", examples=[200])
+    message: str = Field(description="删除结果提示说明", examples=["缺陷记录已成功彻底物理删除"])
+    bug_id: str = Field(description="被删除的缺陷全局唯一编号", examples=["BUG-20261030-001"])
+    deleted_targets: List[str] = Field(default_factory=list, description="物理清理的目标存储载体列表", examples=[["database", "global_json", "report_dir"]])
+
+
+class TaskActionResponse(BaseModel):
+    """巡检任务操作响应模型 (启动/终止等)"""
+    code: int = Field(default=200, description="状态码 (200 为成功)", examples=[200])
+    message: str = Field(description="操作结果描述说明", examples=["任务启动成功"])
+    task_id: str = Field(description="操作的目标任务全局识别码", examples=["task_20261102_153022"])
+    pid: Optional[int] = Field(default=None, description="启动的任务子进程物理 PID (启动成功时返回)", examples=[12348])
+
+
+class TaskDeleteResponse(BaseModel):
+    """巡检任务级联删除响应模型"""
+    code: int = Field(default=200, description="状态码 (200 为成功)", examples=[200])
+    message: str = Field(description="删除结果描述提示", examples=["任务记录已安全注销，磁盘产物与大盘已转入后台极速抹除"])
+    task_id: str = Field(description="被删除的任务全局识别码", examples=["task_20261102_153022"])
+    deleted_disk_path: Optional[str] = Field(default=None, description="被清理的磁盘物理运行目录相对路径")
+    cleaned_bugs_count: int = Field(default=0, description="级联清理的缺陷记录总数", examples=[0])
+
+
+class TaskLogsResponse(BaseModel):
+    """巡检任务控制台实时运行日志响应模型"""
+    task_id: str = Field(description="任务全局唯一识别码", examples=["task_20261102_153022"])
+    count: int = Field(default=0, description="本次拉取的日志行数", examples=[150])
+    logs: List[str] = Field(default_factory=list, description="日志文本按行切分列表", examples=[["[INFO] [ActionRunner] 正在加载自然语言用例...", "[INFO] 步骤 1 执行成功"]])
+
+
+class ApiEndpointItem(BaseModel):
+    """单个被测 API 接口元数据信息"""
+    method: Optional[str] = Field(default="GET", description="HTTP 请求方式 (GET/POST/PUT/DELETE 等)", examples=["GET"])
+    url: str = Field(description="接口完整 URL 地址或相对路径", examples=["/api/v1/production/zhaiwan/status"])
+    path: Optional[str] = Field(default=None, description="接口纯路径 (不含 Query 参数)", examples=["/api/v1/production/zhaiwan/status"])
+    status_code: Optional[int] = Field(default=200, description="响应 HTTP 状态码", examples=[200])
+    count: int = Field(default=1, description="本次巡检中该接口被拦截触发的调用总次数", examples=[12])
+    content_type: Optional[str] = Field(default=None, description="响应 Content-Type 标头", examples=["application/json;charset=UTF-8"])
+    sample_query: Optional[Dict[str, Any]] = Field(default=None, description="最近一次调用的请求参数样例")
+    sample_response_summary: Optional[str] = Field(default=None, description="响应体关键结构或摘要")
+
+
+class TaskApisResponse(BaseModel):
+    """巡检任务捕获的业务 API 接口清单模型"""
+    task_id: str = Field(description="巡检任务标识码", examples=["task_20261102_153022"])
+    run_dir: Optional[str] = Field(default=None, description="所属运行产物相对目录", examples=["zhaiwan/explore_20261103_183408"])
+    summary: Dict[str, Any] = Field(default_factory=dict, description="接口统计摘要 (如 total_apis, unique_endpoints)")
+    page_scopes: Dict[str, Any] = Field(default_factory=dict, description="按大屏业务页面划分的接口调用归属映射")
+    global_flat_apis: List[Any] = Field(default_factory=list, description="本次巡检捕获的全局平铺 API 接口列表")
+
+
+class TaskEnvInfoResponse(BaseModel):
+    """巡检任务运行时环境基线快照模型"""
+    task_id: str = Field(description="巡检任务标识码", examples=["task_20261102_153022"])
+    run_dir: Optional[str] = Field(default=None, description="所属运行产物目录", examples=["zhaiwan/explore_20261103_183408"])
+    exists: bool = Field(description="是否存在环境基线快照文件 env_info.json", examples=[True])
+    env_info: Optional[Dict[str, Any]] = Field(default=None, description="环境基线完整结构化 JSON 数据 (包含 Launcher 版本、UE5 端口、网关配置等)")
+    raw_json: Optional[str] = Field(default=None, description="格式化美化后的原始 JSON 字符串")
+    message: Optional[str] = Field(default=None, description="状态补充说明")
+
+
+class ZentaoSyncResponse(BaseModel):
+    """禅道系统提单同步响应模型"""
+    code: int = Field(default=200, description="状态码", examples=[200])
+    message: str = Field(description="提示消息", examples=["禅道提交成功"])
+    bug_id: str = Field(description="本地全局缺陷编号", examples=["BUG-20261030-001"])
+    zentao_id: Optional[str] = Field(default=None, description="提单成功后返回的禅道 Bug 编号", examples=["1288"])
+    zentao_url: Optional[str] = Field(default=None, description="禅道 Web 端缺陷详情超链接", examples=["http://zentao.example.com/index.php?m=bug&f=view&bugID=1288"])
+    status: Optional[str] = Field(default="已提单", description="同步后缺陷本地更新状态", examples=["已提单"])
+    assignee: Optional[str] = Field(default=None, description="提单指派责任人", examples=["陈贻雄"])
+
+
+class TestCaseItem(BaseModel):
+    """测试用例资产项模型"""
+    id: str = Field(description="用例唯一标识 (文件名 stem)", examples=["case_zhaiwan_smoke"])
+    name: str = Field(description="用例展示名称", examples=["【寨湾】全流程基础业务链路冒烟回归"])
+    filename: str = Field(description="用例 YAML 物理文件名", examples=["case_zhaiwan_smoke.yaml"])
+    path: str = Field(description="相对工程根目录的相对路径", examples=["test_cases/case_zhaiwan_smoke.yaml"])
+    steps_count: int = Field(default=0, description="用例内包含的动作步骤总数", examples=[18])
+    size_kb: float = Field(default=0.0, description="文件物理大小 (单位: KB)", examples=[4.25])
+    modified_at: Optional[str] = Field(default=None, description="最后修改时间 (手工用例)", examples=["2026-11-10 14:20:00"])
+    created_at: Optional[str] = Field(default=None, description="创建时间 (AI 自动生成用例)")
+    app_name: Optional[str] = Field(default=None, description="归属矿山应用代号", examples=["zhaiwan"])
+    run_id: Optional[str] = Field(default=None, description="生成该用例的巡检运行批次 ID")
+    description: Optional[str] = Field(default="", description="用例业务目标描述")
+    type: str = Field(description="用例类型: manual(手工编写) / auto(AI自动沉淀)", examples=["manual"])
+
+
+class TestCaseListResponse(BaseModel):
+    """全量测试用例资产列表响应模型"""
+    manual_cases: List[TestCaseItem] = Field(default_factory=list, description="手工编写的常态化 YAML 用例列表")
+    auto_cases: List[TestCaseItem] = Field(default_factory=list, description="AI 探索全自动逆向沉淀的回归用例列表")
+    total_manual: int = Field(default=0, description="手工用例总数", examples=[6])
+    total_auto: int = Field(default=0, description="AI 自动生成用例总数", examples=[12])
+
+
+class TestCaseContentResponse(BaseModel):
+    """用例 YAML 内容响应模型"""
+    path: str = Field(description="用例相对工程根目录的路径", examples=["test_cases/case_zhaiwan_smoke.yaml"])
+    filename: str = Field(description="用例文件名", examples=["case_zhaiwan_smoke.yaml"])
+    content: str = Field(description="YAML 纯文本内容")
+
+
+class CasePromoteRequest(BaseModel):
+    """AI 自动生成用例固化转存请求模型"""
+    path: str = Field(
+        description="待固化的 AI 用例相对路径 (如 reports/runs/.../generated_cases/case_xxx.yaml)",
+        examples=["reports/runs/zhaiwan/explore_20261103_183408/generated_cases/case_auto_1.yaml"]
+    )
+    target_name: Optional[str] = Field(
+        default=None,
+        description="固化后的新用例文件名 (如 case_zhaiwan_custom.yaml)，留空则使用源文件名",
+        examples=["case_zhaiwan_replay_2026.yaml"]
+    )
+
+
+class CasePromoteResponse(BaseModel):
+    """AI 自动生成用例固化转存响应模型"""
+    code: int = Field(default=200, description="状态码", examples=[200])
+    message: str = Field(description="操作说明", examples=["成功固化为常态用例: test_cases/case_zhaiwan_replay_2026.yaml"])
+    dest_path: str = Field(description="固化后在 test_cases/ 下的目标相对路径", examples=["test_cases/case_zhaiwan_replay_2026.yaml"])
+
+
+class MetricsCleanupResponse(BaseModel):
+    """历史性能时序数据清理响应模型"""
+    code: int = Field(default=200, description="状态码", examples=[200])
+    message: str = Field(description="清理操作结果提示", examples=["成功清理 1200 条超过 7 天的历史性能时序数据"])
+    deleted_count: int = Field(description="本次成功物理删除的过期记录总数", examples=[1200])
+    retention_days: int = Field(description="配置的保留天数", examples=[7])
+
+
+class AppLiveStatusItem(BaseModel):
+    """单个矿山应用物理运行实时状态"""
+    app_name: str = Field(description="矿山应用系统代号 (zhaiwan / tianrui / liwutong)", examples=["zhaiwan"])
+    title: Optional[str] = Field(default=None, description="矿山应用友好展示名称", examples=["寨湾矿山"])
+    online: bool = Field(default=False, description="应用是否在线 (UE 或 CDP 至少一个在线)", examples=[True])
+    ue_pid: Optional[int] = Field(default=None, description="伴生 UE5 渲染引擎主进程 PID", examples=[9212])
+    ue_memory_mb: Optional[float] = Field(default=None, description="伴生 UE5 物理常驻工作集内存占用 (MB)", examples=[1450.2])
+    ue_commit_mb: Optional[float] = Field(default=None, description="伴生 UE5 专用虚拟提交量 (Private Commit, MB)", examples=[2100.5])
+    ue_cpu_percent: Optional[float] = Field(default=None, description="伴生 UE5 CPU 占用百分比 (%)", examples=[12.5])
+    cdp_online: bool = Field(default=False, description="Chromium CDP 调试接口是否在线连通", examples=[True])
+
+
+class AmbientMetricPointResponse(BaseModel):
+    """环境常驻性能时序单点快照响应模型"""
+    timestamp: str = Field(description="采样时间戳 (ISO 8601)", examples=["2026-11-11T09:40:00.000Z"])
+    dom_count: int = Field(default=0, description="实时 DOM 节点总数", examples=[1250])
+    listeners_count: int = Field(default=0, description="实时 JS 事件监听器总数", examples=[310])
+    js_heap_mb: float = Field(default=0.0, description="实时 V8 JS 堆内存 (MB)", examples=[115.4])
+    js_heap_total_mb: float = Field(default=0.0, description="实时 V8 JS 堆内存总容量 (MB)", examples=[180.0])
+    echarts_instances: int = Field(default=0, description="活跃 ECharts 实例数", examples=[8])
+    canvas_count: int = Field(default=0, description="Canvas 数量", examples=[4])
+    video_instances: int = Field(default=0, description="视频流标签数", examples=[1])
+    webrtc_fps: Optional[float] = Field(default=None, description="WebRTC 实时帧率 (FPS)", examples=[59.8])
+    chrome_pid: Optional[int] = Field(default=None, description="Chrome 主 PID", examples=[18340])
+    chrome_cpu_percent: Optional[float] = Field(default=None, description="Chrome 进程树 CPU (%)", examples=[8.5])
+    chrome_memory_mb: Optional[float] = Field(default=None, description="Chrome 进程树物理内存 (MB)", examples=[428.5])
+    ue_pid: Optional[int] = Field(default=None, description="UE5 进程 PID", examples=[9212])
+    ue_cpu_percent: Optional[float] = Field(default=None, description="UE5 进程归一化 CPU (%)", examples=[12.3])
+    ue_memory_mb: Optional[float] = Field(default=None, description="UE5 进程物理内存 (MB)", examples=[1450.2])
+    ue_commit_mb: Optional[float] = Field(default=None, description="UE5 进程专用虚拟提交量 (Commit, 单位: MB)", examples=[2100.5])
+    host_ram_load_percent: Optional[float] = Field(default=None, description="整机物理内存使用率 (%)", examples=[65.4])
+    host_commit_load_percent: Optional[float] = Field(default=None, description="整机虚拟内存提交率 (%)", examples=[58.2])
+    host_commit_avail_gb: Optional[float] = Field(default=None, description="整机剩余可用虚拟提交量 (GB)", examples=[14.2])
+    gpu_usage_percent: Optional[float] = Field(default=None, description="GPU 3D 核心占用率 (%)", examples=[35.0])
+    gpu_memory_mb: Optional[float] = Field(default=None, description="GPU 显存占用 (MB)", examples=[2890.0])
+
+
+class HotSyncResponse(BaseModel):
+    """磁盘增量热同步执行结果模型"""
+    synced: bool = Field(description="是否实际触发了增量同步", examples=[True])
+    reason: Optional[str] = Field(default=None, description="未触发同步的原因 (如 throttled, up_to_date)", examples=["up_to_date"])
+    new_tasks: Optional[int] = Field(default=0, description="本次增量入库的新任务数量", examples=[1])
+    new_bugs: Optional[int] = Field(default=0, description="本次增量入库的新缺陷数量", examples=[0])
+    elapsed: Optional[float] = Field(default=0.0, description="同步耗时秒数", examples=[0.05])
+    timestamp: Optional[str] = Field(default=None, description="同步完成时间戳", examples=["2026-11-11 17:40:00"])
+    message: str = Field(default="热同步完成", description="同步结果说明", examples=["热同步完成"])
+
+
+class AllAppsLiveStatusResponse(BaseModel):
+    """全矿山应用实时运行状态集合模型"""
+    apps: List[AppLiveStatusItem] = Field(default_factory=list, description="各矿山应用实时探测状态列表")
+    timestamp: str = Field(description="采样时间戳 (ISO 8601)", examples=["2026-11-11T09:40:00.000Z"])
+
+
+class AmbientMetricsHistoryResponse(BaseModel):
+    """历史常驻性能指标时序查询响应模型"""
+    app_name: str = Field(description="矿山应用代号", examples=["zhaiwan"])
+    hours: int = Field(description="查询回溯时间范围 (小时)", examples=[24])
+    total_points: int = Field(description="检索到的时序样本点总数", examples=[180])
+    metrics: List[AmbientMetricPointResponse] = Field(default_factory=list, description="性能指标时序明细列表")
+
+
 
 

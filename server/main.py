@@ -43,15 +43,37 @@ from .schemas import (
     BugResponse,
     BugListResponse,
     BugUpdate,
+    BugUpdateCompatibleRequest,
+    BugUpdateResultResponse,
+    BugDeleteResponse,
     PerformanceMetricResponse,
     PerformanceSummaryResponse,
     LivePerformanceSnapshotResponse,
     ConfigOptionsResponse,
     PresetTaskResponse,
     PresetTaskCreate,
+    PresetDeleteResponse,
     QueueItemCreate,
     SchedulePlanCreate,
     QueueItemResponse,
+    QueueDeleteResponse,
+    StandardActionResponse,
+    HealthCheckResponse,
+    TaskActionResponse,
+    TaskDeleteResponse,
+    TaskLogsResponse,
+    TaskApisResponse,
+    TaskEnvInfoResponse,
+    ZentaoSyncResponse,
+    TestCaseItem,
+    TestCaseListResponse,
+    TestCaseContentResponse,
+    CasePromoteRequest,
+    CasePromoteResponse,
+    MetricsCleanupResponse,
+    AppLiveStatusItem,
+    AmbientMetricPointResponse,
+    HotSyncResponse,
 )
 
 from .task_manager import task_manager
@@ -296,21 +318,32 @@ def serve_favicon():
 
 @app.post(
     "/api/update_bug_status",
+    response_model=BugUpdateResultResponse,
     tags=["3. 缺陷治理与禅道同步"],
     summary="大盘门户统一接口：更新缺陷生命周期状态",
     description="统一更新缺陷状态，同步更新全局缺陷库、运行目录与平台数据库。",
 )
 @app.post(
     "/api/update_bug_detail",
+    response_model=BugUpdateResultResponse,
     tags=["3. 缺陷治理与禅道同步"],
     summary="大盘门户统一接口：更新缺陷详细字段与排查说明",
     description="统一更新责任人、严重度、排查批注或回填禅道单号，同步更新全局缺陷库、运行目录与平台数据库。",
 )
-async def update_bug_compatible_api(data: dict):
+async def update_bug_compatible_api(data: BugUpdateCompatibleRequest):
+    """
+    兼容大盘统一门户与历史脚本调用的缺陷生命周期与字段更新接口。
 
+    Args:
+        data: 缺陷更新请求契约模型（包含 bug_id/id、status、severity、assignee、zentao_id 等）
+
+    Returns:
+        BugUpdateResultResponse: 更新操作执行结果、持久化状态及更新字段列表
+    """
     from utils.bug_updater import update_bug_record
 
-    result = update_bug_record(data)
+    raw_dict = data.model_dump(exclude_unset=True)
+    result = update_bug_record(raw_dict)
 
     if not result.get("success"):
         raise HTTPException(
@@ -329,16 +362,22 @@ async def update_bug_compatible_api(data: dict):
 
 @app.get(
     "/api/health",
+    response_model=HealthCheckResponse,
     tags=["1. 平台基础与选项"],
     summary="平台健康心跳检查",
     description="检测后端平台服务核心服务、数据库会话与运行时间戳是否处于正常就绪状态。",
 )
 def health_check():
+    """
+    检测后端平台服务健康状态与当前 UTC 时间戳。
 
+    Returns:
+        HealthCheckResponse: 包含 healthy 状态与 ISO 8601 时间戳
+    """
     return {
         "status": "healthy",
         "service": "Electron AI Vision Platform",
-        "timestamp": datetime.datetime.utcnow().isoformat(),
+        "timestamp": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.%f") + "Z",
     }
 
 
@@ -634,15 +673,25 @@ def save_or_update_preset_task(
 
 @app.delete(
     "/api/tasks/presets/{preset_id}",
+    response_model=PresetDeleteResponse,
     tags=["1. 平台基础与选项"],
     summary="删除预设任务模板",
-    description="删除指定的个性化预设模板。",
+    description="从数据库中物理注销并删除指定的个性化预设模板。",
 )
 def delete_preset_task(
-    preset_id: str = FastPath(..., description="预设模板 ID"),
+    preset_id: str = FastPath(..., description="待删除的预设模板 ID (如 preset_user_xxx)"),
     db: Session = Depends(get_db),
 ):
+    """
+    删除指定的个性化预设任务模板。
 
+    Args:
+        preset_id: 预设任务全局标识码
+        db: 数据库会话
+
+    Returns:
+        PresetDeleteResponse: 包含状态码与删除预设 ID
+    """
     existing = (
         db.query(PresetTaskRecord).filter(PresetTaskRecord.id == preset_id).first()
     )
@@ -874,7 +923,7 @@ def list_tasks(
 )
 def get_task_queue(
     status: Optional[str] = Query(default=None, description="状态筛选: pending/running/completed/failed/canceled"),
-    limit: int = Query(default=50, ge=1, le=100),
+    limit: int = Query(default=50, ge=1, le=100, description="单页最大拉取队列记录条数"),
     db: Session = Depends(get_db),
 ):
     from .models import TaskQueueItem
@@ -1080,10 +1129,25 @@ def enqueue_task(payload: QueueItemCreate, db: Session = Depends(get_db)):
 
 @app.delete(
     "/api/tasks/queue/{queue_id}",
+    response_model=QueueDeleteResponse,
     tags=["2. 巡检任务生命周期调度"],
     summary="从调度队列中取消或移出任务",
+    description="从串行调度执行队列中移除指定的任务项；若该任务正在执行中，则联动触发优雅停机。",
 )
-def remove_from_queue(queue_id: str = FastPath(...), db: Session = Depends(get_db)):
+def remove_from_queue(
+    queue_id: str = FastPath(..., description="待取消或移出的调度队列记录唯一标识"),
+    db: Session = Depends(get_db)
+):
+    """
+    从串行调度执行队列中取消或移除任务。
+
+    Args:
+        queue_id: 队列记录 ID
+        db: 数据库会话
+
+    Returns:
+        QueueDeleteResponse: 包含状态码与队列操作结果
+    """
     from .models import TaskQueueItem
     q_item = db.query(TaskQueueItem).filter(TaskQueueItem.id == queue_id).first()
     if not q_item:
@@ -1124,6 +1188,7 @@ def get_task(
 
 @app.post(
     "/api/tasks/{task_id}/start",
+    response_model=TaskActionResponse,
     tags=["2. 巡检任务生命周期调度"],
     summary="一键触发启动指定巡检任务",
     description="从数据库装载配置，组装参数拉起后台 Python 子进程，并自动挂载启动伴生性能采样守护线程与日志缓冲监听。",
@@ -1132,7 +1197,16 @@ def start_task_execution(
     task_id: str = FastPath(..., description="待启动的任务全局识别码"),
     db: Session = Depends(get_db),
 ):
+    """
+    异步启动指定的自动化巡检子进程。
 
+    Args:
+        task_id: 任务全局识别码
+        db: 数据库会话
+
+    Returns:
+        TaskActionResponse: 包含状态码、提示信息、任务 ID 及拉起子进程 PID
+    """
     task = db.query(TaskRun).filter(TaskRun.id == task_id).first()
 
     if not task:
@@ -1158,6 +1232,7 @@ def start_task_execution(
 
 @app.post(
     "/api/tasks/{task_id}/stop",
+    response_model=TaskActionResponse,
     tags=["2. 巡检任务生命周期调度"],
     summary="一键优雅终止正在运行的任务",
     description="向目标 Electron 应用广播原生 WM_CLOSE 退出信号，并递归优雅终止子进程树，同时停止性能采集线程并回填终态产物。",
@@ -1165,7 +1240,15 @@ def start_task_execution(
 def stop_task_execution(
     task_id: str = FastPath(..., description="待停止的任务全局识别码"),
 ):
+    """
+    优雅终止正在运行的任务子进程及其渲染窗口。
 
+    Args:
+        task_id: 任务全局识别码
+
+    Returns:
+        TaskActionResponse: 终止操作执行结果
+    """
     stopped = task_manager.stop_task(task_id)
 
     if not stopped:
@@ -1200,6 +1283,7 @@ def _async_cleanup_disk_and_hub(target_dir_str: Optional[str]):
 
 @app.delete(
     "/api/tasks/{task_id}",
+    response_model=TaskDeleteResponse,
     tags=["2. 巡检任务生命周期调度"],
     summary="安全级联删除指定任务及物理产物",
     description="从数据库与物理磁盘彻底清理指定任务。若任务正在运行则禁止删除；若包含已提交禅道的有效缺陷，提供保护校验。",
@@ -1211,6 +1295,19 @@ def delete_task_run(
     background_tasks: BackgroundTasks = None,
     db: Session = Depends(get_db),
 ):
+    """
+    安全级联删除指定任务的主记录、指标、运行步骤及磁盘物理产物。
+
+    Args:
+        task_id: 任务全局识别码
+        force: 是否强制删除 (忽略已提禅道缺陷工单保护拦截)
+        cleanup_disk: 是否同时清理物理磁盘上的截图与报告目录
+        background_tasks: FastAPI 后台任务上下文
+        db: 数据库会话
+
+    Returns:
+        TaskDeleteResponse: 包含状态码、清理任务 ID、物理路径与缺陷清理计数
+    """
     from utils.paths import PROJECT_ROOT, RUNS_DIR, find_run_dir
 
     task = db.query(TaskRun).filter(TaskRun.id == task_id).first()
@@ -1289,15 +1386,25 @@ def delete_task_run(
 
 @app.get(
     "/api/tasks/{task_id}/logs",
+    response_model=TaskLogsResponse,
     tags=["2. 巡检任务生命周期调度"],
     summary="拉取任务控制台日志切片",
     description="获取指定任务最近在控制台输出的日志文本切片（默认最近 150 行）。",
 )
 def get_task_logs(
-    task_id: str = FastPath(..., description="任务识别码"),
+    task_id: str = FastPath(..., description="待拉取日志的任务全局识别码"),
     tail: int = Query(default=150, ge=10, le=3000, description="读取最近日志行数"),
 ):
+    """
+    获取指定任务最近输出的控制台运行日志行。
 
+    Args:
+        task_id: 任务全局识别码
+        tail: 获取的日志行数尾部切片
+
+    Returns:
+        TaskLogsResponse: 包含任务 ID、本次行数与日志列表
+    """
     logs = task_manager.get_logs(task_id, tail=tail)
 
     return {"task_id": task_id, "count": len(logs), "logs": logs}
@@ -1545,6 +1652,7 @@ def update_bug(
 
 @app.delete(
     "/api/bugs/{bug_id}",
+    response_model=BugDeleteResponse,
     tags=["3. 缺陷治理与禅道同步"],
     summary="物理注销/删除单条缺陷记录",
     description="彻底从数据库、全局 JSON 库及测试运行报告中清理缺陷记录。若缺陷已提交至禅道，则触发安全红线拦截，禁止删除。",
@@ -1553,6 +1661,16 @@ def delete_bug(
     bug_id: str = FastPath(..., description="待删除的缺陷全局唯一编号，如 BUG-20261101-002"),
     db: Session = Depends(get_db),
 ):
+    """
+    物理注销并删除单条缺陷记录及其在所有介质中的副本。
+
+    Args:
+        bug_id: 全局缺陷编号
+        db: 数据库会话
+
+    Returns:
+        BugDeleteResponse: 包含状态码、删除缺陷 ID 及影响载体
+    """
     bug = db.query(BugRecord).filter(BugRecord.id == bug_id).first()
     if not bug:
         raise HTTPException(
@@ -1585,6 +1703,7 @@ def delete_bug(
 
 @app.post(
     "/api/bugs/{bug_id}/sync_zentao",
+    response_model=ZentaoSyncResponse,
     tags=["3. 缺陷治理与禅道同步"],
     summary="在 Web 控制台一键将缺陷提交至禅道",
     description="自动解析缺陷详情、生成富文本案发排查说明，调用禅道 REST API 自动提交 Bug，并自动分流责任人（前端陈贻雄/后端梅本霞），回填禅道单号。",
@@ -1600,6 +1719,18 @@ def sync_bug_to_zentao(
     background_tasks: BackgroundTasks = None,
     db: Session = Depends(get_db),
 ):
+    """
+    一键将本地捕获的缺陷提报至公司禅道项目系统。
+
+    Args:
+        bug_id: 全局缺陷编号
+        assignee: 可选手动指派人
+        background_tasks: 后台任务实例
+        db: 数据库会话
+
+    Returns:
+        ZentaoSyncResponse: 包含提单结果、禅道工单号及直接跳转 URL
+    """
 
     bug = db.query(BugRecord).filter(BugRecord.id == bug_id).first()
 
@@ -1756,6 +1887,7 @@ def get_live_performance_snapshot(
 
 @app.get(
     "/api/metrics/live/history",
+    response_model=List[AmbientMetricPointResponse],
     tags=["4. 多核全栈性能监控"],
     summary="获取指定矿山应用最近 24 小时内的环境实时心电图历史时序",
     description="支持指定矿山应用（如 tianrui / zhaiwan），返回过去 15 分钟 ~ 24 小时的高保真连续时序数据。进入页面时瞬间灌满 ECharts 图表，彻底告别从零开始。",
@@ -1767,10 +1899,21 @@ def get_ambient_metrics_history(
     hours: float = Query(
         default=24.0, ge=0.1, le=48.0, description="回溯时长 (小时，默认24小时)"
     ),
-    limit: int = Query(default=1000, ge=50, le=5000, description="最大返回点数"),
-    downsample: bool = Query(default=True, description="是否等间距降采样"),
+    limit: int = Query(default=1000, ge=50, le=5000, description="最大返回点数 (达到上限自动触发等间距降采样)"),
+    downsample: bool = Query(default=True, description="是否启用智能等间距降采样保障前端秒开"),
 ):
+    """
+    拉取指定矿山应用的常驻环境性能监控时序历史数据点。
 
+    Args:
+        app_name: 矿山应用代号
+        hours: 回溯时间范围小时数
+        limit: 最大返回采样点数
+        downsample: 是否启用等间距降采样
+
+    Returns:
+        List[AmbientMetricPointResponse]: 包含 DOM、堆内存、CPU、UE5 内存与 WebRTC 帧率的时序列表
+    """
     return performance_monitor.get_ambient_history(
         app_name=app_name, hours=hours, limit=limit, downsample=downsample
     )
@@ -1778,12 +1921,18 @@ def get_ambient_metrics_history(
 
 @app.get(
     "/api/metrics/live/apps_status",
+    response_model=List[AppLiveStatusItem],
     tags=["4. 多核全栈性能监控"],
     summary="获取所有矿山应用的实时运行与内存状态列表",
     description="返回各应用当前伴生 UE 是否在线、专用提交量(Commit)及物理内存，供前端展示状态微标。",
 )
 def get_all_apps_live_status():
+    """
+    获取系统中所有已注册矿山大屏应用的即时存活与资源开销状态。
 
+    Returns:
+        List[AppLiveStatusItem]: 各矿山系统状态条目列表
+    """
     return performance_monitor.get_all_apps_live_status()
 
 
@@ -2054,12 +2203,21 @@ platform_subscribers: set = set()
 
 @app.post(
     "/api/sync/hot",
+    response_model=HotSyncResponse,
     tags=["1. 平台全局总览与控制"],
     summary="强制从磁盘热同步最新运行批次与缺陷",
     description="主动扫描 reports/runs/ 运行目录和 artifacts/bugs/ 缺陷库，增量写入数据库并实时广播更新。",
 )
 async def trigger_hot_sync_endpoint(db: Session = Depends(get_db)):
+    """
+    强制执行磁盘物理运行目录与缺陷库到数据库的增量热同步。
 
+    Args:
+        db: 数据库会话
+
+    Returns:
+        HotSyncResponse: 同步增量结果统计 (包含新增任务数、新增 Bug 数与耗时)
+    """
     from .sync_service import perform_hot_sync
 
     res = perform_hot_sync(db, force=True)
@@ -2103,6 +2261,7 @@ async def websocket_platform(websocket: WebSocket):
 
 @app.post(
     "/api/metrics/cleanup",
+    response_model=MetricsCleanupResponse,
     tags=["4. 多核全栈性能监控"],
     summary="手动触发滚动清理历史过期性能打点数据",
     description="支持指定保留天数（默认 7 天），滚动清理超期性能打点，释放存储空间保障极速读写。",
@@ -2112,7 +2271,15 @@ def trigger_metrics_cleanup(
         default=7, ge=1, le=90, description="性能时序数据保留天数"
     ),
 ):
+    """
+    手动或定时滚动清理过期的性能打点时序数据。
 
+    Args:
+        retention_days: 保留天数上限
+
+    Returns:
+        MetricsCleanupResponse: 清理统计与状态
+    """
     deleted = performance_monitor.cleanup_expired_metrics(retention_days=retention_days)
 
     return {
@@ -2132,6 +2299,7 @@ def trigger_metrics_cleanup(
 
 @app.get(
     "/api/tasks/{task_id}/apis",
+    response_model=TaskApisResponse,
     tags=["2. 巡检任务生命周期调度"],
     summary="获取巡检任务捕获解析的业务 API 接口清单",
     description="自动解析底层网络监听池与单次报告中的 `api_registry.json`，将前端交互触发的全部后端接口分类呈现为 OpenAPI / Postman 风格契约清单。",
@@ -2140,7 +2308,16 @@ def get_task_apis(
     task_id: str = FastPath(..., description="巡检任务标识码"),
     db: Session = Depends(get_db),
 ):
+    """
+    解析并返回指定任务捕获到的业务 HTTP/WebSocket 接口契约清单。
 
+    Args:
+        task_id: 任务全局识别码
+        db: 数据库会话
+
+    Returns:
+        TaskApisResponse: 包含汇总统计、页面归属映射与平铺接口列表
+    """
     task = db.query(TaskRun).filter(TaskRun.id == task_id).first()
 
     if not task:
@@ -2150,7 +2327,6 @@ def get_task_apis(
 
     if not run_dir:
         # 尝试查找最新的 run 目录
-
         from utils.paths import get_all_run_folders
 
         runs = get_all_run_folders(app_name=task.app_name)
@@ -2161,6 +2337,7 @@ def get_task_apis(
     if not run_dir:
         return {
             "task_id": task_id,
+            "run_dir": None,
             "summary": {},
             "page_scopes": {},
             "global_flat_apis": [],
@@ -2181,6 +2358,7 @@ def get_task_apis(
     if not api_path.exists():
         return {
             "task_id": task_id,
+            "run_dir": run_dir,
             "summary": {},
             "page_scopes": {},
             "global_flat_apis": [],
@@ -2206,6 +2384,7 @@ def get_task_apis(
 
 @app.get(
     "/api/tasks/{task_id}/env_info",
+    response_model=TaskEnvInfoResponse,
     tags=["2. 巡检任务生命周期调度"],
     summary="获取指定任务的案发/运行时环境基线快照 (env_info.json)",
     description="解析并返回该次巡检启动时的 2D 前端包版本路径、UE5 孪生工程版本路径、N+1 业务接口与推流网关配置。",
@@ -2214,6 +2393,16 @@ def get_task_env_info(
     task_id: str = FastPath(..., description="巡检任务标识码"),
     db: Session = Depends(get_db),
 ):
+    """
+    读取并返回该次巡检启动时的软硬件与网络基线快照 (env_info.json)。
+
+    Args:
+        task_id: 任务全局识别码
+        db: 数据库会话
+
+    Returns:
+        TaskEnvInfoResponse: 包含环境快照对象与美化 JSON 文本
+    """
     task = db.query(TaskRun).filter(TaskRun.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -2225,8 +2414,10 @@ def get_task_env_info(
     if not run_dir:
         return {
             "task_id": task_id,
+            "run_dir": None,
             "exists": False,
             "env_info": None,
+            "raw_json": None,
             "message": "该任务尚未关联运行产物目录",
         }
 
@@ -2240,6 +2431,7 @@ def get_task_env_info(
             "run_dir": run_dir,
             "exists": False,
             "env_info": None,
+            "raw_json": None,
             "message": "未采集到该批次的环境基线快照记录 (env_info.json 不存在)",
         }
 
@@ -2252,6 +2444,7 @@ def get_task_env_info(
             "exists": True,
             "env_info": data,
             "raw_json": json.dumps(data, indent=2, ensure_ascii=False),
+            "message": "环境基线快照加载成功",
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"读取环境基线快照失败: {e}")
@@ -2259,11 +2452,18 @@ def get_task_env_info(
 
 @app.get(
     "/api/cases",
+    response_model=TestCaseListResponse,
     tags=["5. 用例资产管理"],
     summary="获取全量测试用例资产列表 (分手工编写与 AI 自动生成两类)",
     description="扫描并汇总 test_cases/ 下的手工编写自然语言用例，以及 reports/runs/**/generated_cases 下 AI 探索沉淀的回归用例。",
 )
 def get_test_cases():
+    """
+    拉取全量手工维护用例与 AI 逆向探索沉淀的回归用例清单。
+
+    Returns:
+        TestCaseListResponse: 包含 manual_cases、auto_cases 及其总数统计
+    """
     import yaml
     from datetime import datetime
 
@@ -2358,10 +2558,23 @@ def get_test_cases():
 
 @app.get(
     "/api/cases/content",
+    response_model=TestCaseContentResponse,
     tags=["5. 用例资产管理"],
     summary="读取指定用例的 YAML 内容",
+    description="读取并返回指定 YAML 用例文件的纯文本代码内容。",
 )
-def get_case_content(path: str = Query(..., description="用例相对工程根目录的路径")):
+def get_case_content(
+    path: str = Query(..., description="用例相对工程根目录的路径 (如 test_cases/case_zhaiwan_smoke.yaml)")
+):
+    """
+    在线预览指定用例的 YAML 纯文本源码。
+
+    Args:
+        path: 用例相对工程根目录路径
+
+    Returns:
+        TestCaseContentResponse: 包含路径、文件名与内容
+    """
     safe_path = (PROJECT_ROOT / path).resolve()
     if not str(safe_path).startswith(str(PROJECT_ROOT.resolve())):
         raise HTTPException(status_code=403, detail="非法路径访问拒绝")
@@ -2385,12 +2598,23 @@ def get_case_content(path: str = Query(..., description="用例相对工程根�
 
 @app.post(
     "/api/cases/promote",
+    response_model=CasePromoteResponse,
     tags=["5. 用例资产管理"],
     summary="将 AI 自动生成的用例固化转存为手工常态化回归用例",
+    description="将探索过程中大模型自主生成的 YAML 回归链路，一键拷贝固化转存至 test_cases/ 正式用例目录中。",
 )
-def promote_auto_case(data: Dict[str, Any] = Body(...)):
-    path = data.get("path")
-    target_name = data.get("target_name")
+def promote_auto_case(payload: CasePromoteRequest):
+    """
+    将 AI 自动生成的临时用例固化升级为正式常态化回归用例。
+
+    Args:
+        payload: 包含源路径与目标文件名的请求体
+
+    Returns:
+        CasePromoteResponse: 包含状态码与固化后的新文件相对路径
+    """
+    path = payload.path
+    target_name = payload.target_name
     if not path:
         raise HTTPException(status_code=400, detail="缺少源路径 path")
 

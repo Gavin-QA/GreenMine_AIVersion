@@ -1,3 +1,13 @@
+"""
+=============================================================================
+Electron Vision AI - 后端中枢与 Web 控制台一键启动入口 (RunServer)
+=============================================================================
+以 ASGI 规范拉起 Uvicorn 服务并挂载 FastAPI 应用实例：
+1. 默认监听 `127.0.0.1:8000`；
+2. 开启 `reload=True`，自动监听 `server/` 与 `utils/` 目录源码热变更；
+3. 配置优雅退出超时 `timeout_graceful_shutdown=2` 秒。
+"""
+
 import os
 import sys
 from pathlib import Path

@@ -1,3 +1,20 @@
+"""
+=============================================================================
+Electron Vision AI - 多核全栈性能监控、实时探针与时序采样中枢 (PerformanceMonitor)
+=============================================================================
+本模块实现针对复杂 3D 矿山数字孪生 Electron 应用的全方位硬件与软件性能打点监控：
+1. UE5 伴生渲染引擎：物理内存 (Working Set)、专用虚拟提交量 (Private Commit Bytes)、归一化单进程 CPU 负载；
+2. Chromium / Electron 进程树：主渲染进程及 GPU 子进程常驻内存与算力开销；
+3. Chromium CDP 零侵入原生调试探针：
+   - DOM 树物理节点总量 (Nodes) 实时探测防膨胀泄漏；
+   - V8 JS 堆内存当前已用 (js_heap_mb) 与总空间 (js_heap_total_mb)；
+   - JS 活跃事件监听器总量 (JSEventListeners)；
+   - 活跃 ECharts 实例数、Canvas 标签数、Video 像素流标签数；
+   - WebRTC 实时解码渲染帧率 (FPS) 探测卡顿与掉帧；
+4. 独立显卡 GPU：专有显存已用 (VRAM) 与 3D 渲染核心负载率；
+5. 整机系统水位：宿主机物理内存使用率与虚拟内存提交率极限熔断保护。
+"""
+
 import asyncio
 import datetime
 import json

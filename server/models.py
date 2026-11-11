@@ -1,3 +1,17 @@
+"""
+=============================================================================
+Electron Vision AI - 数据库持久化 ORM 实体数据模型定义 (Models)
+=============================================================================
+本模块基于 SQLAlchemy 声明式映射，定义了中枢平台核心物理数据表：
+1. `TaskRun`: 巡检任务生命周期元数据、运行参数、KPI 汇总及终态产物表；
+2. `StepRecord`: 任务动作步骤时序流水表 (Worker 动作与 Planner 宏观决策)；
+3. `BugRecord`: 全局与单任务缺陷资产表 (对接 AI 初诊分流与禅道双向绑定)；
+4. `PerformanceMetric`: 任务运行时多核全栈高频性能采样时序表；
+5. `AmbientMetric`: 宿主机常驻环境无任务状态下的轻量巡航心电图表；
+6. `PresetTaskRecord`: 用户个性化预设巡检任务模板表；
+7. `TaskQueueItem`: RPA 串行执行任务与定时预约调度队列管理表。
+"""
+
 import datetime
 from sqlalchemy import (
     Column,
