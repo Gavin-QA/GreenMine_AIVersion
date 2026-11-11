@@ -431,7 +431,7 @@ class ExplorerAgent:
     def smoke_tour(self, total_menus_limit: Optional[int] = None, context: str = "", prompt: str = ""):
         """二级业务菜单全量冒烟巡检模式：兼具确定性两级跳转与全自动健康度体检（无声崩溃、接口异常、多模态视觉审图）"""
         from core.explorer_agent.page_map_builder import PageMapBuilder
-        from config.config import settings
+        from config.settings import settings
 
         active_app = getattr(settings, "active_app", "")
         logger.info(f"🚀 启动【{active_app or '当前软件'}全量冒烟巡检模式】")
