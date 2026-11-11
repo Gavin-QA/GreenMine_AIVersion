@@ -277,11 +277,6 @@
                     🚀 一键拉起
                   </button>
                   <button class="btn btn-secondary"
-                    style="flex: 1.2; padding: 7px 6px; font-size: 12px; justify-content: center; border-color: #00e676; color: #00e676; background: rgba(0, 230, 118, 0.08); white-space: nowrap;"
-                    @click="enqueuePreset(p)" title="将此预设载入并加入调度执行队列，支持优先级排队与定时预约">
-                    ⏱️ 加入排队
-                  </button>
-                  <button class="btn btn-secondary"
                     style="flex: 1; padding: 7px 6px; font-size: 12px; justify-content: center; white-space: nowrap;"
                     @click="loadPresetToForm(p)" title="载入到下方表单修改并可直接覆盖或另存">
                     ✏️ 载入微调
@@ -525,11 +520,6 @@
                     style="border-color: #ffb300; color: #ffb300; background: rgba(255, 179, 0, 0.1);"
                     @click="saveCurrentFormAsPreset(true)" title="直接回写覆盖当前载入的原预设（保持预设 ID 与卡片排序不变）">
                     🔄 覆盖当前预设
-                  </button>
-
-                  <button class="btn btn-secondary" style="border-color: #00e676; color: #00e676;"
-                    @click="openEnqueueModal" title="将当前任务加入串行调度执行队列，支持定时预约">
-                    ⏱️ 加入排队调度
                   </button>
 
                   <button class="btn btn-primary" style="padding: 10px 24px; font-size: 14px;"
@@ -1021,7 +1011,12 @@
               <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
                 <div class="card-title">⏱️ 调度执行队列与定时任务</div>
                 <div style="display: flex; gap: 10px; align-items: center;">
-                  <button class="btn btn-secondary" style="font-size: 12px; padding: 5px 12px;" @click="fetchTaskQueue">
+                  <button class="btn btn-primary"
+                    style="font-size: 12px; padding: 6px 14px; background: linear-gradient(135deg, #00d2ff, #0072ff); border: none; font-weight: 600; display: inline-flex; align-items: center; gap: 6px;"
+                    @click="openCreateScheduleModal">
+                    <span>➕ 新建调度计划</span>
+                  </button>
+                  <button class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px;" @click="fetchTaskQueue">
                     🔄 刷新队列
                   </button>
                 </div>
@@ -2184,46 +2179,79 @@
           </div>
         </div>
 
-        <!-- 调度入队预约弹窗 -->
+        <!-- 调度入队预约弹窗 (新建调度执行计划) -->
         <div class="modal-overlay" v-if="showEnqueueModal" @click.self="showEnqueueModal = false">
-          <div class="modal-content" style="max-width: 520px;">
+          <div class="modal-content" style="max-width: 540px;">
             <div class="modal-header">
               <h3 style="display: flex; align-items: center; gap: 8px;">
-                <span>⏱️ 加入调度执行队列 (RPA 调度器)</span>
+                <span>⏱️ 新建调度执行计划 (Schedule Plan)</span>
               </h3>
               <button class="modal-close" @click="showEnqueueModal = false">&times;</button>
             </div>
 
             <div style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px; line-height: 1.6;">
-              系统将根据当前表单创建巡检任务并加入排队。当前机器空闲或前序任务结束时，执行器将自动启动该任务。
+              配置目标应用与关联的巡检任务模板。调度器将按照优先级与预约时间，以单机独占模式自动串行拉起执行。
             </div>
 
+            <!-- 1. 计划名称 -->
             <div class="form-group">
-              <label class="form-label">优先级 (Priority)</label>
-              <select class="form-control" v-model.number="enqueueForm.priority"
-                style="background: #05070d; border-color: #1a253c; color: #fff;">
-                <option :value="1">🔥 P1 (最高紧急插队)</option>
-                <option :value="2">⚡ P2 (高优先级执行)</option>
-                <option :value="3">📋 P3 (普通标准排队 - 默认)</option>
-                <option :value="4">⏳ P4 (闲时低优执行)</option>
-              </select>
+              <label class="form-label">调度计划名称</label>
+              <input type="text" class="form-control" v-model="scheduleForm.name" placeholder="为该调度计划命名...">
             </div>
 
+            <div class="grid-2">
+              <!-- 2. 目标矿山应用 -->
+              <div class="form-group">
+                <label class="form-label">目标矿山应用</label>
+                <select class="form-control" v-model="scheduleForm.app_name" @change="onScheduleAppChange">
+                  <option v-for="a in options.apps" :key="a.key" :value="a.key">
+                    {{ a.name }}
+                  </option>
+                </select>
+              </div>
+
+              <!-- 3. 调度优先级 -->
+              <div class="form-group">
+                <label class="form-label">调度优先级 (Priority)</label>
+                <select class="form-control" v-model.number="scheduleForm.priority">
+                  <option :value="1">🔥 P1 (最高紧急插队)</option>
+                  <option :value="2">⚡ P2 (高优先级执行)</option>
+                  <option :value="3">📋 P3 (普通标准排队 - 默认)</option>
+                  <option :value="4">⏳ P4 (闲时低优执行)</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- 4. 关联巡检任务模板 -->
+            <div class="form-group">
+              <label class="form-label">关联巡检任务 (一次关联一个任务)</label>
+              <select class="form-control" v-model="scheduleForm.preset_id" @change="onSchedulePresetChange">
+                <option value="" disabled>-- 请选择属于该应用的巡检任务模板 --</option>
+                <option v-for="p in filteredSchedulePresets" :key="p.id" :value="p.id">
+                  [{{ getPresetModeLabel(p) }}] {{ p.title }}
+                </option>
+              </select>
+              <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
+                💡 执行器拉起时将严格按所选预设的模式（极速冒烟 / 自主探索 / YAML回归）与参数自动执行。
+              </div>
+            </div>
+
+            <!-- 5. 预约执行时间 -->
             <div class="form-group">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                <label class="form-label" style="margin-bottom: 0;">预约定时执行时间 (可选)</label>
-                <button type="button" v-if="enqueueForm.scheduledTime"
+                <label class="form-label" style="margin-bottom: 0;">计划执行时间 (可选)</label>
+                <button type="button" v-if="scheduleForm.scheduledTime"
                   style="background: none; border: none; font-size: 11px; color: #ff5252; cursor: pointer; padding: 0;"
                   @click="setQuickSchedule('immediate')">
                   ✕ 清空时间 (立即排队)
                 </button>
               </div>
 
-              <!-- 快捷时间胶囊预设 (4个刚好单行排满不折行) -->
+              <!-- 快捷时间胶囊预设 -->
               <div style="display: flex; gap: 8px; margin-bottom: 12px; align-items: center;">
                 <button type="button" class="btn btn-secondary"
                   style="flex: 1; padding: 6px 10px; font-size: 12px; border-radius: 16px; transition: all 0.2s; white-space: nowrap; justify-content: center;"
-                  :style="!enqueueForm.scheduledTime ? 'border-color: #00d2ff; color: #00d2ff; background: rgba(0,210,255,0.15); font-weight: 700;' : 'opacity: 0.75;'"
+                  :style="!scheduleForm.scheduledTime ? 'border-color: #00d2ff; color: #00d2ff; background: rgba(0,210,255,0.15); font-weight: 700;' : 'opacity: 0.75;'"
                   @click="setQuickSchedule('immediate')">
                   ⚡ 立即排队
                 </button>
@@ -2251,7 +2279,7 @@
               <div style="position: relative; cursor: pointer;"
                 onclick="var inp=this.querySelector('input'); inp && (inp.showPicker ? inp.showPicker() : inp.focus());"
                 title="点击整行输入框任意位置均可唤起日期时间选择器">
-                <input type="datetime-local" class="form-control" v-model="enqueueForm.scheduledTime"
+                <input type="datetime-local" class="form-control" v-model="scheduleForm.scheduledTime"
                   style="cursor: pointer; color-scheme: dark; font-family: monospace; font-size: 13px; padding-left: 38px; background: #05070d; border-color: #1a253c; width: 100%; box-sizing: border-box;"
                   onclick="this.showPicker && this.showPicker()">
                 <span
@@ -2263,8 +2291,8 @@
               <div
                 style="font-size: 11px; color: var(--text-muted); margin-top: 6px; display: flex; justify-content: space-between; align-items: center;">
                 <span>💡 提示：点击整行输入框任意位置均可呼出日历时钟面板</span>
-                <span v-if="enqueueForm.scheduledTime" style="color: #00e676; font-weight: 600;">
-                  ✓ 已预约：{{ formatDateTime(enqueueForm.scheduledTime) }} 唤醒
+                <span v-if="scheduleForm.scheduledTime" style="color: #00e676; font-weight: 600;">
+                  ✓ 已预约：{{ formatDateTime(scheduleForm.scheduledTime) }} 唤醒
                 </span>
                 <span v-else style="color: #00d2ff; font-weight: 600;">
                   ⚡ 立即排队模式 (当前机器空闲即跑)
@@ -2274,8 +2302,8 @@
 
             <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
               <button class="btn btn-secondary" @click="showEnqueueModal = false">取消</button>
-              <button class="btn btn-primary" :disabled="isSubmittingEnqueue" @click="confirmEnqueueTask">
-                {{ isSubmittingEnqueue ? '正在加入队列...' : '确认加入排队' }}
+              <button class="btn btn-primary" :disabled="isSubmittingEnqueue" @click="confirmCreateSchedulePlan">
+                {{ isSubmittingEnqueue ? '正在提交计划...' : '🚀 确认创建并加入调度' }}
               </button>
             </div>
           </div>

@@ -332,6 +332,15 @@ class AppControlResponse(BaseModel):
     pid: Optional[int] = Field(default=None, description="拉起的主进程 PID")
 
 
+class SchedulePlanCreate(BaseModel):
+    """新建调度执行计划请求模型 (按应用与关联任务模板)"""
+    name: Optional[str] = Field(default=None, description="调度计划自定义名称 (如留空则自动根据预设填充)")
+    app_name: str = Field(description="目标矿山应用代号 (如 zhaiwan / tianrui / liwutong)")
+    preset_id: str = Field(description="关联的预设巡检任务模板 ID (如 preset_user_xxx)")
+    priority: int = Field(default=3, description="队列排序优先级 (1-5，数值越小越优先执行)")
+    scheduled_at: Optional[datetime.datetime] = Field(default=None, description="预约定时触发时间 (留空则立即排队)")
+
+
 class QueueItemCreate(BaseModel):
     """加入调度队列请求模型"""
     task_id: str = Field(description="目标关联的巡检任务 ID")

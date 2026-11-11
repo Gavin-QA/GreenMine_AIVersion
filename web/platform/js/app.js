@@ -102,9 +102,16 @@ const app = createApp({
     const pendingQueueCount = ref(0);
     const showEnqueueModal = ref(false);
     const isSubmittingEnqueue = ref(false);
-    const enqueueForm = reactive({
-      priority: 100,
+    const scheduleForm = reactive({
+      name: '',
+      app_name: 'zhaiwan',
+      preset_id: '',
+      priority: 3,
       scheduledTime: ''
+    });
+
+    const filteredSchedulePresets = computed(() => {
+      return (presetTasks.value || []).filter(p => p.app_name === scheduleForm.app_name);
     });
 
     // 任务列表分页
@@ -767,8 +774,7 @@ const app = createApp({
     }
 
     function enqueuePreset(preset) {
-      loadPresetToForm(preset);
-      openEnqueueModal();
+      openCreateScheduleModal(preset);
     }
 
 
@@ -1095,7 +1101,7 @@ const app = createApp({
 
     function setQuickSchedule(type) {
       if (type === 'immediate') {
-        enqueueForm.scheduledTime = '';
+        scheduleForm.scheduledTime = '';
         return;
       }
       const now = new Date();
@@ -1115,12 +1121,12 @@ const app = createApp({
       const D = String(target.getDate()).padStart(2, '0');
       const h = String(target.getHours()).padStart(2, '0');
       const m = String(target.getMinutes()).padStart(2, '0');
-      enqueueForm.scheduledTime = `${Y}-${M}-${D}T${h}:${m}`;
+      scheduleForm.scheduledTime = `${Y}-${M}-${D}T${h}:${m}`;
     }
 
     function isQuickSelected(type) {
-      if (!enqueueForm.scheduledTime) return type === 'immediate';
-      const parts = enqueueForm.scheduledTime.split('T');
+      if (!scheduleForm.scheduledTime) return type === 'immediate';
+      const parts = scheduleForm.scheduledTime.split('T');
       if (parts.length < 2) return false;
       const timePart = parts[1].slice(0, 5);
       if (type === 'tonight_20' && timePart === '18:25') return true;
@@ -1129,88 +1135,91 @@ const app = createApp({
       return false;
     }
 
-    function openEnqueueModal() {
-      enqueueForm.priority = 3;
-      enqueueForm.scheduledTime = '';
+    function openCreateScheduleModal(preset = null) {
+      if (preset && preset.app_name) {
+        scheduleForm.app_name = preset.app_name;
+        scheduleForm.preset_id = preset.id;
+        scheduleForm.name = `【${getAppName(preset.app_name)}】${preset.title}`;
+      } else {
+        scheduleForm.app_name = taskForm.app_name || (options.apps && options.apps[0]?.key) || storedApp;
+        const appPresets = (presetTasks.value || []).filter(p => p.app_name === scheduleForm.app_name);
+        if (appPresets.length > 0) {
+          scheduleForm.preset_id = appPresets[0].id;
+          scheduleForm.name = `【${getAppName(scheduleForm.app_name)}】${appPresets[0].title}`;
+        } else {
+          scheduleForm.preset_id = '';
+          scheduleForm.name = `【${getAppName(scheduleForm.app_name)}】定时巡检计划`;
+        }
+      }
+      scheduleForm.priority = 3;
+      scheduleForm.scheduledTime = '';
       showEnqueueModal.value = true;
     }
 
-    async function confirmEnqueueTask() {
+    function onScheduleAppChange() {
+      const appPresets = (presetTasks.value || []).filter(p => p.app_name === scheduleForm.app_name);
+      if (appPresets.length > 0) {
+        scheduleForm.preset_id = appPresets[0].id;
+        scheduleForm.name = `【${getAppName(scheduleForm.app_name)}】${appPresets[0].title}`;
+      } else {
+        scheduleForm.preset_id = '';
+        scheduleForm.name = `【${getAppName(scheduleForm.app_name)}】定时巡检计划`;
+      }
+    }
+
+    function onSchedulePresetChange() {
+      const found = (presetTasks.value || []).find(p => p.id === scheduleForm.preset_id);
+      if (found) {
+        scheduleForm.name = `【${getAppName(scheduleForm.app_name)}】${found.title}`;
+      }
+    }
+
+    async function confirmCreateSchedulePlan() {
+      if (!scheduleForm.preset_id) {
+        showToast('请选择关联任务', '必须选择一个预设巡检任务模板作为执行规则', 'warning', 4000);
+        return;
+      }
       isSubmittingEnqueue.value = true;
       try {
-        // 1. 率先生成并创建 TaskRun
-        const isSmoke = taskForm.mode === 'smoke';
-        const payload = {
-          name: taskForm.name,
-          app_name: taskForm.app_name,
-          mode: isSmoke ? 'smoke' : taskForm.mode,
-          macro_objective: isSmoke ? '' : taskForm.macro_objective,
-          max_steps: isSmoke ? null : taskForm.max_steps,
-          max_times: taskForm.max_times,
-          reset_memory: taskForm.reset_memory,
-          ignore_errors: taskForm.ignore_errors,
-          explore_context: taskForm.explore_context,
-          case_path: taskForm.mode === 'case' ? (taskForm.case_path || null) : null,
-          tour: isSmoke || (taskForm.mode === 'explore' && !!taskForm.tour),
-          resume_from: taskForm.resume_from || null,
-          reexplore: taskForm.reexplore || null,
-          start_delay: taskForm.start_delay,
-          wait_ready: taskForm.wait_ready || null,
-          wait_timeout: taskForm.wait_timeout,
-          ignore_env_check: taskForm.ignore_env_check,
-        };
-
-        const taskRes = await fetch(`${apiBase}/api/tasks`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-
-        if (!taskRes.ok) {
-          alert('创建任务失败: ' + (await taskRes.text()));
-          isSubmittingEnqueue.value = false;
-          return;
-        }
-
-        const createdTask = await taskRes.json();
-
-        // 2. 将创建好的任务推入执行队列 (使用本地真实时间，杜绝时区减8小时)
         let scheduledTimeStr = null;
-        if (enqueueForm.scheduledTime) {
-          scheduledTimeStr = enqueueForm.scheduledTime.replace('T', ' ');
+        if (scheduleForm.scheduledTime) {
+          scheduledTimeStr = scheduleForm.scheduledTime.replace('T', ' ');
           if (scheduledTimeStr.length === 16) {
             scheduledTimeStr += ':00';
           }
         }
 
-        const queueRes = await fetch(`${apiBase}/api/tasks/queue`, {
+        const payload = {
+          name: scheduleForm.name,
+          app_name: scheduleForm.app_name,
+          preset_id: scheduleForm.preset_id,
+          priority: scheduleForm.priority,
+          scheduled_at: scheduledTimeStr
+        };
+
+        const res = await fetch(`${apiBase}/api/tasks/queue/schedule`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            task_id: createdTask.id,
-            priority: enqueueForm.priority,
-            scheduled_at: scheduledTimeStr
-          })
+          body: JSON.stringify(payload)
         });
 
-        if (queueRes.ok) {
+        if (res.ok) {
           showEnqueueModal.value = false;
           showToast(
-            '已加入调度队列',
-            `任务【<strong>${createdTask.name}</strong>】已成功加入执行队列！调度器将自动按序拉起。`,
+            '调度计划已创建',
+            `计划【<strong>${scheduleForm.name}</strong>】已成功加入执行队列！调度器将自动按序单机独占拉起。`,
             'success',
             5000
           );
           await fetchTasks();
           await fetchTaskQueue();
-          // 自动平滑切至调度队列看板
           currentTab.value = 'tasks';
           assetsSubTab.value = 'queue';
         } else {
-          showToast('加入队列失败', await queueRes.text(), 'error', 6000);
+          showToast('创建调度计划失败', await res.text(), 'error', 6000);
         }
       } catch (e) {
-        alert('加入队列网络异常: ' + e);
+        showToast('创建调度计划异常', String(e), 'error', 6000);
       } finally {
         isSubmittingEnqueue.value = false;
       }
@@ -2628,10 +2637,16 @@ const app = createApp({
       pendingQueueCount,
       showEnqueueModal,
       isSubmittingEnqueue,
-      enqueueForm,
+      enqueueForm: scheduleForm,
+      scheduleForm,
+      filteredSchedulePresets,
       fetchTaskQueue,
-      openEnqueueModal,
-      confirmEnqueueTask,
+      openEnqueueModal: openCreateScheduleModal,
+      openCreateScheduleModal,
+      onScheduleAppChange,
+      onSchedulePresetChange,
+      confirmEnqueueTask: confirmCreateSchedulePlan,
+      confirmCreateSchedulePlan,
       removeFromQueue,
       formatPriorityLabel,
       setQuickSchedule,
