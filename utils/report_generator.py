@@ -581,23 +581,25 @@ class ReportGenerator:
                 })
 
         if len(data["steps"]) == 0:
-            # 尝试提取 Smoke 单步
+            # 尝试提取 Smoke 单步 (兼容新版 🎯 [Smoke Tour (x/total)] 与旧版 --- [Smoke Menu x/total] 格式)
             smoke_pattern = re.compile(
-                r"🎯 \[Smoke Tour \((\d+)/\d+\)\] 正在巡检模块: 【(.*?)】\n"
-                r"(.*?)(?=(?:🎯 \[Smoke Tour |\Z))",
+                r"(?:🎯 \[Smoke Tour \((\d+)/\d+\)\] 正在巡检模块: 【(.*?)】|---\s*\[Smoke Menu (\d+)/\d+\]\s*正在巡检:\s*【(.*?)】\s*---)\n"
+                r"(.*?)(?=(?:🎯 \[Smoke Tour |--- \[Smoke Menu |\Z))",
                 re.DOTALL
             )
             for m in smoke_pattern.finditer(text):
-                step_num = int(m.group(1))
-                module_name = m.group(2)
-                block = m.group(3)
+                step_num = int(m.group(1) or m.group(3))
+                module_name = m.group(2) or m.group(4)
+                block = m.group(5)
 
-                has_bug = "❌ [Smoke Jump]" in block or "🐞 捕获到缺陷异常" in block or "⚠️ [Smoke Planner]" in block or "🐞 [Smoke Bug]" in block or "⚠️ [Smoke Visual Fail]" in block
+                has_bug = "❌ [Smoke Jump]" in block or "🐞 捕获到缺陷异常" in block or "⚠️ [Smoke Planner]" in block or "🐞 [Smoke Bug]" in block or "⚠️ [Smoke Visual Fail]" in block or "[Electron PageError]" in block
 
                 sub = f"冒烟巡检: {module_name}"
 
                 th_m = re.search(r"💡 \[Smoke Planner\] 页面诊断与思考: (.*?)(?=\n)", block)
-                thought = th_m.group(1).strip() if th_m else "尚未完成规划或遭遇跳转失败"
+                if not th_m:
+                    th_m = re.search(r"🕵️‍♂️ \[Planner\] 思考宏观目标: '(.*?)'", block)
+                thought = th_m.group(1).strip() if th_m else "页面巡检完成"
 
                 shot_path = None
                 hover_path = None
