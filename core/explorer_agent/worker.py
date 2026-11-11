@@ -60,6 +60,136 @@ class ExplorerWorker:
         # 已巡检上报过的物理常识异常指纹缓存 (防止同一页面重复刷屏提单)
         self.reported_physics_anomalies: set = set()
 
+    def inspect_page_health(
+        self,
+        ui_path: str,
+        step_num: int = 1,
+        prompt: str = "",
+        screenshot_path: Optional[Path] = None,
+        b64_image: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        统一页面综合三阶健康度体检 (Health Gate) —— 供自主探索收尾与冒烟巡检统一调用
+        1. 嗅探未捕获的前端致命崩溃 (Uncaught TypeError / Vue 渲染崩溃 / WebGL Context Lost)
+        2. 静默校验底层业务网络通信 (HTTP 4xx/5xx 或业务 code != 0)
+        3. 结合用户提示词进行多模态 AI 视觉质检审图与缺陷自动归档
+        """
+        console_ok = True
+        api_ok = True
+        visual_ok = True
+        thought = ""
+        issues = []
+
+        if not b64_image:
+            if not screenshot_path:
+                screenshot_path = self.explore_dir / f"health_inspect_{step_num}.png"
+            b64_image = self.driver.capture_screenshot_base64(str(screenshot_path))
+
+        # ----------------------------------------------------
+        # 防线 1: 前端控制台无声致命崩溃嗅探 (TypeError / WebGL Context Lost)
+        # ----------------------------------------------------
+        fatal_crashes = self.driver.get_fatal_console_errors(clear=True, strict=False) if hasattr(self.driver, "get_fatal_console_errors") else []
+        if fatal_crashes:
+            console_ok = False
+            err_lines = [f"[{c.get('type', 'js_crash')}{(' @ ' + c['location']) if c.get('location') else ''}] {c.get('msg', '')}" for c in fatal_crashes[:5]]
+            issues.append(f"前端致命崩溃: {'; '.join(err_lines)}")
+            logger.error(f"🐞 [Worker Health] 模块【{ui_path}】捕获到前端致命崩溃:\n" + "\n".join(err_lines))
+            self.bug_reporter.report_bug(
+                run_id=self.run_id,
+                title=f"[{self.run_id}] 页面初载发现前端致命崩溃: 【{ui_path}】",
+                step_prompt=f"[CONSOLE-HEALTH] 模块【{ui_path}】初载控制台嗅探",
+                actual_result="【前端致命崩溃】\n" + "\n".join(err_lines),
+                crash_image_path=str(screenshot_path) if screenshot_path else None,
+                action_type="ASSERT_NO_CONSOLE_ERRORS",
+                target_element=ui_path,
+                global_step=step_num,
+                severity="High",
+                ui_path=ui_path
+            )
+
+        # ----------------------------------------------------
+        # 防线 2: 底层业务网络通信异常 (HTTP 4xx/5xx 或业务 code != 0)
+        # ----------------------------------------------------
+        caught_bugs = self.driver.get_and_clear_bugs()
+        if caught_bugs:
+            api_err_items = [b for b in caught_bugs if b.get("type") in ("api_biz_error", "network_error") or ("50" in str(b.get("text", "")) or "40" in str(b.get("text", "")) or b.get("status", 200) >= 400)]
+            if api_err_items:
+                api_ok = False
+                api_lines = []
+                for b in api_err_items:
+                    t = b.get("type", "error")
+                    if t == "api_biz_error":
+                        ep = b.get("endpoint") or ""
+                        biz_code = b.get("biz_code")
+                        raw_msg = b.get("msg") or b.get("text") or ""
+                        code_str = f", 业务码: {biz_code}" if biz_code is not None else ""
+                        api_lines.append(f"接口业务报错: {raw_msg} (方法: {ep or '未知'}{code_str})")
+                    elif t == "network_error":
+                        status = b.get("status", "Fail")
+                        url = b.get("url", "")
+                        api_lines.append(f"网络请求失败 HTTP {status}: {url}")
+                    else:
+                        api_lines.append(f"[{t}] {b.get('text') or b.get('msg')}")
+                issues.append(f"底层接口异常: {'; '.join(api_lines)}")
+                logger.error(f"🐞 [Worker Health] 模块【{ui_path}】捕获到底层接口异常:\n" + "\n".join(api_lines))
+                self.bug_reporter.report_bug(
+                    run_id=self.run_id,
+                    title=f"[{self.run_id}] 页面初载发现底层接口异常: 【{ui_path}】",
+                    step_prompt=f"[API-HEALTH] 模块【{ui_path}】初载接口通信校验",
+                    actual_result="【底层接口异常】\n" + "\n".join(api_lines),
+                    crash_image_path=str(screenshot_path) if screenshot_path else None,
+                    action_type="API_ASSERT",
+                    target_element=ui_path,
+                    global_step=step_num,
+                    severity="Medium",
+                    ui_path=ui_path
+                )
+
+        # ----------------------------------------------------
+        # 防线 3: 多模态 AI 视觉质检审图 (吸收集成用户提示词)
+        # ----------------------------------------------------
+        inspect_instruction = (
+            f"作为矿山工业大屏质检员，请仔细核验当前【{ui_path}】页面的截屏画面：\n"
+            f"1. 核心大屏面板、数据卡片、图表或三维视界是否已正常渲染，是否存在大面积纯白白屏、纯黑黑屏、未加载骨架或布局崩塌？\n"
+            f"2. 界面上是否有明显的系统崩溃弹窗、未捕获红框报错或 NaN / undefined 破损文字？\n"
+        )
+        if prompt:
+            inspect_instruction += f"3. 【特定健康巡检准则（用户要求）】: {prompt}\n"
+        inspect_instruction += "若页面渲染健康且无致命破损请判定 passed=true，若存在白屏/黑屏/崩溃弹窗/破损请判定 passed=false 并详细说明。"
+
+        try:
+            passed, assert_reason = self.vision.check_assertion(instruction=inspect_instruction, base64_image=b64_image)
+            thought = assert_reason
+            if not passed:
+                visual_ok = False
+                issues.append(f"视觉质检未通过: {assert_reason}")
+                logger.warning(f"⚠️ [Worker Health] 模块【{ui_path}】视觉质检未通过: {assert_reason}")
+                self.bug_reporter.report_bug(
+                    run_id=self.run_id,
+                    title=f"[{self.run_id}] 页面视觉质检未通过: 【{ui_path}】",
+                    step_prompt=f"[VISUAL-HEALTH] 模块【{ui_path}】视觉健康度体检",
+                    actual_result=assert_reason,
+                    crash_image_path=str(screenshot_path) if screenshot_path else None,
+                    action_type="ASSERT",
+                    target_element=ui_path,
+                    global_step=step_num,
+                    severity="High" if any(k in assert_reason for k in ("白屏", "黑屏", "崩溃", "缺失")) else "Medium",
+                    ui_path=ui_path
+                )
+        except Exception as v_err:
+            thought = f"视觉断言调用异常: {v_err}"
+            logger.warning(f"⚠️ [Worker Health] 视觉质检过程调用异常: {v_err}")
+
+        healthy = console_ok and api_ok and visual_ok
+        return {
+            "healthy": healthy,
+            "console_ok": console_ok,
+            "api_ok": api_ok,
+            "visual_ok": visual_ok,
+            "thought": thought,
+            "issues": issues
+        }
+
     def _auto_scan_page_skeleton(
         self,
         l1: str,

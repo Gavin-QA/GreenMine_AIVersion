@@ -522,102 +522,29 @@ class ExplorerAgent:
                     )
 
             # ----------------------------------------------------
-            # 阶段二：当前页面三阶健康度体检 (Health Gate)
+            # 阶段二：当前页面三阶健康度体检 (直接委托给 Worker 统一质检单兵)
             # ----------------------------------------------------
             if jump_ok:
                 time.sleep(1.5)
                 plan_img_path = self.explore_dir / f"smoke_page_{idx}_plan.png"
                 b64_plan = self.driver.capture_screenshot_base64(str(plan_img_path), dim_background=False)
 
-                # 检查项 1：嗅探未捕获的前端致命崩溃 (TypeError / Vue崩溃 / WebGL Context Lost)
-                fatal_crashes = self.driver.get_fatal_console_errors(clear=True, strict=False) if hasattr(self.driver, "get_fatal_console_errors") else []
-                if fatal_crashes:
-                    console_ok = False
-                    err_lines = [f"[{c.get('type', 'js_crash')}{(' @ ' + c['location']) if c.get('location') else ''}] {c.get('msg', '')}" for c in fatal_crashes[:5]]
-                    logger.error(f"🐞 [Smoke Bug] 模块【{l1} -> {l2}】捕获到前端致命崩溃:\n" + "\n".join(err_lines))
-                    self.bug_reporter.report_bug(
-                        run_id=self.run_id,
-                        title=f"[{self.run_id}] 冒烟巡检发现前端致命崩溃: 【{l1} -> {l2}】",
-                        step_prompt=f"[SMOKE-CONSOLE] 模块【{l1} -> {l2}】初载控制台健康嗅探",
-                        actual_result="【前端致命崩溃】\n" + "\n".join(err_lines),
-                        crash_image_path=str(plan_img_path),
-                        action_type="ASSERT_NO_CONSOLE_ERRORS",
-                        target_element=f"{l1} -> {l2}",
-                        global_step=idx,
-                        severity="High",
-                        ui_path=f"{l1} -> {l2}"
-                    )
-
-                # 检查项 2：底层业务接口与网络通信异常 (code != 0 或 HTTP 4xx/5xx)
-                caught_bugs = self.driver.get_and_clear_bugs()
-                if caught_bugs:
-                    api_err_items = [b for b in caught_bugs if b.get("type") in ("api_biz_error", "network_error") or ("50" in str(b.get("text", "")) or "40" in str(b.get("text", "")) or b.get("status", 200) >= 400)]
-                    if api_err_items:
-                        api_ok = False
-                        api_lines = []
-                        for b in api_err_items:
-                            t = b.get("type", "error")
-                            if t == "api_biz_error":
-                                ep = b.get("endpoint") or ""
-                                biz_code = b.get("biz_code")
-                                raw_msg = b.get("msg") or b.get("text") or ""
-                                code_str = f", 业务码: {biz_code}" if biz_code is not None else ""
-                                api_lines.append(f"接口业务报错: {raw_msg} (接口方法: {ep or '未知'}{code_str})")
-                            elif t == "network_error":
-                                status = b.get("status", "Fail")
-                                url = b.get("url", "")
-                                api_lines.append(f"网络请求失败 HTTP {status}: {url}")
-                            else:
-                                api_lines.append(f"[{t}] {b.get('text') or b.get('msg')}")
-                        logger.error(f"🐞 [Smoke Bug] 模块【{l1} -> {l2}】捕获到底层接口异常:\n" + "\n".join(api_lines))
-                        self.bug_reporter.report_bug(
-                            run_id=self.run_id,
-                            title=f"[{self.run_id}] 冒烟巡检发现底层接口异常: 【{l1} -> {l2}】",
-                            step_prompt=f"[SMOKE-API] 模块【{l1} -> {l2}】初载接口通信校验",
-                            actual_result="【底层接口异常】\n" + "\n".join(api_lines),
-                            crash_image_path=str(plan_img_path),
-                            action_type="API_ASSERT",
-                            target_element=f"{l1} -> {l2}",
-                            global_step=idx,
-                            severity="Medium",
-                            ui_path=f"{l1} -> {l2}"
-                        )
-
-                # 检查项 3：多模态 AI 视觉质检审图 (吸收集成用户提示词)
-                inspect_instruction = (
-                    f"作为矿山工业大屏质检员，请仔细核验当前【{l1} -> {l2}】页面的截屏画面：\n"
-                    f"1. 核心大屏面板、数据卡片、图表或三维视界是否已正常渲染，是否存在大面积纯白白屏、纯黑黑屏、未加载骨架或布局崩塌？\n"
-                    f"2. 界面上是否有明显的系统崩溃弹窗、未捕获红框报错或 NaN / undefined 破损文字？\n"
+                health_res = self.worker.inspect_page_health(
+                    ui_path=f"{l1} -> {l2}",
+                    step_num=idx,
+                    prompt=prompt,
+                    screenshot_path=plan_img_path,
+                    b64_image=b64_plan
                 )
-                if prompt:
-                    inspect_instruction += f"3. 【特定冒烟巡检准则（用户要求）】: {prompt}\n"
-                inspect_instruction += "若页面渲染健康且无致命破损请判定 passed=true，若存在白屏/黑屏/崩溃弹窗/破损请判定 passed=false 并详细说明。"
 
-                try:
-                    passed, assert_reason = self.vision.check_assertion(instruction=inspect_instruction, base64_image=b64_plan)
-                    thought = assert_reason
-                    logger.info(f"💡 [Smoke Planner] 页面诊断与思考: {thought}")
-                    if not passed:
-                        visual_ok = False
-                        logger.warning(f"⚠️ [Smoke Visual Fail] 模块【{l1} -> {l2}】视觉质检未通过: {assert_reason}")
-                        self.bug_reporter.report_bug(
-                            run_id=self.run_id,
-                            title=f"[{self.run_id}] 冒烟巡检视觉质检未通过: 【{l1} -> {l2}】",
-                            step_prompt=f"[SMOKE-VISUAL] 模块【{l1} -> {l2}】视觉健康度体检",
-                            actual_result=assert_reason,
-                            crash_image_path=str(plan_img_path),
-                            action_type="ASSERT",
-                            target_element=f"{l1} -> {l2}",
-                            global_step=idx,
-                            severity="High" if any(k in assert_reason for k in ("白屏", "黑屏", "崩溃", "缺失")) else "Medium",
-                            ui_path=f"{l1} -> {l2}"
-                        )
-                except Exception as v_err:
-                    thought = f"视觉断言调用异常: {v_err}"
-                    logger.warning(f"⚠️ [Smoke Visual Warning] 视觉质检过程调用异常: {v_err}")
+                console_ok = health_res["console_ok"]
+                api_ok = health_res["api_ok"]
+                visual_ok = health_res["visual_ok"]
+                thought = health_res["thought"]
+                logger.info(f"💡 [Smoke Planner] 页面诊断与思考: {thought}")
 
-            if jump_ok and console_ok and api_ok and visual_ok:
-                clean_health_count += 1
+                if health_res["healthy"]:
+                    clean_health_count += 1
 
             results.append({
                 "index": idx,
