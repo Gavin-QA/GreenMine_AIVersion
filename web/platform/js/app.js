@@ -733,9 +733,17 @@ const app = createApp({
       }
 
       // 3. 模式与目标
-      taskForm.mode = (preset.mode === 'case' ? 'case' : 'explore');
-      taskForm.tour = (preset.mode === 'smoke' || !!preset.tour);
-      taskForm.macro_objective = preset.macro_objective;
+      if (preset.mode === 'smoke' || preset.tour) {
+        taskForm.mode = 'smoke';
+        taskForm.tour = true;
+      } else if (preset.mode === 'case') {
+        taskForm.mode = 'case';
+        taskForm.tour = false;
+      } else {
+        taskForm.mode = 'explore';
+        taskForm.tour = false;
+      }
+      taskForm.macro_objective = (taskForm.mode === 'smoke') ? '' : (preset.macro_objective || '');
       taskForm.max_steps = preset.max_steps;
       taskForm.max_times = preset.max_times;
       taskForm.reset_memory = preset.reset_memory;
@@ -780,26 +788,29 @@ const app = createApp({
         }
       }
 
+      const isSmoke = taskForm.mode === 'smoke';
       const payload = {
         id: (overwriteExisting && taskForm.preset_id) ? taskForm.preset_id : null,
         title: title,
         app_name: taskForm.app_name,
-        mode: taskForm.mode,
-        badge: '自定义',
-        macro_objective: taskForm.macro_objective,
-        max_steps: taskForm.max_steps,
+        mode: isSmoke ? 'smoke' : taskForm.mode,
+        badge: isSmoke ? '冒烟' : '自定义',
+        macro_objective: isSmoke ? '' : taskForm.macro_objective,
+        max_steps: isSmoke ? null : taskForm.max_steps,
         max_times: taskForm.max_times,
         reset_memory: taskForm.reset_memory,
         ignore_errors: taskForm.ignore_errors,
         case_path: taskForm.mode === 'case' ? (taskForm.case_path || null) : null,
-        tour: taskForm.mode === 'explore' ? taskForm.tour : false,
+        tour: isSmoke,
         resume_from: taskForm.resume_from || null,
         reexplore: taskForm.reexplore || null,
         start_delay: taskForm.start_delay,
         wait_ready: taskForm.wait_ready || null,
         wait_timeout: taskForm.wait_timeout,
         ignore_env_check: taskForm.ignore_env_check,
-        description: `用户自定义预设: ${taskForm.app_name} / ${taskForm.mode} / ${taskForm.max_steps}步`
+        description: isSmoke
+          ? `极速全量冒烟巡检: ${taskForm.app_name}`
+          : `用户自定义预设: ${taskForm.app_name} / ${taskForm.mode} / ${taskForm.max_steps}步`
       };
 
       try {
@@ -877,14 +888,15 @@ const app = createApp({
 
         }
 
+        const isSmoke = taskForm.mode === 'smoke';
         const payload = {
           name: taskForm.name,
           app_name: taskForm.app_name,
-          mode: taskForm.mode,
-          tour: taskForm.mode === 'explore' ? !!taskForm.tour : false,
+          mode: isSmoke ? 'smoke' : taskForm.mode,
+          tour: isSmoke || (taskForm.mode === 'explore' && !!taskForm.tour),
           case_path: taskForm.mode === 'case' ? (taskForm.case_path || null) : null,
-          macro_objective: taskForm.macro_objective,
-          max_steps: taskForm.max_steps,
+          macro_objective: isSmoke ? '' : taskForm.macro_objective,
+          max_steps: isSmoke ? null : taskForm.max_steps,
           max_times: taskForm.max_times,
           reset_memory: taskForm.reset_memory,
           ignore_errors: taskForm.ignore_errors,
@@ -1127,18 +1139,19 @@ const app = createApp({
       isSubmittingEnqueue.value = true;
       try {
         // 1. 率先生成并创建 TaskRun
+        const isSmoke = taskForm.mode === 'smoke';
         const payload = {
           name: taskForm.name,
           app_name: taskForm.app_name,
-          mode: taskForm.mode,
-          macro_objective: taskForm.macro_objective,
-          max_steps: taskForm.max_steps,
+          mode: isSmoke ? 'smoke' : taskForm.mode,
+          macro_objective: isSmoke ? '' : taskForm.macro_objective,
+          max_steps: isSmoke ? null : taskForm.max_steps,
           max_times: taskForm.max_times,
           reset_memory: taskForm.reset_memory,
           ignore_errors: taskForm.ignore_errors,
           explore_context: taskForm.explore_context,
-          case_path: taskForm.case_path,
-          tour: taskForm.tour,
+          case_path: taskForm.mode === 'case' ? (taskForm.case_path || null) : null,
+          tour: isSmoke || (taskForm.mode === 'explore' && !!taskForm.tour),
           resume_from: taskForm.resume_from || null,
           reexplore: taskForm.reexplore || null,
           start_delay: taskForm.start_delay,

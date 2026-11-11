@@ -99,10 +99,12 @@ class TaskManager:
                     cmd.append("--ignore-env-check")
 
             elif task.mode in ("smoke", "tour"):
-                # 兼容旧历史任务
+                # 全量二级业务菜单极速冒烟巡检
                 cmd.append("--tour")
                 if task.macro_objective:
                     cmd.extend(["--explore", task.macro_objective])
+                if getattr(task, "max_times", None):
+                    cmd.extend(["--max-times", str(task.max_times)])
                 if task.ignore_errors:
                     cmd.append("--ignore-errors")
                 if task.explore_context:

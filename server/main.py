@@ -374,6 +374,11 @@ def get_config_options():
             "desc": "多模态大模型动态驱动，自主规划链路与挖掘未知深层 Crash",
         },
         {
+            "key": "smoke",
+            "name": "全量冒烟巡检 (Smoke Tour)",
+            "desc": "自动按序地毯式遍历全系统二级菜单，执行无声崩溃、接口通信与视觉呈现三阶门禁体检",
+        },
+        {
             "key": "case",
             "name": "确定性用例回放 (YAML Case)",
             "desc": "精确重现已通过静态合规检验的标准自然语言回归流程",
@@ -469,7 +474,7 @@ DEFAULT_PRESET_TASKS = [
         "id": "preset_zhaiwan_smoke_tour",
         "title": "二级菜单极速全量冒烟体检",
         "app_name": "zhaiwan",
-        "mode": "explore",
+        "mode": "smoke",
         "tour": True,
         "badge": "冒烟",
         "max_steps": 1500,
@@ -477,8 +482,8 @@ DEFAULT_PRESET_TASKS = [
         "reset_memory": True,
         "ignore_errors": True,
         "case_path": None,
-        "macro_objective": "全量页面极速冒烟体检：自适应快速遍历当前系统全部业务菜单，校验两级路由跳转、页面白屏及核心接口通信健康度。",
-        "description": "轻量级高频冒烟，快速校验全部菜单路由跳转、页面框架是否白屏以及核心接口通信健康度。",
+        "macro_objective": "",
+        "description": "轻量级高频冒烟，快速按序遍历全部二级业务菜单，执行无声报错、核心接口与页面视觉三阶门禁体检。",
     },
     {
         "id": "preset_zhaiwan_home_yaml",
