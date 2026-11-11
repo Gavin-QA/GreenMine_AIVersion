@@ -30,7 +30,7 @@ def parse_args():
     parser.add_argument("--all", action="store_true", help="运行 test_cases 目录下的所有用例")
     parser.add_argument("--ignore-errors", action="store_true", help="全局忽略步骤报错，继续执行后续步骤")
     parser.add_argument("--explore", type=str, help="开启自主探索模式，并指定宏观探索目标")
-    parser.add_argument("--tour", "--smoke", dest="tour", action="store_true", help="二级菜单全量冒烟巡检模式：单次启动依次遍历当前软件的全部二级业务菜单，验证两级跳转与页面轻量交互（纯日志，不生成Mermaid架构图）")
+    parser.add_argument("--tour", "--smoke", dest="tour", nargs="?", const=True, default=False, help="二级菜单全量冒烟巡检模式：可附加自定义质检提示词（例如 --tour '检查白屏与核心卡片'）")
     parser.add_argument("--explore-context", type=str, action="append", help="指定针对探索模式的项目背景知识或交互规则，可多次使用，支持纯文本或文件路径")
     parser.add_argument("--resume-from", type=str, help="指定上一次探索的运行目录（如 reports/runs/explore_xxx 或旧 logs/xxx），以实现断点续传（继承记忆与页面架构树）")
     parser.add_argument("--reset-memory", "--clean-memory", action="store_true", help="清空当前应用的长期拓扑树记忆，重置为纯净菜单骨架后全新从零探索")
@@ -228,8 +228,13 @@ def run_smoke_tour_mode(driver: ElectronDriver, vision_agent: VisionAgent, args)
                 pass
             
     start_time = datetime.now()
+    
+    # 提取冒烟巡检质检提示词 (支持 --tour "提示词" 或后台透传的 --explore "提示词")
+    smoke_prompt = (args.tour if isinstance(args.tour, str) else "") or args.explore or ""
+    if smoke_prompt:
+        logging.getLogger("main").info(f"🎯 [Smoke Prompt] 收到自定义冒烟体检准则:\n{smoke_prompt}")
             
-    explorer.start_smoke_tour(context=context_str)
+    explorer.start_smoke_tour(context=context_str, prompt=smoke_prompt)
     
     end_time = datetime.now()
     duration = (end_time - start_time).total_seconds()

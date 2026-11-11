@@ -428,30 +428,43 @@ class ExplorerAgent:
             except Exception as e:
                 logger.debug(f"清理 checkpoint 目录跳过: {e}")
 
-    def smoke_tour(self, total_menus_limit: Optional[int] = None, context: str = ""):
-        """二级菜单全量冒烟巡检模式"""
+    def smoke_tour(self, total_menus_limit: Optional[int] = None, context: str = "", prompt: str = ""):
+        """二级业务菜单全量冒烟巡检模式：兼具确定性两级跳转与全自动健康度体检（无声崩溃、接口异常、多模态视觉审图）"""
         from core.explorer_agent.page_map_builder import PageMapBuilder
-        logger.info("🚀 [Smoke Tour] 启动全量业务二级菜单冒烟巡检...")
+        from config.config import settings
+
+        active_app = getattr(settings, "active_app", "")
+        logger.info(f"🚀 启动【{active_app or '当前软件'}全量冒烟巡检模式】")
+        if prompt:
+            logger.info(f"🎯 [Smoke Prompt] 冒烟体检准则: {prompt}")
 
         menu_items = PageMapBuilder.get_all_l2_menus()
         if total_menus_limit:
             menu_items = menu_items[:total_menus_limit]
 
         total_menus = len(menu_items)
+        if total_menus == 0:
+            logger.warning("⚠️ [Smoke Tour] 未解析到任何二级业务菜单！请检查对应 docs/explore_rules_<app>.md 的基准菜单表格。")
+            self._cleanup_post_run()
+            return
+
         results = []
         jump_success_count = 0
-        plan_success_count = 0
+        clean_health_count = 0
         start_time = time.time()
 
         for idx, (l1, l2) in enumerate(menu_items, 1):
-            logger.info(f"\n--- [Smoke Menu {idx}/{total_menus}] 正在巡检: 【{l1} -> {l2}】 ---")
+            logger.info(f"\n🎯 [Smoke Tour ({idx}/{total_menus})] 正在巡检模块: 【{l1} -> {l2}】")
             jump_ok = False
-            plan_ok = False
+            console_ok = True
+            api_ok = True
+            visual_ok = True
             jump_err_msg = ""
-            plan_err_msg = ""
-            sub_objective = ""
+            thought = ""
 
-            # 阶段一：二级菜单智能跳转
+            # ----------------------------------------------------
+            # 阶段一：二级菜单智能跳转 (Smart Hover + Click)
+            # ----------------------------------------------------
             if idx == 1 and l1 == "首页" and l2 == "矿山简介":
                 self.driver.set_page_scope(f"{l1} -> {l2}")
                 self.last_l2_route = (l1, l2)
@@ -462,7 +475,7 @@ class ExplorerAgent:
                     info = self.driver.get_viewport_info()
                     width, height = info.get("width", 2560), info.get("height", 1440)
 
-                    # 悬停 L1
+                    # 悬停 L1 一级菜单
                     hover_img_path = self.explore_dir / f"smoke_jump_{idx}_hover.png"
                     b64_hover = self.driver.capture_screenshot_base64(str(hover_img_path))
                     dom_hover = self.driver.extract_interactive_elements()
@@ -475,7 +488,7 @@ class ExplorerAgent:
                     )
                     self.driver.hover(hx, hy, delay_after=1.5)
 
-                    # 点击 L2
+                    # 点击 L2 下拉菜单选项
                     click_img_path = self.explore_dir / f"smoke_jump_{idx}_click.png"
                     b64_click = self.driver.capture_screenshot_base64(str(click_img_path))
                     dom_click = self.driver.extract_interactive_elements()
@@ -499,46 +512,137 @@ class ExplorerAgent:
                         run_id=self.run_id,
                         title=f"[{self.run_id}] 冒烟巡检菜单跳转失败: 【{l1} -> {l2}】",
                         step_prompt=f"[SMOKE-JUMP] 悬停【{l1}】并点击【{l2}】",
-                        actual_result=jump_err_msg
+                        actual_result=jump_err_msg,
+                        crash_image_path=str(hover_img_path) if 'hover_img_path' in locals() and hover_img_path.exists() else None,
+                        action_type="SMOKE_JUMP",
+                        target_element=f"{l1} -> {l2}",
+                        global_step=idx,
+                        severity="High",
+                        ui_path=f"{l1} -> {l2}"
                     )
 
-            # 阶段二：当前页面体检
+            # ----------------------------------------------------
+            # 阶段二：当前页面三阶健康度体检 (Health Gate)
+            # ----------------------------------------------------
             if jump_ok:
-                try:
-                    time.sleep(1.0)
-                    plan_img_path = self.explore_dir / f"smoke_page_{idx}_plan.png"
-                    b64_plan = self.driver.capture_screenshot_base64(str(plan_img_path), dim_background=True)
-                    plan = self.vision.plan_sub_objective(
-                        macro_objective=f"对当前【{l1} -> {l2}】页面进行冒烟体检，识别核心组件",
-                        base64_image=b64_plan,
-                        global_history=[f"【{l1} -> {l2}】"],
-                        context=context,
-                        current_page_tree={},
-                        reexplore_module=l2
+                time.sleep(1.5)
+                plan_img_path = self.explore_dir / f"smoke_page_{idx}_plan.png"
+                b64_plan = self.driver.capture_screenshot_base64(str(plan_img_path), dim_background=False)
+
+                # 检查项 1：嗅探未捕获的前端致命崩溃 (TypeError / Vue崩溃 / WebGL Context Lost)
+                fatal_crashes = self.driver.get_fatal_console_errors(clear=True, strict=False) if hasattr(self.driver, "get_fatal_console_errors") else []
+                if fatal_crashes:
+                    console_ok = False
+                    err_lines = [f"[{c.get('type', 'js_crash')}{(' @ ' + c['location']) if c.get('location') else ''}] {c.get('msg', '')}" for c in fatal_crashes[:5]]
+                    logger.error(f"🐞 [Smoke Bug] 模块【{l1} -> {l2}】捕获到前端致命崩溃:\n" + "\n".join(err_lines))
+                    self.bug_reporter.report_bug(
+                        run_id=self.run_id,
+                        title=f"[{self.run_id}] 冒烟巡检发现前端致命崩溃: 【{l1} -> {l2}】",
+                        step_prompt=f"[SMOKE-CONSOLE] 模块【{l1} -> {l2}】初载控制台健康嗅探",
+                        actual_result="【前端致命崩溃】\n" + "\n".join(err_lines),
+                        crash_image_path=str(plan_img_path),
+                        action_type="ASSERT_NO_CONSOLE_ERRORS",
+                        target_element=f"{l1} -> {l2}",
+                        global_step=idx,
+                        severity="High",
+                        ui_path=f"{l1} -> {l2}"
                     )
-                    sub_objective = plan.get("sub_objective", f"测试【{l2}】核心业务组件")
-                    self.driver.get_and_clear_bugs()
-                    plan_ok = True
-                    plan_success_count += 1
-                except Exception as p_err:
-                    plan_err_msg = str(p_err)
+
+                # 检查项 2：底层业务接口与网络通信异常 (code != 0 或 HTTP 4xx/5xx)
+                caught_bugs = self.driver.get_and_clear_bugs()
+                if caught_bugs:
+                    api_err_items = [b for b in caught_bugs if b.get("type") in ("api_biz_error", "network_error") or ("50" in str(b.get("text", "")) or "40" in str(b.get("text", "")) or b.get("status", 200) >= 400)]
+                    if api_err_items:
+                        api_ok = False
+                        api_lines = []
+                        for b in api_err_items:
+                            t = b.get("type", "error")
+                            if t == "api_biz_error":
+                                ep = b.get("endpoint") or ""
+                                biz_code = b.get("biz_code")
+                                raw_msg = b.get("msg") or b.get("text") or ""
+                                code_str = f", 业务码: {biz_code}" if biz_code is not None else ""
+                                api_lines.append(f"接口业务报错: {raw_msg} (接口方法: {ep or '未知'}{code_str})")
+                            elif t == "network_error":
+                                status = b.get("status", "Fail")
+                                url = b.get("url", "")
+                                api_lines.append(f"网络请求失败 HTTP {status}: {url}")
+                            else:
+                                api_lines.append(f"[{t}] {b.get('text') or b.get('msg')}")
+                        logger.error(f"🐞 [Smoke Bug] 模块【{l1} -> {l2}】捕获到底层接口异常:\n" + "\n".join(api_lines))
+                        self.bug_reporter.report_bug(
+                            run_id=self.run_id,
+                            title=f"[{self.run_id}] 冒烟巡检发现底层接口异常: 【{l1} -> {l2}】",
+                            step_prompt=f"[SMOKE-API] 模块【{l1} -> {l2}】初载接口通信校验",
+                            actual_result="【底层接口异常】\n" + "\n".join(api_lines),
+                            crash_image_path=str(plan_img_path),
+                            action_type="API_ASSERT",
+                            target_element=f"{l1} -> {l2}",
+                            global_step=idx,
+                            severity="Medium",
+                            ui_path=f"{l1} -> {l2}"
+                        )
+
+                # 检查项 3：多模态 AI 视觉质检审图 (吸收集成用户提示词)
+                inspect_instruction = (
+                    f"作为矿山工业大屏质检员，请仔细核验当前【{l1} -> {l2}】页面的截屏画面：\n"
+                    f"1. 核心大屏面板、数据卡片、图表或三维视界是否已正常渲染，是否存在大面积纯白白屏、纯黑黑屏、未加载骨架或布局崩塌？\n"
+                    f"2. 界面上是否有明显的系统崩溃弹窗、未捕获红框报错或 NaN / undefined 破损文字？\n"
+                )
+                if prompt:
+                    inspect_instruction += f"3. 【特定冒烟巡检准则（用户要求）】: {prompt}\n"
+                inspect_instruction += "若页面渲染健康且无致命破损请判定 passed=true，若存在白屏/黑屏/崩溃弹窗/破损请判定 passed=false 并详细说明。"
+
+                try:
+                    passed, assert_reason = self.vision.check_assertion(instruction=inspect_instruction, base64_image=b64_plan)
+                    thought = assert_reason
+                    logger.info(f"💡 [Smoke Planner] 页面诊断与思考: {thought}")
+                    if not passed:
+                        visual_ok = False
+                        logger.warning(f"⚠️ [Smoke Visual Fail] 模块【{l1} -> {l2}】视觉质检未通过: {assert_reason}")
+                        self.bug_reporter.report_bug(
+                            run_id=self.run_id,
+                            title=f"[{self.run_id}] 冒烟巡检视觉质检未通过: 【{l1} -> {l2}】",
+                            step_prompt=f"[SMOKE-VISUAL] 模块【{l1} -> {l2}】视觉健康度体检",
+                            actual_result=assert_reason,
+                            crash_image_path=str(plan_img_path),
+                            action_type="ASSERT",
+                            target_element=f"{l1} -> {l2}",
+                            global_step=idx,
+                            severity="High" if any(k in assert_reason for k in ("白屏", "黑屏", "崩溃", "缺失")) else "Medium",
+                            ui_path=f"{l1} -> {l2}"
+                        )
+                except Exception as v_err:
+                    thought = f"视觉断言调用异常: {v_err}"
+                    logger.warning(f"⚠️ [Smoke Visual Warning] 视觉质检过程调用异常: {v_err}")
+
+            if jump_ok and console_ok and api_ok and visual_ok:
+                clean_health_count += 1
 
             results.append({
                 "index": idx,
                 "module": f"{l1} -> {l2}",
-                "jump": "PASS" if jump_ok else f"FAIL ({jump_err_msg[:30]})",
-                "plan": "PASS" if plan_ok else ("SKIPPED" if not jump_ok else f"FAIL ({plan_err_msg[:30]})"),
-                "core_component": sub_objective if plan_ok else "-"
+                "jump": "PASS" if jump_ok else f"FAIL ({jump_err_msg[:25]})",
+                "console": "PASS" if console_ok else "FAIL",
+                "api": "PASS" if api_ok else "FAIL",
+                "visual": "PASS" if visual_ok else "FAIL",
+                "thought": thought
             })
 
-        logger.info(f"🏁 冒烟巡检完成！跳转成功: {jump_success_count}/{total_menus}, 规划成功: {plan_success_count}/{total_menus}")
+        logger.info(f"\n{'='*75}")
+        logger.info(f"🏁 冒烟巡检完成！总二级业务菜单数: {total_menus}")
+        if total_menus > 0:
+            logger.info(f"   - 菜单跳转成功率: {jump_success_count}/{total_menus} ({(jump_success_count/total_menus*100):.1f}%)")
+            logger.info(f"   - 完全健康通过率: {clean_health_count}/{total_menus} ({(clean_health_count/total_menus*100):.1f}%)")
+        logger.info(f"{'='*75}")
+
         try:
             from utils.report_generator import ReportGenerator
             reporter = ReportGenerator(self.run_dir)
             report_file = reporter.generate_html()
             logger.info(f"📊 冒烟巡检大盘已生成: file:///{report_file.as_posix()}")
-        except Exception:
-            pass
+        except Exception as rep_err:
+            logger.error(f"生成冒烟巡检报告失败: {rep_err}")
 
         # 任务完成收尾自洁
         self._cleanup_post_run()

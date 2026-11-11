@@ -73,6 +73,8 @@ class TaskManager:
             if task.mode == "explore":
                 if getattr(task, "tour", False):
                     cmd.append("--tour")
+                    if task.macro_objective:
+                        cmd.extend(["--explore", task.macro_objective])
                 else:
                     cmd.extend(["--explore", task.macro_objective or "全量自主探索"])
                 cmd.extend(["--max-steps", str(task.max_steps)])
@@ -99,8 +101,16 @@ class TaskManager:
             elif task.mode in ("smoke", "tour"):
                 # 兼容旧历史任务
                 cmd.append("--tour")
+                if task.macro_objective:
+                    cmd.extend(["--explore", task.macro_objective])
                 if task.ignore_errors:
                     cmd.append("--ignore-errors")
+                if task.explore_context:
+                    cmd.extend(["--explore-context", task.explore_context])
+                if getattr(task, "start_delay", None) is not None:
+                    cmd.extend(["--start-delay", str(task.start_delay)])
+                if getattr(task, "ignore_env_check", False):
+                    cmd.append("--ignore-env-check")
 
             elif task.mode == "case":
                 if task.case_path:

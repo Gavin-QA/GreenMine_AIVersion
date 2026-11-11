@@ -397,7 +397,11 @@ class ReportGenerator:
         else:
             smoke_match = re.search(r"🚀 启动【(.*?)全量冒烟巡检模式】", text)
             if smoke_match:
-                data["macro_objective"] = "全量二级业务菜单冒烟巡检"
+                prompt_m = re.search(r"🎯 \[Smoke Prompt\] 冒烟体检准则:\s*(.*?)(?=\n)", text)
+                if prompt_m:
+                    data["macro_objective"] = prompt_m.group(1).strip()
+                else:
+                    data["macro_objective"] = f"{smoke_match.group(1)}全量二级业务菜单冒烟巡检"
 
         # 统计 Planner 次数
         data["kpi"]["planner_phases"] = len(re.findall(r"🧠 \[Planner Phase(?:\s+\d+)?\]", text))
@@ -588,7 +592,7 @@ class ReportGenerator:
                 module_name = m.group(2)
                 block = m.group(3)
 
-                has_bug = "❌ [Smoke Jump]" in block or "🐞 捕获到缺陷异常" in block or "⚠️ [Smoke Planner]" in block
+                has_bug = "❌ [Smoke Jump]" in block or "🐞 捕获到缺陷异常" in block or "⚠️ [Smoke Planner]" in block or "🐞 [Smoke Bug]" in block or "⚠️ [Smoke Visual Fail]" in block
 
                 sub = f"冒烟巡检: {module_name}"
 
@@ -671,21 +675,39 @@ class ReportGenerator:
             </tr>""")
         api_rows_html = "".join(api_rows_list)
 
-        # ====== 双模自适应逻辑 ======
+        # ====== 多模自适应逻辑 (YAML / Explore / Smoke) ======
         is_yaml_mode = data['run_id'].startswith("yaml_")
-        hero_title = "⚡ Electron Vision AI · 自动化回归测试报告" if is_yaml_mode else "⚡ Electron Vision AI · 自主探索测试报告"
-        badge_text = "YAML 强校验模式" if is_yaml_mode else "自主探索驱动"
-
-        planner_kpi_style_attr = 'style="display:none;"' if is_yaml_mode else ''
-        pass_rate_kpi_style_attr = '' if is_yaml_mode else 'style="display:none;"'
+        is_smoke_mode = data['run_id'].startswith("smoke_")
+        if is_smoke_mode:
+            hero_title = "⚡ Electron Vision AI · 二级业务全量冒烟巡检报告"
+            badge_text = "全量冒烟门禁模式"
+            planner_kpi_style_attr = 'style="display:none;"'
+            pass_rate_kpi_style_attr = ''
+            tab_topology_style = "display:none;"
+            tab_yaml_style = "display:none;"
+            hero_meta_style = ''
+            timeline_tab_name = "🎬 业务菜单巡检大盘"
+        elif is_yaml_mode:
+            hero_title = "⚡ Electron Vision AI · 自动化回归测试报告"
+            badge_text = "YAML 强校验模式"
+            planner_kpi_style_attr = 'style="display:none;"'
+            pass_rate_kpi_style_attr = ''
+            tab_topology_style = "display:none;"
+            tab_yaml_style = "display:none;"
+            hero_meta_style = 'style="display:none;"'
+            timeline_tab_name = "🎬 用例执行链路"
+        else:
+            hero_title = "⚡ Electron Vision AI · 自主探索测试报告"
+            badge_text = "自主探索驱动"
+            planner_kpi_style_attr = ''
+            pass_rate_kpi_style_attr = 'style="display:none;"'
+            tab_topology_style = ""
+            tab_yaml_style = ""
+            hero_meta_style = ''
+            timeline_tab_name = "🎬 Planner-Worker 执行树"
 
         pass_count = data['kpi']['total_steps'] - data['kpi']['bugs_count']
         pass_rate = f"{int(pass_count / data['kpi']['total_steps'] * 100)}%" if data['kpi']['total_steps'] > 0 else "100%"
-
-        tab_topology_style = "display:none;" if is_yaml_mode else ""
-        tab_yaml_style = "display:none;" if is_yaml_mode else ""
-        hero_meta_style = 'style="display:none;"' if is_yaml_mode else ''
-        timeline_tab_name = "🎬 用例执行链路" if is_yaml_mode else "🎬 Planner-Worker 执行树"
 
         # 安全处理时间字符串
         start_t = data.get('start_time', '未知')
