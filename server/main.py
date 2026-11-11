@@ -1354,6 +1354,9 @@ async def websocket_task_logs(websocket: WebSocket, task_id: str):
     description="支持按状态（激活/已提单）、严重度（High/Medium/Low）、责任人（陈贻雄/梅本霞）以及模糊关键词全文检索系统缺陷。",
 )
 def list_bugs(
+    app_name: Optional[str] = Query(
+        default=None, description="所属矿山应用代号过滤 (zhaiwan / tianrui / liwutong)"
+    ),
     status: Optional[str] = Query(
         default=None, description="缺陷状态过滤 (激活/已提单/误报/已解决)"
     ),
@@ -1384,6 +1387,9 @@ def list_bugs(
         perform_hot_sync(db, force=False)
 
     q = db.query(BugRecord).order_by(BugRecord.last_seen.desc())
+
+    if app_name:
+        q = q.filter(BugRecord.app_name == app_name)
 
     if status:
         q = q.filter(BugRecord.status == status)

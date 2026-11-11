@@ -1401,14 +1401,14 @@
 
 
 
-              <!-- 5维一体现代复合筛选栏 -->
+              <!-- 6维一体现代复合筛选栏 -->
 
               <div class="bug-filter-bar"
                 style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center; background: rgba(11, 15, 25, 0.7); padding: 12px 16px; border-radius: 8px; border: 1px solid var(--border-color);">
 
                 <!-- 1. 全局关键字检索 (Bug编号、标题、报错堆栈、禅道单号) -->
 
-                <div style="flex: 1; min-width: 260px; position: relative;">
+                <div style="flex: 1; min-width: 240px; position: relative;">
 
                   <input type="text" class="form-control" style="width: 100%; padding-right: 30px;"
                     placeholder="🔍 检索 Bug 编号 / 标题 / 报错堆栈 / 禅道单号..." v-model="bugSearch" @input="onBugSearchInput"
@@ -1426,7 +1426,28 @@
 
 
 
-                <!-- 2. 严重程度下拉项 -->
+                <!-- 2. 所属应用 / 矿山下拉项 (新增) -->
+
+                <div style="width: 175px;">
+
+                  <select class="form-control" style="width: 100%;" v-model="bugAppFilter"
+                    @change="fetchBugs({ resetPage: true })">
+
+                    <option value="">🏔️ 全部矿山 (应用)</option>
+
+                    <option v-for="a in options.apps" :key="a.key" :value="a.key">
+
+                      🏔️ {{ a.name }} ({{ a.key }})
+
+                    </option>
+
+                  </select>
+
+                </div>
+
+
+
+                <!-- 3. 严重程度下拉项 -->
 
                 <div style="width: 135px;">
 
@@ -1572,7 +1593,12 @@
                   <tr v-else v-for="b in paginatedBugs" :key="b.id"
                     :style="deletingBugId === b.id ? 'opacity: 0.45; transition: opacity 0.3s; pointer-events: none;' : ''">
 
-                    <td style="font-family: monospace; font-weight: 600; color: #00d2ff;">{{ b.id }}</td>
+                    <td style="font-family: monospace; font-weight: 600; color: #00d2ff;">
+                      {{ b.id }}
+                      <div v-if="b.app_name" style="font-size: 10px; color: #64748b; margin-top: 2px;">
+                        {{ getAppName(b.app_name) }}
+                      </div>
+                    </td>
 
                     <td>
 

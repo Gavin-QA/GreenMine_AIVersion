@@ -10,6 +10,7 @@ server/sync_service.py —— 磁盘自动化产物与 SQLite 数据库多端极
 """
 
 import os
+import re
 import json
 import time
 import logging
@@ -264,6 +265,10 @@ def sync_all_bugs(db: Session) -> int:
     existing_bugs = {b.id: b for b in db.query(BugRecord).all()}
 
     for bug_file in GLOBAL_BUGS_DIR.glob("global_bugs*.json"):
+        # 从文件名提取归属矿山应用代号 (如 global_bugs_tianrui.json -> tianrui)
+        m = re.search(r"global_bugs_([a-zA-Z0-9_\-]+)\.json", bug_file.name)
+        file_app_name = m.group(1) if m else "zhaiwan"
+
         try:
             with open(bug_file, "r", encoding="utf-8") as bf:
                 raw_bugs = json.load(bf)
@@ -276,6 +281,7 @@ def sync_all_bugs(db: Session) -> int:
             if not b_id:
                 continue
 
+            bug_app = rb.get("app_name") or rb.get("app") or file_app_name
             raw_run_id = rb.get("run_id") or ""
             # 智能映射缺陷归属的任务 ID
             assigned_task_id = None
@@ -318,6 +324,7 @@ def sync_all_bugs(db: Session) -> int:
                     id=b_id,
                     task_id=assigned_task_id,
                     run_id=raw_run_id,
+                    app_name=bug_app,
                     title=rb.get("title", ""),
                     severity=rb.get("severity", "Medium"),
                     status=rb.get("status", "激活"),
@@ -338,6 +345,10 @@ def sync_all_bugs(db: Session) -> int:
                 synced_count += 1
             else:
                 changed = False
+                if exist.app_name != bug_app:
+                    exist.app_name = bug_app
+                    changed = True
+
                 if occurrences_val > (exist.occurrences or 0):
                     exist.occurrences = occurrences_val
                     exist.last_seen = last_seen_dt

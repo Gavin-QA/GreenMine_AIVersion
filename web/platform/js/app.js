@@ -291,7 +291,7 @@ const app = createApp({
     let bugAbortController = null;
 
     const bugSearch = ref('');
-
+    const bugAppFilter = ref('');
     const bugSeverityFilter = ref('');
 
     const bugAssigneeFilter = ref('');
@@ -622,6 +622,8 @@ const app = createApp({
 
         if (options && options.sync) url += `&sync=true`;
 
+        if (bugAppFilter.value) url += `&app_name=${encodeURIComponent(bugAppFilter.value)}`;
+
         if (bugSeverityFilter.value) url += `&severity=${encodeURIComponent(bugSeverityFilter.value)}`;
 
         if (bugAssigneeFilter.value) url += `&assignee=${encodeURIComponent(bugAssigneeFilter.value)}`;
@@ -665,6 +667,8 @@ const app = createApp({
       if (bugSearchTimer) clearTimeout(bugSearchTimer);
 
       bugSearch.value = '';
+
+      bugAppFilter.value = '';
 
       bugSeverityFilter.value = '';
 
@@ -2520,7 +2524,7 @@ const app = createApp({
       onBugSearchInput,
 
       bugSearch,
-
+      bugAppFilter,
       bugSeverityFilter,
 
       bugAssigneeFilter,
