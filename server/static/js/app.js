@@ -1655,51 +1655,6 @@ const app = createApp({
 
         });
 
-        // =========================================================================
-        // 双图安全联动：X 轴光标准星与缩放联动 (echarts.connect) + 物理鼠标单向浮层同步
-        // =========================================================================
-        domChart.group = 'perf_sync';
-        ueChart.group = 'perf_sync';
-        echarts.connect('perf_sync');
-
-        function bindPhysicalHoverSync(fromChart, toChart) {
-          if (!fromChart || !toChart) return;
-          const zr = fromChart.getZr();
-          if (!zr) return;
-
-          zr.on('mousemove', function (params) {
-            try {
-              const point = [params.offsetX, params.offsetY];
-              if (fromChart.containPixel('grid', point)) {
-                const gridPos = fromChart.convertFromPixel({ seriesIndex: 0 }, point);
-                if (gridPos && gridPos[0] !== undefined) {
-                  const dataIndex = Math.round(gridPos[0]);
-                  if (dataIndex >= 0) {
-                    toChart.dispatchAction({
-                      type: 'showTip',
-                      seriesIndex: 0,
-                      dataIndex: dataIndex
-                    });
-                  }
-                }
-              }
-            } catch (e) {
-              // 防御性静默忽略
-            }
-          });
-
-          zr.on('mouseout', function () {
-            try {
-              toChart.dispatchAction({ type: 'hideTip' });
-            } catch (e) {
-              // 防御性静默忽略
-            }
-          });
-        }
-
-        bindPhysicalHoverSync(domChart, ueChart);
-        bindPhysicalHoverSync(ueChart, domChart);
-
       });
 
     }
