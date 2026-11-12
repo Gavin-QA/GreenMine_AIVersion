@@ -12,7 +12,7 @@ Electron Vision AI - 服务端 API 数据契约与 Pydantic 校验模型集 (Sch
 """
 
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field, field_serializer
+from pydantic import BaseModel, Field, field_serializer, field_validator
 import datetime
 
 
@@ -47,20 +47,42 @@ class TaskCreate(BaseModel):
         description="宏观探索目标提示词 (Macro Objective Prompt)，直接引导大模型探索规划方向",
         examples=["全面探测中央 3D 矿山数字孪生模型健康度，重点执行视口旋转与抗压甩动"]
     )
-    max_steps: int = Field(
+    max_steps: Optional[int] = Field(
         default=200,
         ge=5,
         le=5000,
         description="最大允许执行的动作步数上限 (Steps)，达到后自动安全收尾",
         examples=[200]
     )
-    max_times: int = Field(
+    max_times: Optional[int] = Field(
         default=60,
         ge=1,
         le=1440,
         description="最大运行时间限制 (单位：分钟)，超时自动安全退出",
         examples=[60]
     )
+
+    @field_validator('max_steps', mode='before')
+    @classmethod
+    def normalize_max_steps(cls, v: Any) -> int:
+        if v is None or v == "":
+            return 200
+        try:
+            val = int(v)
+            return val if val >= 5 else 200
+        except (ValueError, TypeError):
+            return 200
+
+    @field_validator('max_times', mode='before')
+    @classmethod
+    def normalize_max_times(cls, v: Any) -> int:
+        if v is None or v == "":
+            return 60
+        try:
+            val = int(v)
+            return val if val >= 1 else 60
+        except (ValueError, TypeError):
+            return 60
     reset_memory: bool = Field(
         default=False,
         description="是否清空长期拓扑与探索历史记忆从零开始 (默认为 False，继承已有记忆拓扑)",
@@ -293,8 +315,30 @@ class PresetTaskCreate(BaseModel):
     app_name: str = Field(default="zhaiwan", description="矿山应用: zhaiwan / liwutong")
     mode: str = Field(default="explore", description="模式: explore / smoke / case / all")
     macro_objective: str = Field(description="预设探索目标提示词")
-    max_steps: int = Field(default=200, ge=5, le=5000, description="最大步数")
-    max_times: int = Field(default=60, ge=1, le=1440, description="最大时间 (分钟)")
+    max_steps: Optional[int] = Field(default=200, ge=5, le=5000, description="最大步数")
+    max_times: Optional[int] = Field(default=60, ge=1, le=1440, description="最大时间 (分钟)")
+
+    @field_validator('max_steps', mode='before')
+    @classmethod
+    def normalize_preset_max_steps(cls, v: Any) -> int:
+        if v is None or v == "":
+            return 200
+        try:
+            val = int(v)
+            return val if val >= 5 else 200
+        except (ValueError, TypeError):
+            return 200
+
+    @field_validator('max_times', mode='before')
+    @classmethod
+    def normalize_preset_max_times(cls, v: Any) -> int:
+        if v is None or v == "":
+            return 60
+        try:
+            val = int(v)
+            return val if val >= 1 else 60
+        except (ValueError, TypeError):
+            return 60
     reset_memory: bool = Field(default=False, description="是否重置长期记忆")
     ignore_errors: bool = Field(default=True, description="是否容错继续")
     case_path: Optional[str] = Field(default=None, description="用例路径 (case模式生效)")
