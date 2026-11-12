@@ -1655,6 +1655,50 @@ const app = createApp({
 
         });
 
+        // =========================================================================
+        // 双图同频联动：光标准星/缩放联动 (echarts.connect) + 悬浮数值卡片双向镜像弹出
+        // =========================================================================
+        domChart.group = 'perf_sync';
+        ueChart.group = 'perf_sync';
+        echarts.connect('perf_sync');
+
+        let isSyncingTooltip = false;
+        function bindChartTooltipSync(sourceChart, targetChart) {
+          sourceChart.on('updateAxisPointer', function (event) {
+            if (isSyncingTooltip) return;
+            const axisInfo = event.axesInfo && event.axesInfo[0];
+            if (axisInfo && axisInfo.value !== undefined) {
+              isSyncingTooltip = true;
+              try {
+                targetChart.dispatchAction({
+                  type: 'showTip',
+                  seriesIndex: 0,
+                  dataIndex: axisInfo.value
+                });
+              } catch (e) {
+                // ignore
+              } finally {
+                isSyncingTooltip = false;
+              }
+            }
+          });
+
+          sourceChart.on('globalout', function () {
+            if (isSyncingTooltip) return;
+            isSyncingTooltip = true;
+            try {
+              targetChart.dispatchAction({ type: 'hideTip' });
+            } catch (e) {
+              // ignore
+            } finally {
+              isSyncingTooltip = false;
+            }
+          });
+        }
+
+        bindChartTooltipSync(domChart, ueChart);
+        bindChartTooltipSync(ueChart, domChart);
+
       });
 
     }
