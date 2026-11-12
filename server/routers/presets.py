@@ -60,7 +60,7 @@ DEFAULT_PRESET_TASKS = [
         "mode": "smoke",
         "tour": True,
         "badge": "冒烟",
-        "max_steps": 1500,
+        "max_steps": 0,
         "max_times": 150,
         "reset_memory": True,
         "ignore_errors": True,

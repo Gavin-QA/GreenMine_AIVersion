@@ -264,7 +264,7 @@
                   <div style="font-size: 12px; color: var(--text-muted); line-height: 1.5; margin-bottom: 12px;">{{
                     p.description || '用户定制预设巡检方案' }}</div>
                   <div style="font-size: 11px; color: #8b9bb4; margin-bottom: 14px;">
-                    <span>步数: <b style="color: #00d2ff;">{{ p.max_steps }}</b> 步</span> &nbsp;|&nbsp;
+                    <span>步数: <b style="color: #00d2ff;">{{ p.max_steps ?? 0 }}</b> 步</span> &nbsp;|&nbsp;
                     <span>时限: <b style="color: #ffb300;">{{ p.max_times }}</b> 分钟</span>
                   </div>
                 </div>
