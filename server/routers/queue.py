@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import TaskRun, TaskQueueItem, PresetTaskRecord
 from ..task_manager import task_manager
+from .presets import DEFAULT_PRESET_TASKS
 from ..schemas import (
     QueueItemResponse,
     QueueItemCreate,
