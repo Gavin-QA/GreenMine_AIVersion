@@ -152,6 +152,7 @@ class TaskManager:
             # 启动子进程，重定向标准输出和错误流
             env = os.environ.copy()
             env["PYTHONUNBUFFERED"] = "1"
+            env.pop("ELECTRON_RUN_AS_NODE", None)
             if task.app_name:
                 env["ACTIVE_APP"] = task.app_name
                 env["VISION_ACTIVE_APP"] = task.app_name

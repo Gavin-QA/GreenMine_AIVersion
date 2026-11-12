@@ -84,10 +84,14 @@ class ElectronLauncher:
         # 设置工作目录为 exe 所在的根路径，确保 Electron/UE 引擎能正确读取相对路径下的前端资源
         cwd = os.path.dirname(self.exe_path)
 
-        # 彻底清空从 Python 继承的系统代理环境变量，防止 Electron 内置 Node/NATS/WebRTC 走代理
+        # 彻底清空从 Python 继承的系统代理环境变量与宿主环境污染，确保客户端 100% 以完整 Chromium 渲染模式启动
         env = os.environ.copy()
-        for proxy_var in ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"]:
-            env.pop(proxy_var, None)
+        for env_var in [
+            "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY",
+            "http_proxy", "https_proxy", "all_proxy",
+            "ELECTRON_RUN_AS_NODE", "ELECTRON_NO_ATTACH_CONSOLE"
+        ]:
+            env.pop(env_var, None)
 
         # 显式设置 NO_PROXY 环境变量，保障本地与后端通信直连（优先从配置读取）
         try:
