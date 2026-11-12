@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Path as FastPath
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks, Path as FastPath
 from sqlalchemy.orm import Session
 
 from ..database import get_db
