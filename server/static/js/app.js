@@ -2203,6 +2203,33 @@ const app = createApp({
       }
     }
 
+    const reanalyzingBugId = ref(null);
+
+    async function reanalyzeBug(bug) {
+      if (!bug || !bug.id || reanalyzingBugId.value) return;
+      reanalyzingBugId.value = bug.id;
+      showToast('🧠 AI 深度诊断中', `正在对缺陷 [${bug.id}] 基于最新案发现场进行 AI 研判，请稍候...`, 'info', 4000);
+      try {
+        const resp = await fetch(`${apiBase}/api/bugs/${encodeURIComponent(bug.id)}/reanalyze`, {
+          method: 'POST'
+        });
+        const data = await resp.json();
+        if (resp.ok && data) {
+          if (selectedBug.value && selectedBug.value.id === bug.id) {
+            Object.assign(selectedBug.value, data);
+          }
+          await fetchBugs();
+          showToast('✨ 诊断完成', `缺陷 [${bug.id}] 根因分析与修复指引已热刷新！`, 'success', 4000);
+        } else {
+          showToast('⚠️ 诊断失败', data.detail || '接口响应异常', 'error', 5000);
+        }
+      } catch (err) {
+        showToast('❌ 请求异常', err.message || '网络连接失败', 'error', 5000);
+      } finally {
+        reanalyzingBugId.value = null;
+      }
+    }
+
 
 
     async function triggerHotSync() {
@@ -2609,6 +2636,8 @@ const app = createApp({
       deletingBugId,
 
       syncZenTao,
+      reanalyzeBug,
+      reanalyzingBugId,
 
       isSyncing,
 

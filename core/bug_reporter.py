@@ -375,25 +375,18 @@ class BugReporter:
         logger.info("=" * 60)
 
         # 5. 严格保证时序：必须在单次缺陷文件与全局库 100% 完全写入闭环落盘后，才启动后台异步分析，杜绝读写冲突
-
-        if not dup_id and not analysis_notes:
-
+        # 方案 B 核心：无论是新 Bug 还是重复 Bug 复现，只要未传入硬编码分析，均触发后台异步 AI 智能深度初诊与热刷新
+        if not analysis_notes:
             self._start_async_analysis(
-
                 bug_id=bug_id,
-
                 detail_path=detail_path,
-
                 title=title,
-
                 step_prompt=step_prompt,
-
                 actual_result=actual_result,
-
                 ui_path=ui_path,
-
-                crash_image_path=str(new_img_path) if new_img_path else None
-
+                crash_image_path=str(new_img_path) if new_img_path else None,
+                is_recurrent=bool(dup_id),
+                occurrences=bug_record.get("occurrences", 1) if bug_record else 1
             )
 
         return bug_id
@@ -550,148 +543,115 @@ class BugReporter:
 
                 json.dump(self.global_bugs, f, ensure_ascii=False, indent=2)
 
-    def _start_async_analysis(self, bug_id: str, detail_path: Path, title: str, step_prompt: str, actual_result: str, ui_path: str, crash_image_path: str = None):
-
+    def _start_async_analysis(
+        self,
+        bug_id: str,
+        detail_path: Path,
+        title: str,
+        step_prompt: str,
+        actual_result: str,
+        ui_path: str,
+        crash_image_path: str = None,
+        is_recurrent: bool = False,
+        occurrences: int = 1,
+    ):
         """
-
         启动后台守护线程进行 AI 智能初诊，绝不阻塞主测试探索流程。
-
         前提保障：调用此方法时，单次 Bug JSON 与全局 Bug 库均已完全完成磁盘写入与落盘。
-
         """
-
         thread = threading.Thread(
-
             target=self._async_analyze_worker,
-
-            args=(bug_id, Path(detail_path), title, step_prompt, actual_result, ui_path, crash_image_path),
-
+            args=(bug_id, Path(detail_path), title, step_prompt, actual_result, ui_path, crash_image_path, is_recurrent, occurrences),
             daemon=True,
-
             name=f"BugAnalysis-{bug_id}"
-
         )
-
         thread.start()
 
-    def _async_analyze_worker(self, bug_id: str, detail_path: Path, title: str, step_prompt: str, actual_result: str, ui_path: str, crash_image_path: str = None):
-
+    def _async_analyze_worker(
+        self,
+        bug_id: str,
+        detail_path: Path,
+        title: str,
+        step_prompt: str,
+        actual_result: str,
+        ui_path: str,
+        crash_image_path: str = None,
+        is_recurrent: bool = False,
+        occurrences: int = 1,
+    ):
         """后台异步执行大模型研发级深度根因诊断并静默回填缺陷归因备注（线程安全）"""
-
         try:
-
             from config.settings import settings
-
             analysis_model = getattr(settings, "llm_bug_analysis_model", None) or self.vision.model
-
-            logger.info(f"🧠 [AI 智能初诊] 开始异步分析新缺陷 [{bug_id}] (分析模型: {analysis_model})...")
+            log_desc = f"复现缺陷 (第 {occurrences} 次)" if is_recurrent else "新缺陷"
+            logger.info(f"🧠 [AI 智能初诊] 开始异步分析{log_desc} [{bug_id}] (分析模型: {analysis_model})...")
 
             from utils.bug_analysis_expert import analyze_bug_expertly
-
             bug_dict = {
-
                 "id": bug_id,
-
                 "title": title,
-
                 "step": step_prompt,
-
                 "actual": actual_result,
-
                 "ui_path": ui_path,
-
                 "app": self.active_app,
-
                 "screenshot": crash_image_path,
-
+                "occurrences": occurrences,
             }
-
             formatted_notes, res_dict = analyze_bug_expertly(
-
                 agent=self.vision,
-
                 model=analysis_model,
-
                 bug=bug_dict,
-
                 crash_image_path=crash_image_path,
-
                 app_key=self.active_app
-
             )
 
             # 智能推断责任人 (前端: 陈贻雄 / 后端: 梅本霞)
-
             resolved_assignee = None
-
             try:
-
                 from utils.zentao_sync import resolve_bug_assignee
-
                 temp_bug = {
-
                     "title": title,
-
                     "step": step_prompt,
-
                     "actual": actual_result,
-
                     "analysis_notes": formatted_notes,
-
                 }
-
                 resolved_assignee, _, _ = resolve_bug_assignee(temp_bug)
-
             except Exception:
-
                 pass
 
             # 回填更新本地单次运行 json 与全局缺陷库（线程互斥保护，防止写入冲突）
-
             with self._lock:
-
                 if detail_path.exists():
-
                     try:
-
                         with open(detail_path, "r", encoding="utf-8") as f:
-
                             d_json = json.load(f)
-
-                        # 仅在尚未有人工写入备注时才回填
-
-                        if not d_json.get("analysis_notes"):
-
+                        existing_d_notes = d_json.get("analysis_notes", "")
+                        if "已关闭误报" in existing_d_notes:
+                            d_json["analysis_notes"] = f"{existing_d_notes}\n\n---\n**【第 {occurrences} 次复现最新 AI 初诊】**\n{formatted_notes}"
+                        else:
                             d_json["analysis_notes"] = formatted_notes
-
                         if resolved_assignee and d_json.get("assignee") in ("Unassigned", "", None):
-
                             d_json["assignee"] = resolved_assignee
-
                         with open(detail_path, "w", encoding="utf-8") as f:
-
                             json.dump(d_json, f, ensure_ascii=False, indent=2)
-
                     except Exception as fe:
-
                         logger.warning(f"回填运行目录 Bug 文件失败 ({detail_path.name}): {fe}")
 
+                final_notes = formatted_notes
                 for b in self.global_bugs:
-
                     if b.get("id") == bug_id:
-
-                        if not b.get("analysis_notes"):
-
+                        existing_notes = b.get("analysis_notes", "")
+                        if "已关闭误报" in existing_notes or b.get("status") in ("已关闭", "误报"):
+                            final_notes = f"{existing_notes}\n\n---\n**【第 {occurrences} 次复现最新 AI 初诊】**\n{formatted_notes}"
+                            b["analysis_notes"] = final_notes
+                        else:
                             b["analysis_notes"] = formatted_notes
-
+                            final_notes = formatted_notes
                         if resolved_assignee and b.get("assignee") in ("Unassigned", "", None):
-
                             b["assignee"] = resolved_assignee
-
                         break
 
                 with open(self.global_json, "w", encoding="utf-8") as f:
-
                     json.dump(self.global_bugs, f, ensure_ascii=False, indent=2)
 
             # 同步更新数据库初诊与责任人
@@ -699,17 +659,15 @@ class BugReporter:
                 from utils.bug_db_sync import save_bug_to_db
                 save_bug_to_db({
                     "id": bug_id,
-                    "analysis_notes": formatted_notes,
+                    "analysis_notes": final_notes,
                     "assignee": resolved_assignee
                 })
             except Exception as dbe:
                 logger.debug(f"更新初诊信息到数据库跳过: {dbe}")
 
             assignee_str = f"，责任人已指派至: 【{resolved_assignee}】" if resolved_assignee else ""
-
-            logger.info(f"✨ [AI 智能初诊完成] 已成功为新缺陷 [{bug_id}] 回填排查思路{assignee_str}！")
+            logger.info(f"✨ [AI 智能初诊完成] 已成功为缺陷 [{bug_id}] 回填最新排查思路{assignee_str}！")
 
         except Exception as e:
-
             logger.warning(f"⚠️ [AI 智能初诊跳过] 后台异步分析缺陷 [{bug_id}] 发生异常 (不影响测试运行): {e}")
 

@@ -1838,13 +1838,25 @@
 
               </div>
 
-              <div class="form-group" v-if="selectedBug.analysis_notes">
+              <div class="form-group">
 
-                <label class="form-label">AI 智能初诊与排查指引</label>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                  <label class="form-label" style="margin: 0;">🤖 AI 智能初诊与排查指引</label>
+                  <button class="btn btn-secondary"
+                    style="padding: 3px 10px; font-size: 11px; color: #38bdf8; border-color: rgba(56, 189, 248, 0.4); display: flex; align-items: center; gap: 4px;"
+                    :disabled="reanalyzingBugId === selectedBug.id"
+                    @click="reanalyzeBug(selectedBug)">
+                    <span v-if="reanalyzingBugId === selectedBug.id">⏳ AI 诊断中...</span>
+                    <span v-else>🔄 重新AI深度研判</span>
+                  </button>
+                </div>
 
-                <div
+                <div v-if="selectedBug.analysis_notes"
                   style="background: #111827; padding: 12px; border-radius: 6px; font-size: 13px; line-height: 1.6; white-space: pre-wrap;">
                   {{ selectedBug.analysis_notes }}</div>
+                <div v-else
+                  style="background: #111827; padding: 12px; border-radius: 6px; font-size: 12px; color: var(--text-muted);">
+                  暂无 AI 归因研判，可点击上方“重新AI深度研判”按钮在线生成。</div>
 
               </div>
 

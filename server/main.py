@@ -1869,6 +1869,88 @@ def sync_bug_to_zentao(
         raise HTTPException(status_code=500, detail=f"提单失败: {e}")
 
 
+@app.post(
+    "/api/bugs/{bug_id}/reanalyze",
+    response_model=BugResponse,
+    tags=["3. 缺陷治理与禅道同步"],
+    summary="对指定缺陷在线触发 AI 重新诊断与根因分析",
+    description="在 Web 控制台按需为指定缺陷重新调用大模型进行深度研判，基于最新案发现场提取底层机理、修复补丁并更新责任人。",
+)
+def reanalyze_bug(
+    bug_id: str = FastPath(
+        ..., description="待重新诊断的缺陷全局唯一编号，如 BUG-20261101-002"
+    ),
+    db: Session = Depends(get_db),
+):
+    """
+    在线重新执行大模型研发级深度根因诊断并热刷新缺陷初诊备注与责任人。
+    """
+    bug = db.query(BugRecord).filter(BugRecord.id == bug_id).first()
+    if not bug:
+        raise HTTPException(
+            status_code=404, detail=f"未找到编号为 '{bug_id}' 的缺陷记录"
+        )
+
+    from core.vision_agent import VisionAgent
+    from utils.bug_analysis_expert import analyze_bug_expertly
+    from utils.zentao_sync import resolve_bug_assignee
+    from utils.bug_updater import update_bug_record
+    from config.settings import settings
+
+    try:
+        agent = VisionAgent()
+        analysis_model = getattr(settings, "llm_bug_analysis_model", None) or agent.model
+        bug_dict = {
+            "id": bug.id,
+            "title": bug.title,
+            "step": bug.step or "无具体交互步骤",
+            "actual": bug.actual_error or "无具体报错堆栈",
+            "ui_path": bug.ui_path or "未知",
+            "app": bug.app_name or "zhaiwan",
+            "screenshot": bug.screenshot_path,
+            "occurrences": bug.occurrences or 1,
+        }
+        formatted_notes, res_dict = analyze_bug_expertly(
+            agent=agent,
+            model=analysis_model,
+            bug=bug_dict,
+            crash_image_path=bug.screenshot_path,
+            app_key=bug.app_name
+        )
+
+        resolved_assignee = None
+        try:
+            temp_bug = {
+                "title": bug.title,
+                "step": bug.step,
+                "actual": bug.actual_error,
+                "analysis_notes": formatted_notes,
+            }
+            resolved_assignee, _, _ = resolve_bug_assignee(temp_bug)
+        except Exception:
+            pass
+
+        update_payload = {"bug_id": bug_id, "analysis_notes": formatted_notes}
+        bug.analysis_notes = formatted_notes
+        if resolved_assignee and bug.assignee in ("Unassigned", "", None):
+            bug.assignee = resolved_assignee
+            update_payload["assignee"] = resolved_assignee
+
+        db.commit()
+        db.refresh(bug)
+
+        # 增量同步至全局 JSON 与运行报告
+        try:
+            update_bug_record(update_payload)
+        except Exception as ue:
+            logger.warning(f"重新分析同步写回文件失败 (数据库已保全): {ue}")
+
+        return bug
+    except Exception as e:
+        logger.error(f"AI 重新诊断缺陷 [{bug_id}] 异常: {e}")
+        raise HTTPException(status_code=500, detail=f"AI 重新诊断失败: {str(e)}")
+
+
 # =============================================================================
 
 # 4. 性能监控数据 API (Performance Metrics & WebRTC / UE Probes)
