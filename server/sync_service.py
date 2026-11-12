@@ -371,6 +371,22 @@ def sync_all_bugs(db: Session) -> int:
                     exist.target_element = rb.get("target_element")
                     changed = True
 
+                if rb.get("ui_path") and exist.ui_path != rb.get("ui_path"):
+                    exist.ui_path = rb.get("ui_path")
+                    changed = True
+
+                if rb.get("step") and exist.step != rb.get("step"):
+                    exist.step = rb.get("step")
+                    changed = True
+
+                if actual_text and exist.actual_error != actual_text:
+                    exist.actual_error = actual_text
+                    changed = True
+
+                if screenshot_val and exist.screenshot_path != screenshot_val:
+                    exist.screenshot_path = screenshot_val
+                    changed = True
+
                 if rb.get("status") and exist.status != rb.get("status"):
                     exist.status = rb.get("status")
                     changed = True

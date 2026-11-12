@@ -181,7 +181,7 @@ def save_bug_to_db(bug_dict: Dict[str, Any]) -> Optional[str]:
             record.last_seen = now_dt
             if run_id:
                 record.run_id = run_id
-            if task_id and not record.task_id:
+            if task_id:
                 record.task_id = task_id
             if title:
                 record.title = title
@@ -191,15 +191,19 @@ def save_bug_to_db(bug_dict: Dict[str, Any]) -> Optional[str]:
                 record.assignee = assignee
             if zentao_id:
                 record.zentao_id = zentao_id
-            if ui_path and not record.ui_path:
+
+            # 核心升级：每次新复现，强制更新为主视图最新案发现场！
+            if ui_path:
                 record.ui_path = ui_path
-            if target_element and not record.target_element:
+            if target_element:
                 record.target_element = target_element
-            if step_val and not record.step:
+            if step_val:
                 record.step = step_val
-            if action_type_val and not record.action_type:
+            if action_type_val:
                 record.action_type = action_type_val
-            if tags_str and not record.tags:
+            if actual_error:
+                record.actual_error = actual_error
+            if tags_str:
                 record.tags = tags_str
             if analysis_notes:
                 record.analysis_notes = analysis_notes
@@ -207,9 +211,25 @@ def save_bug_to_db(bug_dict: Dict[str, Any]) -> Optional[str]:
                 record.remark = remark
             if screenshot:
                 record.screenshot_path = screenshot
-            if b64_img and not record.screenshot_base64:
+            if b64_img:
                 record.screenshot_base64 = b64_img
-            logger.info(f"🔄 [DB-First] 历史缺陷 [{b_id}] 已在数据库中更新 (频次: {record.occurrences})")
+
+            # 增量合并 recurrence_history 到 extra_data
+            try:
+                old_extra = json.loads(record.extra_data) if record.extra_data else {}
+            except Exception:
+                old_extra = {}
+            new_history = bug_dict.get("recurrence_history", [])
+            if new_history:
+                old_extra["recurrence_history"] = new_history
+            if bug_dict.get("first_step") and "first_step" not in old_extra:
+                old_extra["first_step"] = bug_dict.get("first_step")
+            if bug_dict.get("details"):
+                old_extra["details"] = bug_dict.get("details")
+            old_extra["last_update"] = now_dt.strftime("%Y-%m-%d %H:%M:%S")
+            record.extra_data = json.dumps(old_extra, ensure_ascii=False)
+
+            logger.info(f"🔄 [DB-First] 历史缺陷 [{b_id}] 已在数据库中更新为最新案发现场 (最新步骤: {step_val}, 累计复现: {record.occurrences})")
 
         db.commit()
         return b_id

@@ -129,6 +129,18 @@ class BugRecord(Base):
 
     task = relationship("TaskRun", back_populates="bugs")
 
+    @property
+    def recurrence_history(self):
+        """解析 extra_data 中存储的历史复现轨迹时间轴"""
+        if self.extra_data:
+            try:
+                import json
+                data = json.loads(self.extra_data)
+                return data.get("recurrence_history", [])
+            except Exception:
+                return []
+        return []
+
 
 class PerformanceMetric(Base):
     """全景性能时序监控数据表 (Chrome/Electron + DOM/WebRTC + UE5 伴生双核 + GPU)"""

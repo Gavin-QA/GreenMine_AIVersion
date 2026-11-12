@@ -223,28 +223,44 @@ class BugReporter:
             bug_record["run_id"] = run_id
 
             if dup_id:
+                # 1. 首发元数据冷冻：若尚未记录首次触发信息，保留首发静态画像
+                if "first_step" not in bug_record:
+                    bug_record["first_step"] = bug_record.get("step") or step_prompt
+                    bug_record["first_ui_path"] = bug_record.get("ui_path") or ui_path
+                    bug_record["first_target_element"] = bug_record.get("target_element") or target_element
+                    bug_record["first_screenshot"] = bug_record.get("screenshot")
+                    bug_record["first_run_id"] = bug_record.get("first_run_id") or bug_record.get("run_id")
 
-                # 查重合并时：保持首次触发该 Bug 的核心元数据（首发动作与首发步数）不变，仅记录最新复现步数
+                # 2. 时序时间轴追加 (保留最近 10 次复现踪迹)
+                now_time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                history_item = {
+                    "run_id": run_id,
+                    "timestamp": now_time_str,
+                    "step": step_prompt,
+                    "ui_path": ui_path,
+                    "target_element": target_element,
+                    "action_type": action_type,
+                    "actual_error": actual_result,
+                    "global_step": global_step,
+                    "screenshot": str(new_img_path).replace('\\', '/') if new_img_path else None
+                }
+                rec_history = bug_record.get("recurrence_history", [])
+                if not isinstance(rec_history, list):
+                    rec_history = []
+                rec_history.append(history_item)
+                bug_record["recurrence_history"] = rec_history[-10:]
 
+                # 3. 核心升级：每次新复现，彻底热刷新主视图为最新案发现场！
+                bug_record["step"] = step_prompt
+                bug_record["actual"] = actual_result
+                if ui_path: bug_record["ui_path"] = ui_path
+                if target_element: bug_record["target_element"] = target_element
+                if action_type: bug_record["action_type"] = action_type
                 if global_step:
-
                     bug_record["last_recurrence_step"] = global_step
-
-                if "global_step" not in bug_record or not bug_record["global_step"]:
-
                     bug_record["global_step"] = global_step
-
-                if "target_element" not in bug_record or not bug_record["target_element"]:
-
-                    bug_record["target_element"] = target_element
-
-                if "action_type" not in bug_record or not bug_record["action_type"]:
-
-                    bug_record["action_type"] = action_type
-
-                if "ui_path" not in bug_record or not bug_record["ui_path"]:
-
-                    bug_record["ui_path"] = ui_path
+                if new_img_path:
+                    bug_record["screenshot"] = str(new_img_path).replace('\\', '/')
 
             else:
 
@@ -340,7 +356,11 @@ class BugReporter:
                 "occurrences": bug_record.get("occurrences", 1) if bug_record else 1,
                 "details": bug_detail.get("details"),
                 "global_step": global_step,
-                "date": now_date
+                "date": now_date,
+                "recurrence_history": bug_record.get("recurrence_history", []) if bug_record else [],
+                "first_step": bug_record.get("first_step") if bug_record else None,
+                "first_ui_path": bug_record.get("first_ui_path") if bug_record else None,
+                "first_screenshot": bug_record.get("first_screenshot") if bug_record else None,
             }
             save_bug_to_db(db_payload)
         except Exception as dbe:
