@@ -79,3 +79,9 @@ models/
 
 # 历史拓扑瞬时快照目录 (仅保留 artifacts/topology/global_page_tree_*.json 作为权威全景树)
 /artifacts/topology/snapshots/
+
+# 视频录像与媒体文件（体积庞大，禁止提交至代码仓库）
+*.mp4
+*.avi
+*.mov
+*.mkv
