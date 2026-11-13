@@ -344,6 +344,7 @@ def launch_preset_task(
         wait_timeout=p_wait_timeout,
         ignore_env_check=p_ignore_env,
         explore_context=f"docs/explore_rules_{p_app}.md",
+        trigger_type="manual",
         start_time=now,
     )
 

@@ -106,8 +106,16 @@ const app = createApp({
       name: '',
       app_name: 'zhaiwan',
       preset_id: '',
-      priority: 3,
-      scheduledTime: ''
+      priority: 2,
+      flow_type: 'local',
+      startDate: '',
+      endDate: '',
+      executionTime: '18:35:00',
+      cron_mode: 'daily',
+      dailyInterval: 1,
+      weeklyDays: [1, 2, 3, 4, 5],
+      monthlyDay: 1,
+      is_active: 1
     });
 
     const filteredSchedulePresets = computed(() => {
@@ -1116,43 +1124,49 @@ const app = createApp({
       return { text: `P${p}`, color: '#00d2ff', bg: 'rgba(0, 210, 255, 0.15)' };
     }
 
-    function setQuickSchedule(type) {
-      if (type === 'immediate') {
-        scheduleForm.scheduledTime = '';
-        return;
-      }
-      const now = new Date();
-      let target = new Date();
-      if (type === 'tonight_20') {
-        target.setHours(18, 25, 0, 0);
-        if (target <= now) target.setDate(target.getDate() + 1);
-      } else if (type === 'tonight_22') {
-        target.setHours(18, 35, 0, 0);
-        if (target <= now) target.setDate(target.getDate() + 1);
-      } else if (type === 'tomorrow_02') {
-        target.setDate(target.getDate() + 1);
-        target.setHours(2, 0, 0, 0);
-      }
-      const Y = target.getFullYear();
-      const M = String(target.getMonth() + 1).padStart(2, '0');
-      const D = String(target.getDate()).padStart(2, '0');
-      const h = String(target.getHours()).padStart(2, '0');
-      const m = String(target.getMinutes()).padStart(2, '0');
-      scheduleForm.scheduledTime = `${Y}-${M}-${D}T${h}:${m}`;
+    function formatTaskStatus(status) {
+      const map = {
+        running: '🚀 执行中',
+        completed: '✅ 已完成',
+        failed: '❌ 执行失败',
+        stopped: '🛑 已手动终止',
+        pending: '⏳ 排队等待',
+        canceled: '🛑 已取消'
+      };
+      return map[status] || status || '-';
     }
 
-    function isQuickSelected(type) {
-      if (!scheduleForm.scheduledTime) return type === 'immediate';
-      const parts = scheduleForm.scheduledTime.split('T');
-      if (parts.length < 2) return false;
-      const timePart = parts[1].slice(0, 5);
-      if (type === 'tonight_20' && timePart === '18:25') return true;
-      if (type === 'tonight_22' && timePart === '18:35') return true;
-      if (type === 'tomorrow_02' && timePart === '02:00') return true;
-      return false;
+    function formatTaskMode(mode) {
+      const map = {
+        explore: '自主探索',
+        smoke: '极速冒烟',
+        case: '用例回归',
+        all: '全域巡检'
+      };
+      return map[mode] || mode || '-';
+    }
+
+    function formatWeekdays(spec) {
+      if (!spec) return '一';
+      const dayNames = { 1: '一', 2: '二', 3: '三', 4: '四', 5: '五', 6: '六', 7: '日' };
+      return String(spec).split(',').map(x => dayNames[x.trim()] || x.trim()).join('、');
+    }
+
+    function setCurrentExecutionTime() {
+      const now = new Date();
+      const h = String(now.getHours()).padStart(2, '0');
+      const m = String(now.getMinutes()).padStart(2, '0');
+      const s = String(now.getSeconds()).padStart(2, '0');
+      scheduleForm.executionTime = `${h}:${m}:${s}`;
     }
 
     function openCreateScheduleModal(preset = null) {
+      const today = new Date();
+      const Y = today.getFullYear();
+      const M = String(today.getMonth() + 1).padStart(2, '0');
+      const D = String(today.getDate()).padStart(2, '0');
+      const todayStr = `${Y}-${M}-${D}`;
+
       if (preset && preset.app_name) {
         scheduleForm.app_name = preset.app_name;
         scheduleForm.preset_id = preset.id;
@@ -1168,8 +1182,16 @@ const app = createApp({
           scheduleForm.name = `【${getAppName(scheduleForm.app_name)}】定时巡检计划`;
         }
       }
-      scheduleForm.priority = 3;
-      scheduleForm.scheduledTime = '';
+      scheduleForm.priority = 2; // 默认高优先级
+      scheduleForm.flow_type = 'local';
+      scheduleForm.startDate = todayStr;
+      scheduleForm.endDate = todayStr;
+      scheduleForm.executionTime = '18:35:00';
+      scheduleForm.cron_mode = 'daily';
+      scheduleForm.dailyInterval = 1;
+      scheduleForm.weeklyDays = [1, 2, 3, 4, 5];
+      scheduleForm.monthlyDay = 1;
+      scheduleForm.is_active = 1;
       showEnqueueModal.value = true;
     }
 
@@ -1198,12 +1220,76 @@ const app = createApp({
       }
       isSubmittingEnqueue.value = true;
       try {
-        let scheduledTimeStr = null;
-        if (scheduleForm.scheduledTime) {
-          scheduledTimeStr = scheduleForm.scheduledTime.replace('T', ' ');
-          if (scheduledTimeStr.length === 16) {
-            scheduledTimeStr += ':00';
+        const timeParts = (scheduleForm.executionTime || '18:35:00').split(':');
+        const h = parseInt(timeParts[0] || '18', 10);
+        const m = parseInt(timeParts[1] || '35', 10);
+        const s = parseInt(timeParts[2] || '0', 10);
+
+        let scheduledAtStr = null;
+        let cronSpecStr = '';
+
+        if (scheduleForm.cron_mode === 'daily') {
+          cronSpecStr = String(scheduleForm.dailyInterval || 1);
+          const baseDate = scheduleForm.startDate || new Date().toISOString().split('T')[0];
+          let target = new Date(`${baseDate}T00:00:00`);
+          target.setHours(h, m, s, 0);
+          const now = new Date();
+          while (target <= now) {
+            target.setDate(target.getDate() + parseInt(cronSpecStr, 10));
           }
+          const tY = target.getFullYear();
+          const tM = String(target.getMonth() + 1).padStart(2, '0');
+          const tD = String(target.getDate()).padStart(2, '0');
+          const th = String(target.getHours()).padStart(2, '0');
+          const tm = String(target.getMinutes()).padStart(2, '0');
+          const ts = String(target.getSeconds()).padStart(2, '0');
+          scheduledAtStr = `${tY}-${tM}-${tD} ${th}:${tm}:${ts}`;
+        } else if (scheduleForm.cron_mode === 'weekly') {
+          const days = (scheduleForm.weeklyDays || [1]).slice().sort((a,b) => a-b);
+          cronSpecStr = days.join(',');
+          const now = new Date();
+          let nextTarget = null;
+          for (let d = 0; d < 8; d++) {
+            const cand = new Date();
+            cand.setDate(now.getDate() + d);
+            cand.setHours(h, m, s, 0);
+            const isoDay = cand.getDay() === 0 ? 7 : cand.getDay();
+            if (days.includes(isoDay) && cand > now) {
+              nextTarget = cand;
+              break;
+            }
+          }
+          if (!nextTarget) {
+            nextTarget = new Date();
+            nextTarget.setDate(now.getDate() + 7);
+            nextTarget.setHours(h, m, s, 0);
+          }
+          const tY = nextTarget.getFullYear();
+          const tM = String(nextTarget.getMonth() + 1).padStart(2, '0');
+          const tD = String(nextTarget.getDate()).padStart(2, '0');
+          const th = String(nextTarget.getHours()).padStart(2, '0');
+          const tm = String(nextTarget.getMinutes()).padStart(2, '0');
+          const ts = String(nextTarget.getSeconds()).padStart(2, '0');
+          scheduledAtStr = `${tY}-${tM}-${tD} ${th}:${tm}:${ts}`;
+        } else if (scheduleForm.cron_mode === 'monthly') {
+          cronSpecStr = String(scheduleForm.monthlyDay || 1);
+          const dayNum = parseInt(cronSpecStr, 10);
+          const now = new Date();
+          let target = new Date(now.getFullYear(), now.getMonth(), dayNum, h, m, s, 0);
+          if (target <= now) {
+            target = new Date(now.getFullYear(), now.getMonth() + 1, dayNum, h, m, s, 0);
+          }
+          const tY = target.getFullYear();
+          const tM = String(target.getMonth() + 1).padStart(2, '0');
+          const tD = String(target.getDate()).padStart(2, '0');
+          const th = String(target.getHours()).padStart(2, '0');
+          const tm = String(target.getMinutes()).padStart(2, '0');
+          const ts = String(target.getSeconds()).padStart(2, '0');
+          scheduledAtStr = `${tY}-${tM}-${tD} ${th}:${tm}:${ts}`;
+        } else {
+          // 单次执行
+          const datePart = scheduleForm.startDate || new Date().toISOString().split('T')[0];
+          scheduledAtStr = `${datePart} ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
         }
 
         const payload = {
@@ -1211,7 +1297,11 @@ const app = createApp({
           app_name: scheduleForm.app_name,
           preset_id: scheduleForm.preset_id,
           priority: scheduleForm.priority,
-          scheduled_at: scheduledTimeStr
+          scheduled_at: scheduledAtStr,
+          cron_mode: scheduleForm.cron_mode,
+          cron_spec: cronSpecStr,
+          time_of_day: scheduleForm.executionTime,
+          is_active: scheduleForm.is_active ? 1 : 0
         };
 
         const res = await fetch(`${apiBase}/api/tasks/queue/schedule`, {
@@ -1223,8 +1313,8 @@ const app = createApp({
         if (res.ok) {
           showEnqueueModal.value = false;
           showToast(
-            '调度计划已创建',
-            `计划【<strong>${scheduleForm.name}</strong>】已成功加入执行队列！调度器将自动按序单机独占拉起。`,
+            '调度计划已保存',
+            `计划【<strong>${scheduleForm.name}</strong>】已成功加入执行队列！预约时间：${scheduledAtStr}`,
             'success',
             5000
           );
@@ -2696,8 +2786,10 @@ const app = createApp({
       confirmCreateSchedulePlan,
       removeFromQueue,
       formatPriorityLabel,
-      setQuickSchedule,
-      isQuickSelected
+      formatTaskStatus,
+      formatTaskMode,
+      formatWeekdays,
+      setCurrentExecutionTime
 
     };
 

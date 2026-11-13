@@ -72,6 +72,7 @@ def create_task(payload: TaskCreate, db: Session = Depends(get_db)):
         wait_ready=payload.wait_ready,
         wait_timeout=payload.wait_timeout,
         ignore_env_check=payload.ignore_env_check,
+        trigger_type="manual",
         start_time=now,
     )
 

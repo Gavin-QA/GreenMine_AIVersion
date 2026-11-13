@@ -63,6 +63,7 @@ class TaskRun(Base):
     error_message = Column(Text, nullable=True)
     
     # 统计汇总指标
+    trigger_type = Column(String(32), default="manual", index=True) # manual(手动创建) / scheduled(计划下发)
     start_time = Column(DateTime, default=datetime.datetime.utcnow)
     end_time = Column(DateTime, nullable=True)
     duration = Column(String(64), nullable=True)
@@ -269,6 +270,10 @@ class TaskQueueItem(Base):
     priority = Column(Integer, default=100) # 排序权重，数值越小越靠前
     status = Column(String(32), default="pending", index=True) # pending(排队中), running(执行中), completed(已完成), failed(失败), canceled(已取消)
     scheduled_at = Column(DateTime, nullable=True) # 预约定时触发时间 (为空则入队后按序立即执行)
+    cron_mode = Column(String(32), default="once") # 周期模式: once(单次), daily(天), weekly(每周), monthly(每月)
+    cron_spec = Column(String(64), default="") # 周期规则 (如 "1" 每1天, "1,3,5" 周一三五, "15" 每月15日)
+    time_of_day = Column(String(32), default="") # 每日执行时刻 (如 "18:35:00")
+    is_active = Column(Integer, default=1) # 启用状态 (1=启用, 0=停用)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     started_at = Column(DateTime, nullable=True)
     finished_at = Column(DateTime, nullable=True)

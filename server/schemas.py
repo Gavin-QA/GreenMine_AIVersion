@@ -130,6 +130,7 @@ class TaskResponse(BaseModel):
     wait_timeout: Optional[float] = Field(default=60.0, description="视觉就绪超时时间")
     ignore_env_check: bool = Field(default=False, description="是否跳过环境前置校验")
     pid: Optional[int] = Field(default=None, description="后台执行子进程物理 PID")
+    trigger_type: Optional[str] = Field(default="manual", description="触发来源: manual(手动创建) / scheduled(计划下发)")
     start_time: Optional[datetime.datetime] = Field(default=None, description="任务启动时间戳 (UTC)")
     end_time: Optional[datetime.datetime] = Field(default=None, description="任务结束时间戳 (UTC)")
     duration: Optional[str] = Field(default=None, description="实际运行时长 (如 '3h 25m 5s')")
@@ -407,6 +408,10 @@ class SchedulePlanCreate(BaseModel):
     preset_id: str = Field(description="关联的预设巡检任务模板 ID (如 preset_user_xxx)")
     priority: int = Field(default=3, description="队列排序优先级 (1-5，数值越小越优先执行)")
     scheduled_at: Optional[datetime.datetime] = Field(default=None, description="预约定时触发时间 (留空则立即排队)")
+    cron_mode: Optional[str] = Field(default="once", description="巡检周期模式: once(单次)/daily(天)/weekly(每周)/monthly(每月)")
+    cron_spec: Optional[str] = Field(default="", description="周期规则说明")
+    time_of_day: Optional[str] = Field(default="", description="每日执行时间点如 18:35:00")
+    is_active: Optional[int] = Field(default=1, description="是否启用 (1=启用, 0=停用)")
 
 
 class QueueItemCreate(BaseModel):
@@ -414,6 +419,10 @@ class QueueItemCreate(BaseModel):
     task_id: str = Field(description="目标关联的巡检任务 ID")
     priority: int = Field(default=100, description="队列排序优先级 (数值越小越优先执行)")
     scheduled_at: Optional[datetime.datetime] = Field(default=None, description="预约定时触发时间 (UTC ISO8601，留空则立即入队顺序执行)")
+    cron_mode: Optional[str] = Field(default="once", description="巡检周期模式")
+    cron_spec: Optional[str] = Field(default="", description="周期规则")
+    time_of_day: Optional[str] = Field(default="", description="执行时间点")
+    is_active: Optional[int] = Field(default=1, description="是否启用")
 
 
 class QueueItemResponse(BaseModel):
@@ -428,6 +437,10 @@ class QueueItemResponse(BaseModel):
     priority: int = Field(default=100, description="优先级")
     status: str = Field(description="队列状态：pending/running/completed/failed/canceled")
     scheduled_at: Optional[datetime.datetime] = Field(default=None, description="预约定时时间")
+    cron_mode: Optional[str] = Field(default="once", description="巡检周期模式: once/daily/weekly/monthly")
+    cron_spec: Optional[str] = Field(default="", description="周期规则")
+    time_of_day: Optional[str] = Field(default="", description="执行时间点")
+    is_active: Optional[int] = Field(default=1, description="是否启用")
     created_at: Optional[datetime.datetime] = Field(default=None, description="创建入队时间")
     started_at: Optional[datetime.datetime] = Field(default=None, description="开始执行时间")
     finished_at: Optional[datetime.datetime] = Field(default=None, description="结束时间")

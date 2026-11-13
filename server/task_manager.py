@@ -537,8 +537,110 @@ class TaskManager:
                     q_item.error_message = error_message
                 db.commit()
                 logger.info(f"🤖 [QueueExecutor] 队列项 [{q_item.id}] 状态已流转为: {q_item.status}")
+
+                # 周期巡检自动推演并排期下一次任务 (天 / 周 / 月)
+                cron_mode = getattr(q_item, "cron_mode", "once")
+                is_active = getattr(q_item, "is_active", 1)
+                if cron_mode and cron_mode in ("daily", "weekly", "monthly") and is_active:
+                    self._schedule_next_recurring_task(db, q_item)
         except Exception as e:
             logger.debug(f"更新队列项状态异常: {e}")
+
+    def _schedule_next_recurring_task(self, db, prev_q: TaskQueueItem):
+        """周期巡检计划自动计算下次执行时刻并生成新一轮排队记录"""
+        try:
+            import uuid
+            prev_task = db.query(TaskRun).filter(TaskRun.id == prev_q.task_id).first()
+            if not prev_task:
+                return
+
+            now = datetime.datetime.now()
+            base_time = prev_q.scheduled_at or now
+
+            # 解析 time_of_day (如 "18:35:00")
+            h, m, s = base_time.hour, base_time.minute, base_time.second
+            if prev_q.time_of_day:
+                parts = prev_q.time_of_day.split(":")
+                if len(parts) >= 1: h = int(parts[0])
+                if len(parts) >= 2: m = int(parts[1])
+                if len(parts) >= 3: s = int(parts[2])
+
+            next_dt = None
+            if prev_q.cron_mode == "daily":
+                interval = int(prev_q.cron_spec) if (prev_q.cron_spec and prev_q.cron_spec.isdigit()) else 1
+                next_dt = (base_time + datetime.timedelta(days=interval)).replace(hour=h, minute=m, second=s, microsecond=0)
+                while next_dt <= now:
+                    next_dt += datetime.timedelta(days=interval)
+            elif prev_q.cron_mode == "weekly":
+                raw_days = [int(x.strip()) for x in (prev_q.cron_spec or "1").split(",") if x.strip().isdigit()]
+                if not raw_days:
+                    raw_days = [1]
+                for delta in range(1, 8):
+                    cand = (now + datetime.timedelta(days=delta)).replace(hour=h, minute=m, second=s, microsecond=0)
+                    if cand.isoweekday() in raw_days and cand > now:
+                        next_dt = cand
+                        break
+                if not next_dt:
+                    next_dt = (now + datetime.timedelta(days=7)).replace(hour=h, minute=m, second=s, microsecond=0)
+            elif prev_q.cron_mode == "monthly":
+                day_of_month = int(prev_q.cron_spec) if (prev_q.cron_spec and prev_q.cron_spec.isdigit()) else 1
+                year = now.year
+                month = now.month + 1
+                if month > 12:
+                    year += 1
+                    month = 1
+                import calendar
+                max_d = calendar.monthrange(year, month)[1]
+                next_dt = datetime.datetime(year, month, min(day_of_month, max_d), h, m, s)
+
+            if not next_dt:
+                return
+
+            new_task_id = f"task_{now.strftime('%Y%m%d_%H%M%S')}"
+            new_task = TaskRun(
+                id=new_task_id,
+                name=prev_task.name,
+                app_name=prev_task.app_name,
+                mode=prev_task.mode,
+                status="pending",
+                macro_objective=prev_task.macro_objective,
+                max_steps=prev_task.max_steps,
+                max_times=prev_task.max_times,
+                reset_memory=prev_task.reset_memory,
+                ignore_errors=prev_task.ignore_errors,
+                case_path=prev_task.case_path,
+                tour=prev_task.tour,
+                resume_from=prev_task.resume_from,
+                reexplore=prev_task.reexplore,
+                start_delay=prev_task.start_delay,
+                wait_ready=prev_task.wait_ready,
+                wait_timeout=prev_task.wait_timeout,
+                ignore_env_check=prev_task.ignore_env_check,
+                explore_context=prev_task.explore_context,
+                trigger_type="scheduled",
+                start_time=now,
+            )
+            db.add(new_task)
+            db.flush()
+
+            new_queue_id = f"queue_{now.strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
+            new_q = TaskQueueItem(
+                id=new_queue_id,
+                task_id=new_task.id,
+                priority=prev_q.priority,
+                status="pending",
+                scheduled_at=next_dt,
+                cron_mode=prev_q.cron_mode,
+                cron_spec=prev_q.cron_spec,
+                time_of_day=prev_q.time_of_day,
+                is_active=prev_q.is_active,
+                created_at=now,
+            )
+            db.add(new_q)
+            db.commit()
+            logger.info(f"🔄 [RecurringSchedule] 已自动为周期计划排期下一次巡检: {next_dt.strftime('%Y-%m-%d %H:%M:%S')} (Task: {new_task.id})")
+        except Exception as e:
+            logger.error(f"周期计划自动推演下次任务失败: {e}")
 
     def _queue_worker_loop(self):
         """执行器调度主循环：检查排队与定时任务，串行调度执行"""

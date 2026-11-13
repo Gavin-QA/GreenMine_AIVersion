@@ -50,20 +50,25 @@ def get_task_queue(
     result = []
     orphaned_items = []
     for item in items:
-        if not item.task:
+        task = item.task or db.query(TaskRun).filter(TaskRun.id == item.task_id).first()
+        if not task:
             orphaned_items.append(item)
             continue
         resp_item = {
             "id": item.id,
             "task_id": item.task_id,
-            "task_name": item.task.name,
-            "app_name": item.task.app_name,
-            "mode": item.task.mode,
-            "max_steps": item.task.max_steps,
-            "max_times": item.task.max_times,
+            "task_name": task.name,
+            "app_name": task.app_name,
+            "mode": task.mode,
+            "max_steps": task.max_steps,
+            "max_times": task.max_times,
             "priority": item.priority,
             "status": item.status,
             "scheduled_at": item.scheduled_at,
+            "cron_mode": getattr(item, "cron_mode", "once") or "once",
+            "cron_spec": getattr(item, "cron_spec", "") or "",
+            "time_of_day": getattr(item, "time_of_day", "") or "",
+            "is_active": getattr(item, "is_active", 1),
             "created_at": item.created_at,
             "started_at": item.started_at,
             "finished_at": item.finished_at,
@@ -148,6 +153,7 @@ def create_schedule_plan(payload: SchedulePlanCreate, db: Session = Depends(get_
         wait_ready=preset_dict.get("wait_ready"),
         wait_timeout=preset_dict.get("wait_timeout", 60.0),
         ignore_env_check=preset_dict.get("ignore_env_check", False),
+        trigger_type="scheduled",
     )
     db.add(new_task)
     db.flush()
@@ -160,6 +166,10 @@ def create_schedule_plan(payload: SchedulePlanCreate, db: Session = Depends(get_
         priority=payload.priority,
         status="pending",
         scheduled_at=payload.scheduled_at,
+        cron_mode=payload.cron_mode or "once",
+        cron_spec=payload.cron_spec or "",
+        time_of_day=payload.time_of_day or "",
+        is_active=payload.is_active if payload.is_active is not None else 1,
         created_at=now,
     )
     db.add(q_item)
@@ -177,6 +187,10 @@ def create_schedule_plan(payload: SchedulePlanCreate, db: Session = Depends(get_
         "priority": q_item.priority,
         "status": q_item.status,
         "scheduled_at": q_item.scheduled_at,
+        "cron_mode": q_item.cron_mode or "once",
+        "cron_spec": q_item.cron_spec or "",
+        "time_of_day": q_item.time_of_day or "",
+        "is_active": q_item.is_active,
         "created_at": q_item.created_at,
         "started_at": q_item.started_at,
         "finished_at": q_item.finished_at,

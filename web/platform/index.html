@@ -872,9 +872,9 @@
                 <table class="data-table">
 
                   <thead>
-
                     <tr>
                       <th>任务 ID / 名称</th>
+                      <th>触发方式</th>
                       <th>开始时间</th>
                       <th>应用</th>
                       <th>模式</th>
@@ -887,7 +887,7 @@
                   </thead>
                   <tbody>
                     <tr v-if="!tasks || tasks.length === 0">
-                      <td colspan="9" style="text-align: center; padding: 28px; color: var(--text-muted);">
+                      <td colspan="10" style="text-align: center; padding: 28px; color: var(--text-muted);">
                         📁 暂无历史巡检任务记录
                       </td>
                     </tr>
@@ -897,18 +897,23 @@
                         <div style="font-weight: 600;">{{ t.name }}</div>
                         <div style="font-size: 11px; color: var(--text-muted); font-family: monospace;">{{ t.id }}</div>
                       </td>
+                      <td>
+                        <span v-if="t.trigger_type === 'scheduled'" class="badge"
+                          style="background: rgba(0, 210, 255, 0.15); color: #00d2ff; border: 1px solid rgba(0, 210, 255, 0.3); font-weight: 600; padding: 2px 8px; font-size: 11px; white-space: nowrap;">
+                          ⏱️ 计划排程
+                        </span>
+                        <span v-else class="badge"
+                          style="background: rgba(160, 174, 192, 0.15); color: #cbd5e0; border: 1px solid rgba(160, 174, 192, 0.25); font-weight: 600; padding: 2px 8px; font-size: 11px; white-space: nowrap;">
+                          ⚡ 手动创建
+                        </span>
+                      </td>
                       <td style="font-size: 12px; color: #a0aec0; white-space: nowrap; font-family: monospace;">
                         {{ formatDateTime(t.start_time) }}
                       </td>
-
                       <td>{{ t.app_name }}</td>
-
-                      <td>{{ t.mode }}</td>
-
+                      <td>{{ formatTaskMode(t.mode) }}</td>
                       <td>
-
-                        <span class="badge" :class="'badge-' + t.status">{{ t.status }}</span>
-
+                        <span class="badge" :class="'badge-' + t.status">{{ formatTaskStatus(t.status) }}</span>
                       </td>
 
                       <td>{{ t.total_steps }} 步 ({{ t.coverage_rate }}%)</td>
@@ -1036,6 +1041,7 @@
                       <th>所属应用</th>
                       <th>任务名称与模式</th>
                       <th>步数/时长</th>
+                      <th>巡检模式</th>
                       <th>队列状态</th>
                       <th>计划预约时间</th>
                       <th>入队时间</th>
@@ -1044,7 +1050,7 @@
                   </thead>
                   <tbody>
                     <tr v-if="!taskQueue || taskQueue.length === 0">
-                      <td colspan="8" style="text-align: center; padding: 28px; color: var(--text-muted);">
+                      <td colspan="9" style="text-align: center; padding: 28px; color: var(--text-muted);">
                         ⏱️ 当前暂无排队中的调度任务。在发起任务时点击【加入排队调度】即可预约排队！
                       </td>
                     </tr>
@@ -1065,6 +1071,24 @@
                       </td>
                       <td style="font-size: 12px; color: #a0aec0;">
                         {{ q.max_steps }} 步 / {{ q.max_times }} 分
+                      </td>
+                      <td>
+                        <span v-if="q.cron_mode === 'daily'" class="badge"
+                          style="background: rgba(0, 230, 118, 0.15); color: #00e676; border: 1px solid rgba(0, 230, 118, 0.3); font-weight: 600; font-size: 11px; white-space: nowrap;">
+                          🔄 每天 (每{{ q.cron_spec || 1 }}天)
+                        </span>
+                        <span v-else-if="q.cron_mode === 'weekly'" class="badge"
+                          style="background: rgba(157, 78, 221, 0.15); color: #c77dff; border: 1px solid rgba(157, 78, 221, 0.3); font-weight: 600; font-size: 11px; white-space: nowrap;">
+                          🔄 每周 (周{{ formatWeekdays(q.cron_spec) }})
+                        </span>
+                        <span v-else-if="q.cron_mode === 'monthly'" class="badge"
+                          style="background: rgba(255, 179, 0, 0.15); color: #ffb300; border: 1px solid rgba(255, 179, 0, 0.3); font-weight: 600; font-size: 11px; white-space: nowrap;">
+                          🔄 每月 ({{ q.cron_spec || 1 }}日)
+                        </span>
+                        <span v-else class="badge"
+                          style="background: rgba(160, 174, 192, 0.1); color: #a0aec0; border: 1px solid rgba(160, 174, 192, 0.2); font-size: 11px; white-space: nowrap;">
+                          单次执行
+                        </span>
                       </td>
                       <td>
                         <span class="badge"
@@ -2261,130 +2285,155 @@
 
         <!-- 调度入队预约弹窗 (新建调度执行计划) -->
         <div class="modal-overlay" v-if="showEnqueueModal" @click.self="showEnqueueModal = false">
-          <div class="modal-content" style="max-width: 540px;">
-            <div class="modal-header">
-              <h3 style="display: flex; align-items: center; gap: 8px;">
-                <span>⏱️ 新建调度执行计划 (Schedule Plan)</span>
-              </h3>
+          <div class="modal-content" style="max-width: 600px; padding: 24px;">
+            <div class="modal-header" style="border-bottom: 1px solid #1a253c; padding-bottom: 12px; margin-bottom: 16px;">
+              <div style="display: flex; gap: 20px; align-items: center;">
+                <span style="font-size: 15px; font-weight: 700; color: #00d2ff; border-bottom: 2px solid #00d2ff; padding-bottom: 8px;">基本配置</span>
+                <span style="font-size: 15px; font-weight: 500; color: #718096; cursor: not-allowed; padding-bottom: 8px;">高级配置</span>
+              </div>
               <button class="modal-close" @click="showEnqueueModal = false">&times;</button>
             </div>
 
-            <div style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px; line-height: 1.6;">
-              配置目标应用与关联的巡检任务模板。调度器将按照优先级与预约时间，以单机独占模式自动串行拉起执行。
+            <!-- 1. 任务名称 与 优先级 -->
+            <div style="display: flex; gap: 14px; margin-bottom: 14px; align-items: center;">
+              <label style="width: 72px; font-size: 13px; color: var(--text-muted); text-align: right; flex-shrink: 0;">任务名称:</label>
+              <input type="text" class="form-control" v-model="scheduleForm.name" placeholder="请输入调度计划名称..." style="flex: 1;">
+              <label style="font-size: 13px; color: var(--text-muted); margin-left: 8px; flex-shrink: 0;">优先级:</label>
+              <select class="form-control" v-model.number="scheduleForm.priority" style="width: 100px; flex-shrink: 0;">
+                <option :value="1">紧急 (P1)</option>
+                <option :value="2">高 (P2)</option>
+                <option :value="3">普通 (P3)</option>
+                <option :value="4">低 (P4)</option>
+              </select>
             </div>
 
-            <!-- 1. 计划名称 -->
-            <div class="form-group">
-              <label class="form-label">调度计划名称</label>
-              <input type="text" class="form-control" v-model="scheduleForm.name" placeholder="为该调度计划命名...">
+            <!-- 2. 流程类型 与 目标矿山应用 -->
+            <div style="display: flex; gap: 14px; margin-bottom: 14px; align-items: center;">
+              <label style="width: 72px; font-size: 13px; color: var(--text-muted); text-align: right; flex-shrink: 0;">流程类型:</label>
+              <select class="form-control" v-model="scheduleForm.flow_type" style="width: 140px;">
+                <option value="local">本地 (Local)</option>
+              </select>
+              <label style="font-size: 13px; color: var(--text-muted); margin-left: 8px; flex-shrink: 0;">目标应用:</label>
+              <select class="form-control" v-model="scheduleForm.app_name" @change="onScheduleAppChange" style="flex: 1;">
+                <option v-for="a in options.apps" :key="a.key" :value="a.key">
+                  {{ a.name }}
+                </option>
+              </select>
             </div>
 
-            <div class="grid-2">
-              <!-- 2. 目标矿山应用 -->
-              <div class="form-group">
-                <label class="form-label">目标矿山应用</label>
-                <select class="form-control" v-model="scheduleForm.app_name" @change="onScheduleAppChange">
-                  <option v-for="a in options.apps" :key="a.key" :value="a.key">
-                    {{ a.name }}
-                  </option>
-                </select>
-              </div>
-
-              <!-- 3. 调度优先级 -->
-              <div class="form-group">
-                <label class="form-label">调度优先级 (Priority)</label>
-                <select class="form-control" v-model.number="scheduleForm.priority">
-                  <option :value="1">🔥 P1 (最高紧急插队)</option>
-                  <option :value="2">⚡ P2 (高优先级执行)</option>
-                  <option :value="3">📋 P3 (普通标准排队 - 默认)</option>
-                  <option :value="4">⏳ P4 (闲时低优执行)</option>
-                </select>
-              </div>
-            </div>
-
-            <!-- 4. 关联巡检任务模板 -->
-            <div class="form-group">
-              <label class="form-label">关联巡检任务 (一次关联一个任务)</label>
-              <select class="form-control" v-model="scheduleForm.preset_id" @change="onSchedulePresetChange">
+            <!-- 3. 流程名称 (预设巡检任务模板) -->
+            <div style="display: flex; gap: 14px; margin-bottom: 14px; align-items: center;">
+              <label style="width: 72px; font-size: 13px; color: var(--text-muted); text-align: right; flex-shrink: 0;">流程名称:</label>
+              <select class="form-control" v-model="scheduleForm.preset_id" @change="onSchedulePresetChange" style="flex: 1;">
                 <option value="" disabled>-- 请选择属于该应用的巡检任务模板 --</option>
                 <option v-for="p in filteredSchedulePresets" :key="p.id" :value="p.id">
                   [{{ getPresetModeLabel(p) }}] {{ p.title }}
                 </option>
               </select>
-              <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
-                💡 执行器拉起时将严格按所选预设的模式（极速冒烟 / 自主探索 / YAML回归）与参数自动执行。
+            </div>
+
+            <!-- 4. 执行日期 -->
+            <div style="display: flex; gap: 14px; margin-bottom: 14px; align-items: center;">
+              <label style="width: 72px; font-size: 13px; color: var(--text-muted); text-align: right; flex-shrink: 0;">执行日期:</label>
+              <div style="display: flex; align-items: center; gap: 10px; flex: 1;">
+                <input type="date" class="form-control" v-model="scheduleForm.startDate" style="color-scheme: dark; flex: 1;">
+                <span style="color: var(--text-muted); font-size: 13px;">至</span>
+                <input type="date" class="form-control" v-model="scheduleForm.endDate" style="color-scheme: dark; flex: 1;">
               </div>
             </div>
 
-            <!-- 5. 预约执行时间 -->
-            <div class="form-group">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                <label class="form-label" style="margin-bottom: 0;">计划执行时间 (可选)</label>
-                <button type="button" v-if="scheduleForm.scheduledTime"
-                  style="background: none; border: none; font-size: 11px; color: #ff5252; cursor: pointer; padding: 0;"
-                  @click="setQuickSchedule('immediate')">
-                  ✕ 清空时间 (立即排队)
-                </button>
-              </div>
-
-              <!-- 快捷时间胶囊预设 -->
-              <div style="display: flex; gap: 8px; margin-bottom: 12px; align-items: center;">
-                <button type="button" class="btn btn-secondary"
-                  style="flex: 1; padding: 6px 10px; font-size: 12px; border-radius: 16px; transition: all 0.2s; white-space: nowrap; justify-content: center;"
-                  :style="!scheduleForm.scheduledTime ? 'border-color: #00d2ff; color: #00d2ff; background: rgba(0,210,255,0.15); font-weight: 700;' : 'opacity: 0.75;'"
-                  @click="setQuickSchedule('immediate')">
-                  ⚡ 立即排队
-                </button>
-                <button type="button" class="btn btn-secondary"
-                  style="flex: 1; padding: 6px 10px; font-size: 12px; border-radius: 16px; transition: all 0.2s; white-space: nowrap; justify-content: center;"
-                  :style="isQuickSelected('tonight_20') ? 'border-color: #00e676; color: #00e676; background: rgba(0,230,118,0.15); font-weight: 700;' : 'opacity: 0.75;'"
-                  @click="setQuickSchedule('tonight_20')">
-                  🌙 今晚 18:25
-                </button>
-                <button type="button" class="btn btn-secondary"
-                  style="flex: 1; padding: 6px 10px; font-size: 12px; border-radius: 16px; transition: all 0.2s; white-space: nowrap; justify-content: center;"
-                  :style="isQuickSelected('tonight_22') ? 'border-color: #00e676; color: #00e676; background: rgba(0,230,118,0.15); font-weight: 700;' : 'opacity: 0.75;'"
-                  @click="setQuickSchedule('tonight_22')">
-                  🌙 今晚 18:35
-                </button>
-                <button type="button" class="btn btn-secondary"
-                  style="flex: 1; padding: 6px 10px; font-size: 12px; border-radius: 16px; transition: all 0.2s; white-space: nowrap; justify-content: center;"
-                  :style="isQuickSelected('tomorrow_02') ? 'border-color: #ffb300; color: #ffb300; background: rgba(255,179,0,0.15); font-weight: 700;' : 'opacity: 0.75;'"
-                  @click="setQuickSchedule('tomorrow_02')">
-                  🌙 明晨 02:00
-                </button>
-              </div>
-
-              <!-- 全域可点击唤醒、暗黑风格定制时间选择输入框 -->
-              <div style="position: relative; cursor: pointer;"
-                onclick="var inp=this.querySelector('input'); inp && (inp.showPicker ? inp.showPicker() : inp.focus());"
-                title="点击整行输入框任意位置均可唤起日期时间选择器">
-                <input type="datetime-local" class="form-control" v-model="scheduleForm.scheduledTime"
-                  style="cursor: pointer; color-scheme: dark; font-family: monospace; font-size: 13px; padding-left: 38px; background: #05070d; border-color: #1a253c; width: 100%; box-sizing: border-box;"
-                  onclick="this.showPicker && this.showPicker()">
-                <span
-                  style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); pointer-events: none; font-size: 15px;">
-                  📅
-                </span>
-              </div>
-
-              <div
-                style="font-size: 11px; color: var(--text-muted); margin-top: 6px; display: flex; justify-content: space-between; align-items: center;">
-                <span>💡 提示：点击整行输入框任意位置均可呼出日历时钟面板</span>
-                <span v-if="scheduleForm.scheduledTime" style="color: #00e676; font-weight: 600;">
-                  ✓ 已预约：{{ formatDateTime(scheduleForm.scheduledTime) }} 唤醒
-                </span>
-                <span v-else style="color: #00d2ff; font-weight: 600;">
-                  ⚡ 立即排队模式 (当前机器空闲即跑)
-                </span>
+            <!-- 5. 执行时间 -->
+            <div style="display: flex; gap: 14px; margin-bottom: 16px; align-items: center;">
+              <label style="width: 72px; font-size: 13px; color: var(--text-muted); text-align: right; flex-shrink: 0;">执行时间:</label>
+              <div style="display: flex; align-items: center; gap: 10px; flex: 1;">
+                <div style="position: relative; flex: 1;">
+                  <input type="time" step="1" class="form-control" v-model="scheduleForm.executionTime"
+                    style="color-scheme: dark; padding-right: 36px; font-family: monospace;">
+                  <button type="button" @click="setCurrentExecutionTime" title="获取系统当前时间"
+                    style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; font-size: 15px; opacity: 0.85;"
+                    onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.85'">
+                    🕒
+                  </button>
+                </div>
+                <span style="color: var(--text-muted); font-size: 13px;">至</span>
+                <input type="time" step="1" class="form-control" value="23:59:59" disabled
+                  style="color-scheme: dark; flex: 1; opacity: 0.5; font-family: monospace;">
               </div>
             </div>
 
-            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
-              <button class="btn btn-secondary" @click="showEnqueueModal = false">取消</button>
-              <button class="btn btn-primary" :disabled="isSubmittingEnqueue" @click="confirmCreateSchedulePlan">
-                {{ isSubmittingEnqueue ? '正在提交计划...' : '🚀 确认创建并加入调度' }}
-              </button>
+            <!-- 6. 模式选择 (单次 / 天 / 每周 / 每月) -->
+            <div style="display: flex; gap: 14px; margin-bottom: 20px; align-items: flex-start;">
+              <label style="width: 72px; font-size: 13px; color: var(--text-muted); text-align: right; flex-shrink: 0; padding-top: 4px;">模式选择:</label>
+              <div style="flex: 1; display: flex; gap: 14px;">
+                <!-- 左侧单选按钮组 -->
+                <div style="display: flex; flex-direction: column; gap: 10px; min-width: 90px; padding-top: 4px;">
+                  <label style="cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 13px;">
+                    <input type="radio" value="once" v-model="scheduleForm.cron_mode"> 单次
+                  </label>
+                  <label style="cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 13px;">
+                    <input type="radio" value="daily" v-model="scheduleForm.cron_mode"> 天
+                  </label>
+                  <label style="cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 13px;">
+                    <input type="radio" value="weekly" v-model="scheduleForm.cron_mode"> 每周
+                  </label>
+                  <label style="cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 13px;">
+                    <input type="radio" value="monthly" v-model="scheduleForm.cron_mode"> 每月
+                  </label>
+                </div>
+
+                <!-- 右侧详细规则配置卡片 -->
+                <div style="flex: 1; background: rgba(0, 210, 255, 0.03); border: 1px solid #1a253c; border-radius: 6px; padding: 14px; min-height: 120px; display: flex; align-items: center;">
+                  <!-- 天模式 -->
+                  <div v-if="scheduleForm.cron_mode === 'daily'" style="display: flex; align-items: center; gap: 8px; font-size: 13px;">
+                    <span>每</span>
+                    <input type="number" min="1" max="365" class="form-control" v-model.number="scheduleForm.dailyInterval"
+                      style="width: 76px; text-align: center; font-weight: 600;">
+                    <span>天在设定时间执行一次</span>
+                  </div>
+
+                  <!-- 每周模式 -->
+                  <div v-else-if="scheduleForm.cron_mode === 'weekly'" style="display: flex; flex-direction: column; gap: 10px; width: 100%;">
+                    <div style="font-size: 13px; color: var(--text-muted);">每周选择执行日（支持多选）：</div>
+                    <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                      <label v-for="d in [1,2,3,4,5,6,7]" :key="d"
+                        style="cursor: pointer; display: flex; align-items: center; gap: 4px; font-size: 12px; padding: 4px 8px; border-radius: 4px; transition: all 0.2s;"
+                        :style="scheduleForm.weeklyDays.includes(d) ? 'background: rgba(0,210,255,0.18); border: 1px solid #00d2ff; color: #00d2ff;' : 'background: rgba(255,255,255,0.03); border: 1px solid #233354; color: #a0aec0;'">
+                        <input type="checkbox" :value="d" v-model="scheduleForm.weeklyDays" style="display: none;">
+                        <span>周{{ ['一','二','三','四','五','六','日'][d-1] }}</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <!-- 每月模式 -->
+                  <div v-else-if="scheduleForm.cron_mode === 'monthly'" style="display: flex; align-items: center; gap: 8px; font-size: 13px;">
+                    <span>每月</span>
+                    <input type="number" min="1" max="31" class="form-control" v-model.number="scheduleForm.monthlyDay"
+                      style="width: 76px; text-align: center; font-weight: 600;">
+                    <span>日自动执行一次</span>
+                  </div>
+
+                  <!-- 单次执行 -->
+                  <div v-else style="font-size: 13px; color: var(--text-muted); line-height: 1.6;">
+                    将在执行日期（<strong>{{ scheduleForm.startDate }}</strong>）的 <strong>{{ scheduleForm.executionTime }}</strong> 执行一次，执行完成后自动归档。
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 底部操作栏: 启用勾选 + 保存 / 取消 -->
+            <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #1a253c; padding-top: 16px; margin-top: 10px;">
+              <label style="cursor: pointer; display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: #fff;">
+                <input type="checkbox" v-model="scheduleForm.is_active" :true-value="1" :false-value="0" style="width: 16px; height: 16px; cursor: pointer;">
+                <span>启用该计划</span>
+              </label>
+
+              <div style="display: flex; gap: 10px;">
+                <button class="btn btn-secondary" @click="showEnqueueModal = false" style="padding: 6px 16px;">取消</button>
+                <button class="btn btn-primary" :disabled="isSubmittingEnqueue" @click="confirmCreateSchedulePlan"
+                  style="padding: 6px 20px; background: linear-gradient(135deg, #00d2ff, #0072ff); font-weight: 600;">
+                  {{ isSubmittingEnqueue ? '保存中...' : '保存' }}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -2413,7 +2462,7 @@
 
 
 
-  <script src="/static/js/app.js?v=20261113_02"></script>
+  <script src="/static/js/app.js?v=20261113_03"></script>
 
 
 
