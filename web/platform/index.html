@@ -2307,13 +2307,9 @@
               </select>
             </div>
 
-            <!-- 2. 流程类型 与 目标矿山应用 -->
+            <!-- 2. 目标矿山应用 -->
             <div style="display: flex; gap: 14px; margin-bottom: 14px; align-items: center;">
-              <label style="width: 72px; font-size: 13px; color: var(--text-muted); text-align: right; flex-shrink: 0;">流程类型:</label>
-              <select class="form-control" v-model="scheduleForm.flow_type" style="width: 140px;">
-                <option value="local">本地 (Local)</option>
-              </select>
-              <label style="font-size: 13px; color: var(--text-muted); margin-left: 8px; flex-shrink: 0;">目标应用:</label>
+              <label style="width: 72px; font-size: 13px; color: var(--text-muted); text-align: right; flex-shrink: 0;">目标应用:</label>
               <select class="form-control" v-model="scheduleForm.app_name" @change="onScheduleAppChange" style="flex: 1;">
                 <option v-for="a in options.apps" :key="a.key" :value="a.key">
                   {{ a.name }}
@@ -2462,7 +2458,7 @@
 
 
 
-  <script src="/static/js/app.js?v=20261113_04"></script>
+  <script src="/static/js/app.js?v=20261113_05"></script>
 
 
 

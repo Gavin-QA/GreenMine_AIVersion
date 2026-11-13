@@ -107,7 +107,6 @@ const app = createApp({
       app_name: 'zhaiwan',
       preset_id: '',
       priority: 2,
-      flow_type: 'local',
       startDate: '',
       endDate: '',
       executionTime: '18:35:00',
@@ -1189,7 +1188,6 @@ const app = createApp({
         }
       }
       scheduleForm.priority = 2; // 默认高优先级
-      scheduleForm.flow_type = 'local';
       scheduleForm.startDate = todayStr;
       scheduleForm.endDate = todayStr;
       scheduleForm.executionTime = '18:35:00';
