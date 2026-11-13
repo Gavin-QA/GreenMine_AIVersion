@@ -1160,6 +1160,12 @@ const app = createApp({
       scheduleForm.executionTime = `${h}:${m}:${s}`;
     }
 
+    function getCleanPresetScheduleName(appName, presetTitle) {
+      const shortName = getAppShortName(appName);
+      const cleanTitle = (presetTitle || '定时巡检计划').replace(/^【.*?】\s*/, '').trim();
+      return `【${shortName}】${cleanTitle}`;
+    }
+
     function openCreateScheduleModal(preset = null) {
       const today = new Date();
       const Y = today.getFullYear();
@@ -1170,16 +1176,16 @@ const app = createApp({
       if (preset && preset.app_name) {
         scheduleForm.app_name = preset.app_name;
         scheduleForm.preset_id = preset.id;
-        scheduleForm.name = `【${getAppName(preset.app_name)}】${preset.title}`;
+        scheduleForm.name = getCleanPresetScheduleName(preset.app_name, preset.title);
       } else {
         scheduleForm.app_name = taskForm.app_name || (options.apps && options.apps[0]?.key) || storedApp;
         const appPresets = (presetTasks.value || []).filter(p => p.app_name === scheduleForm.app_name);
         if (appPresets.length > 0) {
           scheduleForm.preset_id = appPresets[0].id;
-          scheduleForm.name = `【${getAppName(scheduleForm.app_name)}】${appPresets[0].title}`;
+          scheduleForm.name = getCleanPresetScheduleName(scheduleForm.app_name, appPresets[0].title);
         } else {
           scheduleForm.preset_id = '';
-          scheduleForm.name = `【${getAppName(scheduleForm.app_name)}】定时巡检计划`;
+          scheduleForm.name = getCleanPresetScheduleName(scheduleForm.app_name, '定时巡检计划');
         }
       }
       scheduleForm.priority = 2; // 默认高优先级
@@ -1199,17 +1205,17 @@ const app = createApp({
       const appPresets = (presetTasks.value || []).filter(p => p.app_name === scheduleForm.app_name);
       if (appPresets.length > 0) {
         scheduleForm.preset_id = appPresets[0].id;
-        scheduleForm.name = `【${getAppName(scheduleForm.app_name)}】${appPresets[0].title}`;
+        scheduleForm.name = getCleanPresetScheduleName(scheduleForm.app_name, appPresets[0].title);
       } else {
         scheduleForm.preset_id = '';
-        scheduleForm.name = `【${getAppName(scheduleForm.app_name)}】定时巡检计划`;
+        scheduleForm.name = getCleanPresetScheduleName(scheduleForm.app_name, '定时巡检计划');
       }
     }
 
     function onSchedulePresetChange() {
       const found = (presetTasks.value || []).find(p => p.id === scheduleForm.preset_id);
       if (found) {
-        scheduleForm.name = `【${getAppName(scheduleForm.app_name)}】${found.title}`;
+        scheduleForm.name = getCleanPresetScheduleName(scheduleForm.app_name, found.title);
       }
     }
 

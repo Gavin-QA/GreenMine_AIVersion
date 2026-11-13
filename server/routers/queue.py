@@ -128,7 +128,9 @@ def create_schedule_plan(payload: SchedulePlanCreate, db: Session = Depends(get_
     # 2. 生成待执行 TaskRun
     now = datetime.datetime.now()
     task_id = f"task_{now.strftime('%Y%m%d_%H%M%S')}"
-    plan_name = (payload.name and payload.name.strip()) or f"【排程】{preset_dict.get('title', '巡检任务')}"
+    raw_plan_name = (payload.name and payload.name.strip()) or f"【排程】{preset_dict.get('title', '巡检任务')}"
+    import re
+    plan_name = re.sub(r"【.*?矿山\s*\(.*?\)\s*】", "", raw_plan_name).strip()
 
     target_app = payload.app_name or preset_dict.get("app_name", "zhaiwan")
     is_smoke = preset_dict.get("mode") == "smoke" or preset_dict.get("tour", False)
