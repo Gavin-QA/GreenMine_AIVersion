@@ -2534,14 +2534,25 @@ const app = createApp({
 
 
 
+    const liveAutoRefresh = ref(false); // 币安式静默模式：默认彻底关闭高频 HTTP 轮询，消除控制台跳动刷屏
     let liveTimer = null;
 
     function startLiveTimer() {
+      // 1. 若未开启自动刷新开关，坚决不启动轮询
+      if (!liveAutoRefresh.value) {
+        stopLiveTimer();
+        return;
+      }
+      // 2. 若当前正在查看具体任务，指标已由 WebSocket (/ws/tasks/{id}/metrics) 纯流式推送，坚决不进行无意义 HTTP 轮询
+      if (activeTaskId.value && activeTaskId.value !== '__live__') {
+        stopLiveTimer();
+        return;
+      }
       if (!liveTimer) {
         liveTimer = setInterval(() => {
+          if (document.hidden) return; // 页面失焦或最小化时静默休眠
           fetchLiveSnapshot();
-          fetchLiveAppsStatus();
-        }, 4000);
+        }, 10000);
       }
     }
 
@@ -2550,6 +2561,23 @@ const app = createApp({
         clearInterval(liveTimer);
         liveTimer = null;
       }
+    }
+
+    function toggleLiveAutoRefresh() {
+      liveAutoRefresh.value = !liveAutoRefresh.value;
+      if (liveAutoRefresh.value) {
+        fetchLiveSnapshot();
+        startLiveTimer();
+        showToast('⏱️ 自动轮询已开启', '物理环境心跳探针已激活 (10s 间隔)', 'info', 2500);
+      } else {
+        stopLiveTimer();
+        showToast('🤫 静默模式', '已暂停 HTTP 轮询，控制台已清净', 'info', 2500);
+      }
+    }
+
+    async function manualRefreshLive() {
+      await Promise.all([fetchLiveSnapshot(), fetchLiveAppsStatus()]);
+      showToast('✨ 刷新成功', '物理环境与应用状态切片已更新', 'success', 2000);
     }
 
     // 智能 Tab 驱动：仅在用户切换到对应 Tab 时按需发起数据获取，彻底消灭全站高频无意义轮询
@@ -2628,6 +2656,14 @@ const app = createApp({
 
       initPlatformWebSocket();
 
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+          stopLiveTimer();
+        } else if (liveAutoRefresh.value && (currentTab.value === 'monitor' || currentTab.value === 'dashboard')) {
+          startLiveTimer();
+        }
+      });
+
       window.addEventListener('resize', () => {
         if (domChart) domChart.resize();
         if (ueChart) ueChart.resize();
@@ -2684,6 +2720,10 @@ const app = createApp({
       presetTasks,
 
       liveSnapshot,
+
+      liveAutoRefresh,
+      toggleLiveAutoRefresh,
+      manualRefreshLive,
 
       fetchLiveSnapshot,
 
