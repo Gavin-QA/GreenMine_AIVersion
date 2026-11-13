@@ -2345,7 +2345,13 @@ const app = createApp({
         const resp = await fetch(`${apiBase}/api/bugs/${encodeURIComponent(bug.id)}/reanalyze`, {
           method: 'POST'
         });
-        const data = await resp.json();
+        let data = null;
+        const text = await resp.text();
+        try {
+          data = JSON.parse(text);
+        } catch (_) {
+          data = { detail: text || '服务端未返回有效数据' };
+        }
         if (resp.ok && data) {
           if (selectedBug.value && selectedBug.value.id === bug.id) {
             Object.assign(selectedBug.value, data);
@@ -2353,7 +2359,7 @@ const app = createApp({
           await fetchBugs();
           showToast('✨ 诊断完成', `缺陷 [${bug.id}] 根因分析与修复指引已热刷新！`, 'success', 4000);
         } else {
-          showToast('⚠️ 诊断失败', data.detail || '接口响应异常', 'error', 5000);
+          showToast('⚠️ 诊断失败', (data && data.detail) || '接口响应异常', 'error', 5000);
         }
       } catch (err) {
         showToast('❌ 请求异常', err.message || '网络连接失败', 'error', 5000);

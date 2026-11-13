@@ -494,7 +494,7 @@ def reanalyze_bug(
             status_code=404, detail=f"未找到编号为 '{bug_id}' 的缺陷记录"
         )
 
-    from core.vision_agent import VisionAgent
+    from core.vision.agent import VisionAgent
     from utils.bug_analysis_expert import analyze_bug_expertly
     from utils.zentao_sync import resolve_bug_assignee
     from utils.bug_updater import update_bug_record
