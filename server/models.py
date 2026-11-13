@@ -282,3 +282,43 @@ class TaskQueueItem(Base):
     task = relationship("TaskRun", back_populates="queue_items")
 
 
+class SchedulePlan(Base):
+    """调度执行计划模型表 (常驻排程规则，解耦于单次历史运行)"""
+    __tablename__ = "schedule_plans"
+
+    id = Column(String(64), primary_key=True, index=True) # 如 plan_20261113_183500_xxxx
+    name = Column(String(128), nullable=False) # 调度计划名称
+    app_name = Column(String(64), nullable=False, index=True) # 所属矿山应用 (zhaiwan/liwutong/tianrui)
+    preset_id = Column(String(64), ForeignKey("preset_task_records.id"), nullable=False) # 关联的预设流程模板
+    priority = Column(Integer, default=2) # 优先级 1-4 (P1~P4)
+
+    # 有效期与时间窗口
+    start_date = Column(String(32), default="") # 有效期开始日期 (YYYY-MM-DD)
+    end_date = Column(String(32), default="") # 有效期结束日期 (YYYY-MM-DD)
+    start_time = Column(String(32), default="18:35:00") # 每日触发执行时刻 (HH:mm:ss)
+    end_time = Column(String(32), default="23:59:59") # 每日允许执行窗口截止时刻 (HH:mm:ss)
+
+    # 巡检模式 (单次/分钟/小时/天/周/月)
+    cron_mode = Column(String(32), default="daily") # once / minute / hour / daily / weekly / monthly
+    cron_spec = Column(String(64), default="1") # 周期参数 (天数, 分钟数, 小时数, 周几 "1,3,5", 几号 "15")
+
+    # 高级配置
+    conflict_policy = Column(String(32), default="wait") # wait(顺延排队) / skip(超时放弃)
+    auto_retry = Column(Integer, default=0) # 失败是否自动重试 (0=否, 1=是)
+    ignore_env_check = Column(Integer, default=0) # 是否跳过环境准入校验 (0=否, 1=是)
+
+    # 状态与调度统计
+    is_active = Column(Integer, default=1, index=True) # 1=启用, 0=停用
+    status = Column(String(32), default="active") # active(运行中), paused(已停用), expired(已到期), completed(已完成)
+    next_run_time = Column(DateTime, nullable=True, index=True) # 下次预约执行时间 (本地时间)
+    last_run_time = Column(DateTime, nullable=True) # 上次执行时间
+    last_task_id = Column(String(64), nullable=True) # 最近派生的任务 ID
+    run_count = Column(Integer, default=0) # 累计已触发执行次数
+
+    created_at = Column(DateTime, default=datetime.datetime.now)
+    updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+
+    preset = relationship("PresetTaskRecord")
+
+
+

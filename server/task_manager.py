@@ -643,21 +643,83 @@ class TaskManager:
             logger.error(f"周期计划自动推演下次任务失败: {e}")
 
     def _queue_worker_loop(self):
-        """执行器调度主循环：检查排队与定时任务，串行调度执行"""
+        """执行器调度主循环：检查常驻调度计划与排队就绪任务，串行调度执行"""
         while not self._stop_queue_event.is_set():
             try:
                 time.sleep(4.0)
 
-                # 检查当前是否有任务正在执行中 (保证单机独占执行)
-                with self._lock:
-                    has_active = any(p.poll() is None for p in self.active_processes.values())
-                if has_active:
-                    continue
-
                 db = SessionLocal()
                 try:
                     now_local = datetime.datetime.now()
-                    # 查找优先级最高、创建最早的 pending 队列项
+
+                    # 1. 常驻调度计划巡检扫描 (SchedulePlan)
+                    from .models import SchedulePlan
+                    from .schedule_service import parse_time_parts, calculate_next_run_time, spawn_task_from_plan
+
+                    active_plans = db.query(SchedulePlan).filter(
+                        SchedulePlan.is_active == 1,
+                        SchedulePlan.next_run_time != None,
+                        SchedulePlan.next_run_time <= now_local
+                    ).all()
+
+                    for plan in active_plans:
+                        try:
+                            # 校验生命周期是否已超过 end_date
+                            if plan.end_date and now_local.strftime("%Y-%m-%d") > plan.end_date:
+                                plan.is_active = 0
+                                plan.status = "expired"
+                                plan.next_run_time = None
+                                db.commit()
+                                logger.info(f"🏁 调度计划 [{plan.name}] 已到达结束日期 {plan.end_date}，自动标记为已到期。")
+                                continue
+
+                            # 校验每日执行窗口 end_time (例如 23:59:59)
+                            if plan.end_time:
+                                end_h, end_m, end_s = parse_time_parts(plan.end_time, 23, 59, 59)
+                                daily_deadline = datetime.datetime(now_local.year, now_local.month, now_local.day, end_h, end_m, end_s)
+                                if now_local > daily_deadline:
+                                    if plan.conflict_policy == "skip":
+                                        logger.warning(f"⚠️ 调度计划 [{plan.name}] 触发时刻已超出每日允许时间窗口 ({plan.end_time})，策略为跳过本次。")
+                                        plan.next_run_time = calculate_next_run_time(
+                                            cron_mode=plan.cron_mode,
+                                            cron_spec=plan.cron_spec,
+                                            start_time_str=plan.start_time,
+                                            start_date_str=plan.start_date,
+                                            end_date_str=plan.end_date,
+                                            after_time=now_local,
+                                        )
+                                        db.commit()
+                                        continue
+
+                            # 检查冲突策略：如果上一次下发的任务仍在执行或排队
+                            if plan.last_task_id:
+                                last_run = db.query(TaskRun).filter(TaskRun.id == plan.last_task_id).first()
+                                if last_run and last_run.status in ("pending", "running"):
+                                    if plan.conflict_policy == "skip":
+                                        logger.warning(f"⚠️ 调度计划 [{plan.name}] 上次任务 [{plan.last_task_id}] 仍在执行/排队中，根据策略跳过本次触发。")
+                                        plan.next_run_time = calculate_next_run_time(
+                                            cron_mode=plan.cron_mode,
+                                            cron_spec=plan.cron_spec,
+                                            start_time_str=plan.start_time,
+                                            start_date_str=plan.start_date,
+                                            end_date_str=plan.end_date,
+                                            after_time=now_local,
+                                        )
+                                        db.commit()
+                                        continue
+
+                            # 实例化生成真实任务并注入 TaskQueueItem
+                            spawn_task_from_plan(plan, db)
+                        except Exception as plan_err:
+                            logger.error(f"下发调度计划 [{plan.id}] 异常: {plan_err}")
+
+                    # 2. 检查当前是否有任务正在执行中 (保证单机独占执行)
+                    with self._lock:
+                        has_active = any(p.poll() is None for p in self.active_processes.values())
+                    if has_active:
+                        continue
+
+                    # 3. 查找优先级最高、创建最早的 pending 队列项
                     # 若配置了 scheduled_at，需已到达计划时间
                     next_item = db.query(TaskQueueItem).filter(
                         TaskQueueItem.status == "pending",

@@ -1037,27 +1037,27 @@
                 <table class="data-table">
                   <thead>
                     <tr>
-                      <th style="width: 110px; min-width: 100px;">优先级</th>
-                      <th>所属应用</th>
-                      <th>任务名称与模式</th>
-                      <th>步数/时长</th>
+                      <th style="width: 100px;">优先级</th>
+                      <th style="width: 120px;">目标系统</th>
+                      <th>计划名称与关联流程</th>
                       <th>巡检模式</th>
-                      <th>队列状态</th>
-                      <th>计划预约时间</th>
-                      <th>入队时间</th>
-                      <th style="width: 140px;">操作</th>
+                      <th>有效期与执行时间窗口</th>
+                      <th style="width: 100px;">状态</th>
+                      <th>下次预约执行时间</th>
+                      <th style="width: 80px;">累计执行</th>
+                      <th style="width: 170px;">操作</th>
                     </tr>
                   </thead>
                   <tbody>
                     <tr v-if="!taskQueue || taskQueue.length === 0">
                       <td colspan="9" style="text-align: center; padding: 28px; color: var(--text-muted);">
-                        ⏱️ 当前暂无排队中的调度任务。在发起任务时点击【加入排队调度】即可预约排队！
+                        ⏱️ 当前暂无已配置的调度计划。点击上方【➕ 新建调度计划】即可添加定时自动化排程！
                       </td>
                     </tr>
                     <tr v-else v-for="q in taskQueue" :key="q.id">
                       <td>
                         <span class="badge"
-                          :style="{ background: formatPriorityLabel(q.priority).bg, color: formatPriorityLabel(q.priority).color, fontWeight: '700', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '4px 10px', minWidth: '76px' }">
+                          :style="{ background: formatPriorityLabel(q.priority).bg, color: formatPriorityLabel(q.priority).color, fontWeight: '700', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '3px 8px', minWidth: '70px' }">
                           {{ formatPriorityLabel(q.priority).text }}
                         </span>
                       </td>
@@ -1065,12 +1065,10 @@
                         <span style="font-weight: 600; color: #fff;">{{ q.app_name }}</span>
                       </td>
                       <td>
-                        <div style="font-weight: 600;">{{ q.task_name || q.task_id }}</div>
-                        <div style="font-size: 11px; color: var(--text-muted); font-family: monospace;">模式: {{ q.mode }}
-                          | ID: {{ q.task_id }}</div>
-                      </td>
-                      <td style="font-size: 12px; color: #a0aec0;">
-                        {{ q.max_steps }} 步 / {{ q.max_times }} 分
+                        <div style="font-weight: 600; color: #fff;">{{ q.name || q.task_name }}</div>
+                        <div style="font-size: 11px; color: var(--text-muted); font-family: monospace;">
+                          流程: {{ q.preset_title || q.mode }} ({{ q.max_steps }}步 / {{ q.max_times }}分)
+                        </div>
                       </td>
                       <td>
                         <span v-if="q.cron_mode === 'daily'" class="badge"
@@ -1085,40 +1083,68 @@
                           style="background: rgba(255, 179, 0, 0.15); color: #ffb300; border: 1px solid rgba(255, 179, 0, 0.3); font-weight: 600; font-size: 11px; white-space: nowrap;">
                           🔄 每月 ({{ q.cron_spec || 1 }}日)
                         </span>
+                        <span v-else-if="q.cron_mode === 'minute'" class="badge"
+                          style="background: rgba(0, 210, 255, 0.15); color: #00d2ff; border: 1px solid rgba(0, 210, 255, 0.3); font-weight: 600; font-size: 11px; white-space: nowrap;">
+                          ⚡ 每 {{ q.cron_spec || 30 }} 分钟
+                        </span>
+                        <span v-else-if="q.cron_mode === 'hour'" class="badge"
+                          style="background: rgba(0, 210, 255, 0.15); color: #00d2ff; border: 1px solid rgba(0, 210, 255, 0.3); font-weight: 600; font-size: 11px; white-space: nowrap;">
+                          ⏱️ 每 {{ q.cron_spec || 1 }} 小时
+                        </span>
                         <span v-else class="badge"
                           style="background: rgba(160, 174, 192, 0.1); color: #a0aec0; border: 1px solid rgba(160, 174, 192, 0.2); font-size: 11px; white-space: nowrap;">
                           单次执行
                         </span>
                       </td>
                       <td>
-                        <span class="badge"
-                          :class="'badge-' + (q.status === 'pending' ? 'pending' : (q.status === 'running' ? 'running' : (q.status === 'completed' ? 'completed' : 'failed')))">
-                          {{ q.status === 'pending' ? '⏳ 排队中' : (q.status === 'running' ? '🚀 正在执行' : (q.status ===
-                          'completed' ? '✅ 已完成' : (q.status === 'canceled' ? '🛑 已取消' : '❌ 失败'))) }}
-                        </span>
-                      </td>
-                      <td style="font-size: 12px; color: #ffb300; font-family: monospace;">
-                        {{ q.scheduled_at ? formatDateTime(q.scheduled_at) : '立即就绪' }}
-                      </td>
-                      <td style="font-size: 12px; color: #a0aec0; font-family: monospace;">
-                        {{ formatDateTime(q.created_at) }}
+                        <div style="font-size: 11px; color: #cbd5e1; font-family: monospace;">{{ q.start_date || '-' }} 至 {{ q.end_date || '长期有效' }}</div>
+                        <div style="font-size: 11px; color: var(--text-muted); font-family: monospace;">时刻: {{ q.start_time || '18:35:00' }} ~ {{ q.end_time || '23:59:59' }}</div>
                       </td>
                       <td>
-                        <button v-if="q.status === 'running'" class="btn btn-secondary"
-                          style="padding: 3px 8px; font-size: 12px; border-color: #ff5252; color: #ff5252;"
-                          @click="stopTask(q.task_id)">
-                          终止执行
-                        </button>
-                        <button v-else-if="q.status === 'pending'" class="btn btn-secondary"
-                          style="padding: 3px 8px; font-size: 12px; border-color: #ff5252; color: #ff5252;"
-                          @click="removeFromQueue(q)">
-                          移出队列
-                        </button>
-                        <button v-else class="btn btn-secondary"
-                          style="padding: 3px 8px; font-size: 12px; border-color: #4a5568; color: #a0aec0;"
-                          @click="removeFromQueue(q)" title="从调度历史记录中清理移出">
-                          移出
-                        </button>
+                        <span v-if="q.status === 'running'" class="badge badge-running">🚀 正在执行</span>
+                        <span v-else-if="q.is_active === 1 && q.status === 'active'" class="badge badge-success">🟢 启用中</span>
+                        <span v-else-if="q.status === 'expired'" class="badge" style="background: rgba(160, 174, 192, 0.15); color: #a0aec0;">⌛ 已到期</span>
+                        <span v-else-if="q.status === 'completed'" class="badge badge-completed">✅ 已完成</span>
+                        <span v-else class="badge" style="background: rgba(100, 116, 139, 0.2); color: #94a3b8;">⚪ 已停用</span>
+                      </td>
+                      <td style="font-size: 12px; color: #ffb300; font-family: monospace; font-weight: 600;">
+                        {{ q.next_run_time || q.scheduled_at || '--' }}
+                      </td>
+                      <td style="font-size: 12px; color: #cbd5e1; text-align: center;">
+                        {{ q.run_count || 0 }} 次
+                      </td>
+                      <td>
+                        <div style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap;">
+                          <button v-if="q.status === 'running'" class="btn btn-secondary"
+                            style="padding: 2px 7px; font-size: 11px; border-color: #ff5252; color: #ff5252;"
+                            @click="stopTask(q.task_id)">
+                            终止
+                          </button>
+                          <button v-else class="btn btn-secondary"
+                            style="padding: 2px 7px; font-size: 11px; border-color: rgba(0, 210, 255, 0.4); color: #00d2ff;"
+                            @click="runScheduleNow(q)" title="立即下发执行一次该计划">
+                            ⚡ 执行
+                          </button>
+
+                          <button class="btn btn-secondary"
+                            style="padding: 2px 7px; font-size: 11px;"
+                            :style="q.is_active ? 'color: #ffb300; border-color: rgba(255, 179, 0, 0.4);' : 'color: #00e676; border-color: rgba(0, 230, 118, 0.4);'"
+                            @click="toggleScheduleActive(q)">
+                            {{ q.is_active ? '⏸️' : '▶️' }}
+                          </button>
+
+                          <button class="btn btn-secondary"
+                            style="padding: 2px 7px; font-size: 11px; color: #a0aec0; border-color: #2d3748;"
+                            @click="openEditScheduleModal(q)" title="编辑调度计划">
+                            ✏️
+                          </button>
+
+                          <button class="btn btn-secondary"
+                            style="padding: 2px 7px; font-size: 11px; border-color: rgba(255, 82, 82, 0.3); color: #ff5252;"
+                            @click="deleteSchedule(q)" title="删除该调度计划">
+                            🗑️
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   </tbody>
@@ -2326,131 +2352,208 @@
         <div class="modal-overlay" v-if="showEnqueueModal" @click.self="showEnqueueModal = false">
           <div class="modal-content" style="max-width: 600px; padding: 24px;">
             <div class="modal-header" style="border-bottom: 1px solid #1a253c; padding-bottom: 12px; margin-bottom: 16px;">
-              <div style="display: flex; gap: 20px; align-items: center;">
-                <span style="font-size: 15px; font-weight: 700; color: #00d2ff; border-bottom: 2px solid #00d2ff; padding-bottom: 8px;">基本配置</span>
-                <span style="font-size: 15px; font-weight: 500; color: #718096; cursor: not-allowed; padding-bottom: 8px;">高级配置</span>
+              <div style="display: flex; gap: 24px; align-items: center;">
+                <span style="font-size: 15px; font-weight: 700; cursor: pointer; padding-bottom: 8px; transition: all 0.2s;"
+                  :style="scheduleModalTab === 'basic' ? 'color: #00d2ff; border-bottom: 2px solid #00d2ff;' : 'color: #718096;'"
+                  @click="scheduleModalTab = 'basic'">基本配置</span>
+                <span style="font-size: 15px; font-weight: 700; cursor: pointer; padding-bottom: 8px; transition: all 0.2s;"
+                  :style="scheduleModalTab === 'advanced' ? 'color: #00d2ff; border-bottom: 2px solid #00d2ff;' : 'color: #718096;'"
+                  @click="scheduleModalTab = 'advanced'">高级配置</span>
               </div>
               <button class="modal-close" @click="showEnqueueModal = false">&times;</button>
             </div>
 
-            <!-- 1. 任务名称 与 优先级 -->
-            <div style="display: flex; gap: 14px; margin-bottom: 14px; align-items: center;">
-              <label style="width: 72px; font-size: 13px; color: var(--text-muted); text-align: right; flex-shrink: 0;">任务名称:</label>
-              <input type="text" class="form-control" v-model="scheduleForm.name" placeholder="请输入调度计划名称..." style="flex: 1;">
-              <label style="font-size: 13px; color: var(--text-muted); margin-left: 8px; flex-shrink: 0;">优先级:</label>
-              <select class="form-control" v-model.number="scheduleForm.priority" style="width: 100px; flex-shrink: 0;">
-                <option :value="1">紧急 (P1)</option>
-                <option :value="2">高 (P2)</option>
-                <option :value="3">普通 (P3)</option>
-                <option :value="4">低 (P4)</option>
-              </select>
-            </div>
-
-            <!-- 2. 目标矿山应用 -->
-            <div style="display: flex; gap: 14px; margin-bottom: 14px; align-items: center;">
-              <label style="width: 72px; font-size: 13px; color: var(--text-muted); text-align: right; flex-shrink: 0;">目标应用:</label>
-              <select class="form-control" v-model="scheduleForm.app_name" @change="onScheduleAppChange" style="flex: 1;">
-                <option v-for="a in options.apps" :key="a.key" :value="a.key">
-                  {{ a.name }}
-                </option>
-              </select>
-            </div>
-
-            <!-- 3. 流程名称 (预设巡检任务模板) -->
-            <div style="display: flex; gap: 14px; margin-bottom: 14px; align-items: center;">
-              <label style="width: 72px; font-size: 13px; color: var(--text-muted); text-align: right; flex-shrink: 0;">流程名称:</label>
-              <select class="form-control" v-model="scheduleForm.preset_id" @change="onSchedulePresetChange" style="flex: 1;">
-                <option value="" disabled>-- 请选择属于该应用的巡检任务模板 --</option>
-                <option v-for="p in filteredSchedulePresets" :key="p.id" :value="p.id">
-                  [{{ getPresetModeLabel(p) }}] {{ p.title }}
-                </option>
-              </select>
-            </div>
-
-            <!-- 4. 执行日期 -->
-            <div style="display: flex; gap: 14px; margin-bottom: 14px; align-items: center;">
-              <label style="width: 72px; font-size: 13px; color: var(--text-muted); text-align: right; flex-shrink: 0;">执行日期:</label>
-              <div style="display: flex; align-items: center; gap: 10px; flex: 1;">
-                <input type="date" class="form-control" v-model="scheduleForm.startDate" style="color-scheme: dark; flex: 1;">
-                <span style="color: var(--text-muted); font-size: 13px;">至</span>
-                <input type="date" class="form-control" v-model="scheduleForm.endDate" style="color-scheme: dark; flex: 1;">
+            <!-- TAB 1: 基本配置 -->
+            <div v-show="scheduleModalTab === 'basic'">
+              <!-- 1. 任务名称 与 优先级 -->
+              <div style="display: flex; gap: 14px; margin-bottom: 14px; align-items: center;">
+                <label style="width: 72px; font-size: 13px; color: var(--text-muted); text-align: right; flex-shrink: 0;">任务名称:</label>
+                <input type="text" class="form-control" v-model="scheduleForm.name" placeholder="请输入调度计划名称..." style="flex: 1;">
+                <label style="font-size: 13px; color: var(--text-muted); margin-left: 8px; flex-shrink: 0;">优先级:</label>
+                <select class="form-control" v-model.number="scheduleForm.priority" style="width: 100px; flex-shrink: 0;">
+                  <option :value="1">紧急 (P1)</option>
+                  <option :value="2">高 (P2)</option>
+                  <option :value="3">普通 (P3)</option>
+                  <option :value="4">低 (P4)</option>
+                </select>
               </div>
-            </div>
 
-            <!-- 5. 执行时间 -->
-            <div style="display: flex; gap: 14px; margin-bottom: 16px; align-items: center;">
-              <label style="width: 72px; font-size: 13px; color: var(--text-muted); text-align: right; flex-shrink: 0;">执行时间:</label>
-              <div style="display: flex; align-items: center; gap: 10px; flex: 1;">
-                <div style="position: relative; flex: 1;">
-                  <input type="time" step="1" class="form-control" v-model="scheduleForm.executionTime"
-                    style="color-scheme: dark; padding-right: 36px; font-family: monospace;">
-                  <button type="button" @click="setCurrentExecutionTime" title="获取系统当前时间"
-                    style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; font-size: 15px; opacity: 0.85;"
-                    onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.85'">
-                    🕒
-                  </button>
-                </div>
-                <span style="color: var(--text-muted); font-size: 13px;">至</span>
-                <input type="time" step="1" class="form-control" value="23:59:59" disabled
-                  style="color-scheme: dark; flex: 1; opacity: 0.5; font-family: monospace;">
+              <!-- 2. 目标矿山应用 -->
+              <div style="display: flex; gap: 14px; margin-bottom: 14px; align-items: center;">
+                <label style="width: 72px; font-size: 13px; color: var(--text-muted); text-align: right; flex-shrink: 0;">目标应用:</label>
+                <select class="form-control" v-model="scheduleForm.app_name" @change="onScheduleAppChange" style="flex: 1;">
+                  <option v-for="a in options.apps" :key="a.key" :value="a.key">
+                    {{ a.name }}
+                  </option>
+                </select>
               </div>
-            </div>
 
-            <!-- 6. 模式选择 (单次 / 天 / 每周 / 每月) -->
-            <div style="display: flex; gap: 14px; margin-bottom: 20px; align-items: flex-start;">
-              <label style="width: 72px; font-size: 13px; color: var(--text-muted); text-align: right; flex-shrink: 0; padding-top: 4px;">模式选择:</label>
-              <div style="flex: 1; display: flex; gap: 14px;">
-                <!-- 左侧单选按钮组 -->
-                <div style="display: flex; flex-direction: column; gap: 10px; min-width: 90px; padding-top: 4px;">
-                  <label style="cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 13px;">
-                    <input type="radio" value="once" v-model="scheduleForm.cron_mode"> 单次
-                  </label>
-                  <label style="cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 13px;">
-                    <input type="radio" value="daily" v-model="scheduleForm.cron_mode"> 天
-                  </label>
-                  <label style="cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 13px;">
-                    <input type="radio" value="weekly" v-model="scheduleForm.cron_mode"> 每周
-                  </label>
-                  <label style="cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 13px;">
-                    <input type="radio" value="monthly" v-model="scheduleForm.cron_mode"> 每月
-                  </label>
+              <!-- 3. 流程名称 (预设巡检任务模板) -->
+              <div style="display: flex; gap: 14px; margin-bottom: 14px; align-items: center;">
+                <label style="width: 72px; font-size: 13px; color: var(--text-muted); text-align: right; flex-shrink: 0;">流程名称:</label>
+                <select class="form-control" v-model="scheduleForm.preset_id" @change="onSchedulePresetChange" style="flex: 1;">
+                  <option value="" disabled>-- 请选择属于该应用的巡检任务模板 --</option>
+                  <option v-for="p in filteredSchedulePresets" :key="p.id" :value="p.id">
+                    [{{ getPresetModeLabel(p) }}] {{ p.title }}
+                  </option>
+                </select>
+              </div>
+
+              <!-- 4. 执行日期 (开始日期 至 结束日期) -->
+              <div style="display: flex; gap: 14px; margin-bottom: 14px; align-items: center;">
+                <label style="width: 72px; font-size: 13px; color: var(--text-muted); text-align: right; flex-shrink: 0;">执行日期:</label>
+                <div style="display: flex; align-items: center; gap: 10px; flex: 1;">
+                  <input type="date" class="form-control" v-model="scheduleForm.startDate" style="color-scheme: dark; flex: 1;">
+                  <span style="color: var(--text-muted); font-size: 13px;">至</span>
+                  <input type="date" class="form-control" v-model="scheduleForm.endDate" style="color-scheme: dark; flex: 1;" title="到期后计划自动停止">
                 </div>
+              </div>
 
-                <!-- 右侧详细规则配置卡片 -->
-                <div style="flex: 1; background: rgba(0, 210, 255, 0.03); border: 1px solid #1a253c; border-radius: 6px; padding: 14px; min-height: 120px; display: flex; align-items: center;">
-                  <!-- 天模式 -->
-                  <div v-if="scheduleForm.cron_mode === 'daily'" style="display: flex; align-items: center; gap: 8px; font-size: 13px;">
-                    <span>每</span>
-                    <input type="number" min="1" max="365" class="form-control" v-model.number="scheduleForm.dailyInterval"
-                      style="width: 76px; text-align: center; font-weight: 600;">
-                    <span>天在设定时间执行一次</span>
+              <!-- 5. 执行时间 (触发时刻 至 时间窗口截止) -->
+              <div style="display: flex; gap: 14px; margin-bottom: 16px; align-items: center;">
+                <label style="width: 72px; font-size: 13px; color: var(--text-muted); text-align: right; flex-shrink: 0;">执行时间:</label>
+                <div style="display: flex; align-items: center; gap: 10px; flex: 1;">
+                  <div style="position: relative; flex: 1;">
+                    <input type="time" step="1" class="form-control" v-model="scheduleForm.executionTime"
+                      style="color-scheme: dark; padding-right: 36px; font-family: monospace;">
+                    <button type="button" @click="setCurrentExecutionTime" title="获取系统当前时间"
+                      style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; font-size: 15px; opacity: 0.85;"
+                      onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.85'">
+                      🕒
+                    </button>
+                  </div>
+                  <span style="color: var(--text-muted); font-size: 13px;">至</span>
+                  <input type="time" step="1" class="form-control" v-model="scheduleForm.endTime"
+                    style="color-scheme: dark; flex: 1; font-family: monospace;" title="每日最晚允许执行时间窗口截止">
+                </div>
+              </div>
+
+              <!-- 6. 模式选择 (单次 / 分钟 / 小时 / 天 / 每周 / 每月) -->
+              <div style="display: flex; gap: 14px; margin-bottom: 20px; align-items: flex-start;">
+                <label style="width: 72px; font-size: 13px; color: var(--text-muted); text-align: right; flex-shrink: 0; padding-top: 4px;">模式选择:</label>
+                <div style="flex: 1; display: flex; gap: 14px;">
+                  <!-- 左侧单选按钮组 -->
+                  <div style="display: flex; flex-direction: column; gap: 9px; min-width: 90px; padding-top: 4px;">
+                    <label style="cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 13px;">
+                      <input type="radio" value="once" v-model="scheduleForm.cron_mode"> 单次
+                    </label>
+                    <label style="cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 13px;">
+                      <input type="radio" value="minute" v-model="scheduleForm.cron_mode"> 分钟
+                    </label>
+                    <label style="cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 13px;">
+                      <input type="radio" value="hour" v-model="scheduleForm.cron_mode"> 小时
+                    </label>
+                    <label style="cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 13px;">
+                      <input type="radio" value="daily" v-model="scheduleForm.cron_mode"> 天
+                    </label>
+                    <label style="cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 13px;">
+                      <input type="radio" value="weekly" v-model="scheduleForm.cron_mode"> 每周
+                    </label>
+                    <label style="cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 13px;">
+                      <input type="radio" value="monthly" v-model="scheduleForm.cron_mode"> 每月
+                    </label>
                   </div>
 
-                  <!-- 每周模式 -->
-                  <div v-else-if="scheduleForm.cron_mode === 'weekly'" style="display: flex; flex-direction: column; gap: 10px; width: 100%;">
-                    <div style="font-size: 13px; color: var(--text-muted);">每周选择执行日（支持多选）：</div>
-                    <div style="display: flex; gap: 6px; flex-wrap: wrap;">
-                      <label v-for="d in [1,2,3,4,5,6,7]" :key="d"
-                        style="cursor: pointer; display: flex; align-items: center; gap: 4px; font-size: 12px; padding: 4px 8px; border-radius: 4px; transition: all 0.2s;"
-                        :style="scheduleForm.weeklyDays.includes(d) ? 'background: rgba(0,210,255,0.18); border: 1px solid #00d2ff; color: #00d2ff;' : 'background: rgba(255,255,255,0.03); border: 1px solid #233354; color: #a0aec0;'">
-                        <input type="checkbox" :value="d" v-model="scheduleForm.weeklyDays" style="display: none;">
-                        <span>周{{ ['一','二','三','四','五','六','日'][d-1] }}</span>
-                      </label>
+                  <!-- 右侧详细规则配置卡片 -->
+                  <div style="flex: 1; background: rgba(0, 210, 255, 0.03); border: 1px solid #1a253c; border-radius: 6px; padding: 14px; min-height: 120px; display: flex; align-items: center;">
+                    <!-- 分钟模式 -->
+                    <div v-if="scheduleForm.cron_mode === 'minute'" style="display: flex; align-items: center; gap: 8px; font-size: 13px;">
+                      <span>每</span>
+                      <input type="number" min="1" max="1440" class="form-control" v-model.number="scheduleForm.minuteInterval"
+                        style="width: 76px; text-align: center; font-weight: 600;">
+                      <span>分钟高频巡检一次</span>
+                    </div>
+
+                    <!-- 小时模式 -->
+                    <div v-else-if="scheduleForm.cron_mode === 'hour'" style="display: flex; align-items: center; gap: 8px; font-size: 13px;">
+                      <span>每</span>
+                      <input type="number" min="1" max="24" class="form-control" v-model.number="scheduleForm.hourInterval"
+                        style="width: 76px; text-align: center; font-weight: 600;">
+                      <span>小时定时执行一次</span>
+                    </div>
+
+                    <!-- 天模式 -->
+                    <div v-else-if="scheduleForm.cron_mode === 'daily'" style="display: flex; align-items: center; gap: 8px; font-size: 13px;">
+                      <span>每</span>
+                      <input type="number" min="1" max="365" class="form-control" v-model.number="scheduleForm.dailyInterval"
+                        style="width: 76px; text-align: center; font-weight: 600;">
+                      <span>天在设定时间执行一次</span>
+                    </div>
+
+                    <!-- 每周模式 -->
+                    <div v-else-if="scheduleForm.cron_mode === 'weekly'" style="display: flex; flex-direction: column; gap: 10px; width: 100%;">
+                      <div style="font-size: 13px; color: var(--text-muted);">每周选择执行日（支持多选）：</div>
+                      <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                        <label v-for="d in [1,2,3,4,5,6,7]" :key="d"
+                          style="cursor: pointer; display: flex; align-items: center; gap: 4px; font-size: 12px; padding: 4px 8px; border-radius: 4px; transition: all 0.2s;"
+                          :style="scheduleForm.weeklyDays.includes(d) ? 'background: rgba(0,210,255,0.18); border: 1px solid #00d2ff; color: #00d2ff;' : 'background: rgba(255,255,255,0.03); border: 1px solid #233354; color: #a0aec0;'">
+                          <input type="checkbox" :value="d" v-model="scheduleForm.weeklyDays" style="display: none;">
+                          <span>周{{ ['一','二','三','四','五','六','日'][d-1] }}</span>
+                        </label>
+                      </div>
+                    </div>
+
+                    <!-- 每月模式 -->
+                    <div v-else-if="scheduleForm.cron_mode === 'monthly'" style="display: flex; align-items: center; gap: 8px; font-size: 13px;">
+                      <span>每月</span>
+                      <input type="number" min="1" max="31" class="form-control" v-model.number="scheduleForm.monthlyDay"
+                        style="width: 76px; text-align: center; font-weight: 600;">
+                      <span>日自动执行一次</span>
+                    </div>
+
+                    <!-- 单次执行 -->
+                    <div v-else style="font-size: 13px; color: var(--text-muted); line-height: 1.6;">
+                      将在执行日期（<strong>{{ scheduleForm.startDate }}</strong>）的 <strong>{{ scheduleForm.executionTime }}</strong> 执行一次，执行完成后自动归档。
                     </div>
                   </div>
+                </div>
+              </div>
+            </div>
 
-                  <!-- 每月模式 -->
-                  <div v-else-if="scheduleForm.cron_mode === 'monthly'" style="display: flex; align-items: center; gap: 8px; font-size: 13px;">
-                    <span>每月</span>
-                    <input type="number" min="1" max="31" class="form-control" v-model.number="scheduleForm.monthlyDay"
-                      style="width: 76px; text-align: center; font-weight: 600;">
-                    <span>日自动执行一次</span>
-                  </div>
+            <!-- TAB 2: 高级配置 -->
+            <div v-show="scheduleModalTab === 'advanced'" style="min-height: 260px; padding: 6px 0;">
+              <!-- 队列阻塞冲突策略 -->
+              <div class="form-group" style="background: rgba(13, 20, 36, 0.6); padding: 14px; border-radius: 6px; border: 1px solid #1a253c; margin-bottom: 14px;">
+                <label class="form-label" style="color: #00d2ff; font-weight: 600; margin-bottom: 8px;">⏳ 队列阻塞冲突策略</label>
+                <div style="display: flex; flex-direction: column; gap: 8px; font-size: 13px;">
+                  <label style="cursor: pointer; display: flex; align-items: center; gap: 8px;">
+                    <input type="radio" value="wait" v-model="scheduleForm.conflict_policy">
+                    <span><strong>顺延排队（推荐）</strong>：到达触发时刻若前序任务正在运行，自动等待其完成后立即执行</span>
+                  </label>
+                  <label style="cursor: pointer; display: flex; align-items: center; gap: 8px;">
+                    <input type="radio" value="skip" v-model="scheduleForm.conflict_policy">
+                    <span><strong>超时跳过</strong>：若到达触发时刻执行器仍在忙或已超过时间窗口，则直接跳过本次执行</span>
+                  </label>
+                </div>
+              </div>
 
-                  <!-- 单次执行 -->
-                  <div v-else style="font-size: 13px; color: var(--text-muted); line-height: 1.6;">
-                    将在执行日期（<strong>{{ scheduleForm.startDate }}</strong>）的 <strong>{{ scheduleForm.executionTime }}</strong> 执行一次，执行完成后自动归档。
-                  </div>
+              <!-- 失败自动重试策略 -->
+              <div class="form-group" style="background: rgba(13, 20, 36, 0.6); padding: 14px; border-radius: 6px; border: 1px solid #1a253c; margin-bottom: 14px;">
+                <label class="form-label" style="color: #ffb300; font-weight: 600; margin-bottom: 8px;">🔁 异常失败重试策略</label>
+                <div style="display: flex; gap: 20px; font-size: 13px;">
+                  <label style="cursor: pointer; display: flex; align-items: center; gap: 8px;">
+                    <input type="radio" :value="0" v-model.number="scheduleForm.auto_retry">
+                    <span>不自动重试（默认）</span>
+                  </label>
+                  <label style="cursor: pointer; display: flex; align-items: center; gap: 8px;">
+                    <input type="radio" :value="1" v-model.number="scheduleForm.auto_retry">
+                    <span>发生异常自动重试 1 次</span>
+                  </label>
+                </div>
+              </div>
+
+              <!-- 运行环境前置准入校验 -->
+              <div class="form-group" style="background: rgba(13, 20, 36, 0.6); padding: 14px; border-radius: 6px; border: 1px solid #1a253c; margin-bottom: 14px;">
+                <label class="form-label" style="color: #00e676; font-weight: 600; margin-bottom: 8px;">🛡️ 运行环境前置准入校验</label>
+                <div style="display: flex; gap: 20px; font-size: 13px;">
+                  <label style="cursor: pointer; display: flex; align-items: center; gap: 8px;">
+                    <input type="radio" :value="0" v-model.number="scheduleForm.ignore_env_check">
+                    <span>严格校验环境（推荐，拦截错位环境）</span>
+                  </label>
+                  <label style="cursor: pointer; display: flex; align-items: center; gap: 8px;">
+                    <input type="radio" :value="1" v-model.number="scheduleForm.ignore_env_check">
+                    <span>跳过环境校验直接运行</span>
+                  </label>
                 </div>
               </div>
             </div>
@@ -2497,7 +2600,7 @@
 
 
 
-  <script src="/static/js/app.js?v=20261113_06"></script>
+  <script src="/static/js/app.js?v=20261113_07"></script>
 
 
 

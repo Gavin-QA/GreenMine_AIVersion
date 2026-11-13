@@ -97,12 +97,14 @@ const app = createApp({
 
     const activeTask = ref(null);
 
-    // 调度执行队列与预约定时
+    // 调度执行计划与预约定时
     const taskQueue = ref([]);
     const pendingQueueCount = ref(0);
     const showEnqueueModal = ref(false);
     const isSubmittingEnqueue = ref(false);
+    const scheduleModalTab = ref('basic'); // 'basic' | 'advanced'
     const scheduleForm = reactive({
+      id: '', // 编辑时有值
       name: '',
       app_name: 'zhaiwan',
       preset_id: '',
@@ -110,10 +112,16 @@ const app = createApp({
       startDate: '',
       endDate: '',
       executionTime: '18:35:00',
+      endTime: '23:59:59',
       cron_mode: 'daily',
+      minuteInterval: 30,
+      hourInterval: 2,
       dailyInterval: 1,
       weeklyDays: [1, 2, 3, 4, 5],
       monthlyDay: 1,
+      conflict_policy: 'wait',
+      auto_retry: 0,
+      ignore_env_check: 0,
       is_active: 1
     });
 
@@ -1166,6 +1174,8 @@ const app = createApp({
     }
 
     function openCreateScheduleModal(preset = null) {
+      scheduleForm.id = '';
+      scheduleModalTab.value = 'basic';
       const today = new Date();
       const Y = today.getFullYear();
       const M = String(today.getMonth() + 1).padStart(2, '0');
@@ -1191,11 +1201,52 @@ const app = createApp({
       scheduleForm.startDate = todayStr;
       scheduleForm.endDate = todayStr;
       scheduleForm.executionTime = '18:35:00';
+      scheduleForm.endTime = '23:59:59';
       scheduleForm.cron_mode = 'daily';
+      scheduleForm.minuteInterval = 30;
+      scheduleForm.hourInterval = 2;
       scheduleForm.dailyInterval = 1;
       scheduleForm.weeklyDays = [1, 2, 3, 4, 5];
       scheduleForm.monthlyDay = 1;
+      scheduleForm.conflict_policy = 'wait';
+      scheduleForm.auto_retry = 0;
+      scheduleForm.ignore_env_check = 0;
       scheduleForm.is_active = 1;
+      showEnqueueModal.value = true;
+    }
+
+    function openEditScheduleModal(plan) {
+      scheduleForm.id = plan.id;
+      scheduleModalTab.value = 'basic';
+      scheduleForm.name = plan.name || plan.task_name || '';
+      scheduleForm.app_name = plan.app_name || 'zhaiwan';
+      scheduleForm.preset_id = plan.preset_id || '';
+      scheduleForm.priority = plan.priority || 2;
+      scheduleForm.startDate = plan.start_date || '';
+      scheduleForm.endDate = plan.end_date || '';
+      scheduleForm.executionTime = plan.start_time || '18:35:00';
+      scheduleForm.endTime = plan.end_time || '23:59:59';
+      scheduleForm.cron_mode = plan.cron_mode || 'daily';
+      scheduleForm.conflict_policy = plan.conflict_policy || 'wait';
+      scheduleForm.auto_retry = plan.auto_retry ? 1 : 0;
+      scheduleForm.ignore_env_check = plan.ignore_env_check ? 1 : 0;
+      scheduleForm.is_active = plan.is_active !== undefined ? plan.is_active : 1;
+
+      // 解析周期规则
+      const spec = plan.cron_spec || '';
+      if (scheduleForm.cron_mode === 'minute') {
+        scheduleForm.minuteInterval = parseInt(spec, 10) || 30;
+      } else if (scheduleForm.cron_mode === 'hour') {
+        scheduleForm.hourInterval = parseInt(spec, 10) || 2;
+      } else if (scheduleForm.cron_mode === 'daily') {
+        scheduleForm.dailyInterval = parseInt(spec, 10) || 1;
+      } else if (scheduleForm.cron_mode === 'weekly') {
+        const days = spec.split(',').map(x => parseInt(x.trim(), 10)).filter(x => !isNaN(x) && x >= 1 && x <= 7);
+        scheduleForm.weeklyDays = days.length > 0 ? days : [1, 2, 3, 4, 5];
+      } else if (scheduleForm.cron_mode === 'monthly') {
+        scheduleForm.monthlyDay = parseInt(spec, 10) || 1;
+      }
+
       showEnqueueModal.value = true;
     }
 
@@ -1224,76 +1275,18 @@ const app = createApp({
       }
       isSubmittingEnqueue.value = true;
       try {
-        const timeParts = (scheduleForm.executionTime || '18:35:00').split(':');
-        const h = parseInt(timeParts[0] || '18', 10);
-        const m = parseInt(timeParts[1] || '35', 10);
-        const s = parseInt(timeParts[2] || '0', 10);
-
-        let scheduledAtStr = null;
-        let cronSpecStr = '';
-
-        if (scheduleForm.cron_mode === 'daily') {
+        let cronSpecStr = '1';
+        if (scheduleForm.cron_mode === 'minute') {
+          cronSpecStr = String(scheduleForm.minuteInterval || 30);
+        } else if (scheduleForm.cron_mode === 'hour') {
+          cronSpecStr = String(scheduleForm.hourInterval || 1);
+        } else if (scheduleForm.cron_mode === 'daily') {
           cronSpecStr = String(scheduleForm.dailyInterval || 1);
-          const baseDate = scheduleForm.startDate || new Date().toISOString().split('T')[0];
-          let target = new Date(`${baseDate}T00:00:00`);
-          target.setHours(h, m, s, 0);
-          const now = new Date();
-          while (target <= now) {
-            target.setDate(target.getDate() + parseInt(cronSpecStr, 10));
-          }
-          const tY = target.getFullYear();
-          const tM = String(target.getMonth() + 1).padStart(2, '0');
-          const tD = String(target.getDate()).padStart(2, '0');
-          const th = String(target.getHours()).padStart(2, '0');
-          const tm = String(target.getMinutes()).padStart(2, '0');
-          const ts = String(target.getSeconds()).padStart(2, '0');
-          scheduledAtStr = `${tY}-${tM}-${tD} ${th}:${tm}:${ts}`;
         } else if (scheduleForm.cron_mode === 'weekly') {
           const days = (scheduleForm.weeklyDays || [1]).slice().sort((a,b) => a-b);
           cronSpecStr = days.join(',');
-          const now = new Date();
-          let nextTarget = null;
-          for (let d = 0; d < 8; d++) {
-            const cand = new Date();
-            cand.setDate(now.getDate() + d);
-            cand.setHours(h, m, s, 0);
-            const isoDay = cand.getDay() === 0 ? 7 : cand.getDay();
-            if (days.includes(isoDay) && cand > now) {
-              nextTarget = cand;
-              break;
-            }
-          }
-          if (!nextTarget) {
-            nextTarget = new Date();
-            nextTarget.setDate(now.getDate() + 7);
-            nextTarget.setHours(h, m, s, 0);
-          }
-          const tY = nextTarget.getFullYear();
-          const tM = String(nextTarget.getMonth() + 1).padStart(2, '0');
-          const tD = String(nextTarget.getDate()).padStart(2, '0');
-          const th = String(nextTarget.getHours()).padStart(2, '0');
-          const tm = String(nextTarget.getMinutes()).padStart(2, '0');
-          const ts = String(nextTarget.getSeconds()).padStart(2, '0');
-          scheduledAtStr = `${tY}-${tM}-${tD} ${th}:${tm}:${ts}`;
         } else if (scheduleForm.cron_mode === 'monthly') {
           cronSpecStr = String(scheduleForm.monthlyDay || 1);
-          const dayNum = parseInt(cronSpecStr, 10);
-          const now = new Date();
-          let target = new Date(now.getFullYear(), now.getMonth(), dayNum, h, m, s, 0);
-          if (target <= now) {
-            target = new Date(now.getFullYear(), now.getMonth() + 1, dayNum, h, m, s, 0);
-          }
-          const tY = target.getFullYear();
-          const tM = String(target.getMonth() + 1).padStart(2, '0');
-          const tD = String(target.getDate()).padStart(2, '0');
-          const th = String(target.getHours()).padStart(2, '0');
-          const tm = String(target.getMinutes()).padStart(2, '0');
-          const ts = String(target.getSeconds()).padStart(2, '0');
-          scheduledAtStr = `${tY}-${tM}-${tD} ${th}:${tm}:${ts}`;
-        } else {
-          // 单次执行
-          const datePart = scheduleForm.startDate || new Date().toISOString().split('T')[0];
-          scheduledAtStr = `${datePart} ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
         }
 
         const payload = {
@@ -1301,53 +1294,103 @@ const app = createApp({
           app_name: scheduleForm.app_name,
           preset_id: scheduleForm.preset_id,
           priority: scheduleForm.priority,
-          scheduled_at: scheduledAtStr,
+          start_date: scheduleForm.startDate || '',
+          end_date: scheduleForm.endDate || '',
+          start_time: scheduleForm.executionTime || '18:35:00',
+          end_time: scheduleForm.endTime || '23:59:59',
           cron_mode: scheduleForm.cron_mode,
           cron_spec: cronSpecStr,
-          time_of_day: scheduleForm.executionTime,
+          conflict_policy: scheduleForm.conflict_policy || 'wait',
+          auto_retry: scheduleForm.auto_retry ? 1 : 0,
+          ignore_env_check: scheduleForm.ignore_env_check ? 1 : 0,
           is_active: scheduleForm.is_active ? 1 : 0
         };
 
-        const res = await fetch(`${apiBase}/api/tasks/queue/schedule`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
+        let res;
+        if (scheduleForm.id) {
+          res = await fetch(`${apiBase}/api/tasks/queue/schedule/${scheduleForm.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+        } else {
+          res = await fetch(`${apiBase}/api/tasks/queue/schedule`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+        }
 
         if (res.ok) {
           showEnqueueModal.value = false;
           showToast(
             '调度计划已保存',
-            `计划【<strong>${scheduleForm.name}</strong>】已成功加入执行队列！预约时间：${scheduledAtStr}`,
+            `计划【<strong>${scheduleForm.name}</strong>】已成功配置并生效！`,
             'success',
             5000
           );
-          await fetchTasks();
           await fetchTaskQueue();
           currentTab.value = 'tasks';
           assetsSubTab.value = 'queue';
         } else {
-          showToast('创建调度计划失败', await res.text(), 'error', 6000);
+          showToast('保存调度计划失败', await res.text(), 'error', 6000);
         }
       } catch (e) {
-        showToast('创建调度计划异常', String(e), 'error', 6000);
+        showToast('保存调度计划异常', String(e), 'error', 6000);
       } finally {
         isSubmittingEnqueue.value = false;
       }
     }
 
-    async function removeFromQueue(queueItem) {
-      if (!confirm(`确定要将任务【${queueItem.task_name || queueItem.task_id}】移出执行队列吗？`)) return;
+    async function toggleScheduleActive(plan) {
       try {
-        const res = await fetch(`${apiBase}/api/tasks/queue/${queueItem.id}`, { method: 'DELETE' });
+        const res = await fetch(`${apiBase}/api/tasks/queue/schedule/${plan.id}/toggle`, { method: 'POST' });
         if (res.ok) {
+          const data = await res.json();
+          showToast('状态已更新', data.message, 'success', 3500);
           await fetchTaskQueue();
         } else {
-          alert('移出队列失败: ' + (await res.text()));
+          showToast('切换失败', await res.text(), 'error', 4000);
         }
       } catch (e) {
-        alert('移出队列异常: ' + e);
+        showToast('请求异常', String(e), 'error', 4000);
       }
+    }
+
+    async function runScheduleNow(plan) {
+      if (!confirm(`确定要立即手动执行一次调度计划【${plan.name || plan.task_name}】吗？`)) return;
+      try {
+        const res = await fetch(`${apiBase}/api/tasks/queue/schedule/${plan.id}/run_now`, { method: 'POST' });
+        if (res.ok) {
+          const data = await res.json();
+          showToast('已下发执行', data.message, 'success', 5000);
+          await fetchTaskQueue();
+          await fetchTasks();
+        } else {
+          showToast('下发失败', await res.text(), 'error', 5000);
+        }
+      } catch (e) {
+        showToast('执行异常', String(e), 'error', 5000);
+      }
+    }
+
+    async function deleteSchedule(plan) {
+      if (!confirm(`确定要彻底删除该调度计划【${plan.name || plan.task_name || plan.id}】吗？`)) return;
+      try {
+        const res = await fetch(`${apiBase}/api/tasks/queue/${plan.id}`, { method: 'DELETE' });
+        if (res.ok) {
+          showToast('已删除', '调度计划已成功删除', 'info', 3000);
+          await fetchTaskQueue();
+        } else {
+          alert('删除失败: ' + (await res.text()));
+        }
+      } catch (e) {
+        alert('删除异常: ' + e);
+      }
+    }
+
+    async function removeFromQueue(queueItem) {
+      return deleteSchedule(queueItem);
     }
 
 
@@ -2778,16 +2821,21 @@ const app = createApp({
       pendingQueueCount,
       showEnqueueModal,
       isSubmittingEnqueue,
+      scheduleModalTab,
       enqueueForm: scheduleForm,
       scheduleForm,
       filteredSchedulePresets,
       fetchTaskQueue,
       openEnqueueModal: openCreateScheduleModal,
       openCreateScheduleModal,
+      openEditScheduleModal,
       onScheduleAppChange,
       onSchedulePresetChange,
       confirmEnqueueTask: confirmCreateSchedulePlan,
       confirmCreateSchedulePlan,
+      toggleScheduleActive,
+      runScheduleNow,
+      deleteSchedule,
       removeFromQueue,
       formatPriorityLabel,
       formatTaskStatus,

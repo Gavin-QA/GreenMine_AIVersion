@@ -406,12 +406,75 @@ class SchedulePlanCreate(BaseModel):
     name: Optional[str] = Field(default=None, description="调度计划自定义名称 (如留空则自动根据预设填充)")
     app_name: str = Field(description="目标矿山应用代号 (如 zhaiwan / tianrui / liwutong)")
     preset_id: str = Field(description="关联的预设巡检任务模板 ID (如 preset_user_xxx)")
-    priority: int = Field(default=3, description="队列排序优先级 (1-5，数值越小越优先执行)")
-    scheduled_at: Optional[datetime.datetime] = Field(default=None, description="预约定时触发时间 (留空则立即排队)")
-    cron_mode: Optional[str] = Field(default="once", description="巡检周期模式: once(单次)/daily(天)/weekly(每周)/monthly(每月)")
-    cron_spec: Optional[str] = Field(default="", description="周期规则说明")
-    time_of_day: Optional[str] = Field(default="", description="每日执行时间点如 18:35:00")
+    priority: int = Field(default=2, description="优先级 (1=紧急P1, 2=高P2, 3=普通P3, 4=低P4)")
+    start_date: Optional[str] = Field(default="", description="生效开始日期 (YYYY-MM-DD)")
+    end_date: Optional[str] = Field(default="", description="生效结束日期 (YYYY-MM-DD)")
+    start_time: Optional[str] = Field(default="18:35:00", description="每日执行时刻 (HH:mm:ss)")
+    end_time: Optional[str] = Field(default="23:59:59", description="每日执行窗口截止时刻 (HH:mm:ss)")
+    cron_mode: Optional[str] = Field(default="daily", description="巡检周期模式: once/minute/hour/daily/weekly/monthly")
+    cron_spec: Optional[str] = Field(default="1", description="周期规则说明")
+    conflict_policy: Optional[str] = Field(default="wait", description="阻塞冲突策略: wait(顺延排队) / skip(超时放弃)")
+    auto_retry: Optional[int] = Field(default=0, description="失败是否自动重试 (0=否, 1=是)")
+    ignore_env_check: Optional[int] = Field(default=0, description="是否跳过环境准入校验 (0=否, 1=是)")
     is_active: Optional[int] = Field(default=1, description="是否启用 (1=启用, 0=停用)")
+    # 兼容历史前端字段
+    scheduled_at: Optional[datetime.datetime] = Field(default=None, description="预约定时触发时间兼容字段")
+    time_of_day: Optional[str] = Field(default="", description="执行时间点兼容字段")
+
+
+class SchedulePlanUpdate(BaseModel):
+    """更新调度执行计划请求模型"""
+    name: Optional[str] = None
+    priority: Optional[int] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    start_time: Optional[str] = None
+    end_time: Optional[str] = None
+    cron_mode: Optional[str] = None
+    cron_spec: Optional[str] = None
+    conflict_policy: Optional[str] = None
+    auto_retry: Optional[int] = None
+    ignore_env_check: Optional[int] = None
+    is_active: Optional[int] = None
+
+
+class SchedulePlanResponse(BaseModel):
+    """调度执行计划响应模型 (包含常驻配置与关联任务状态)"""
+    id: str = Field(description="计划唯一标识码")
+    name: str = Field(description="计划名称")
+    app_name: str = Field(description="所属应用")
+    preset_id: str = Field(description="关联预设模板 ID")
+    preset_title: Optional[str] = Field(default=None, description="关联预设模板标题")
+    preset_mode: Optional[str] = Field(default=None, description="预设模式 (explore/yaml/smoke)")
+    max_steps: Optional[int] = Field(default=None, description="最大步数")
+    max_times: Optional[int] = Field(default=None, description="最大运行时长(分钟)")
+    priority: int = Field(default=2, description="优先级")
+    start_date: Optional[str] = Field(default="", description="开始日期")
+    end_date: Optional[str] = Field(default="", description="结束日期")
+    start_time: Optional[str] = Field(default="18:35:00", description="执行时刻")
+    end_time: Optional[str] = Field(default="23:59:59", description="窗口截止时刻")
+    cron_mode: str = Field(default="daily", description="周期模式")
+    cron_spec: str = Field(default="1", description="周期规则")
+    conflict_policy: str = Field(default="wait", description="阻塞策略")
+    auto_retry: int = Field(default=0, description="自动重试")
+    ignore_env_check: int = Field(default=0, description="跳过环境校验")
+    is_active: int = Field(default=1, description="启用状态")
+    status: str = Field(default="active", description="计划状态: active/paused/expired/completed")
+    next_run_time: Optional[datetime.datetime] = Field(default=None, description="下次预约执行时间")
+    last_run_time: Optional[datetime.datetime] = Field(default=None, description="上次执行时间")
+    last_task_id: Optional[str] = Field(default=None, description="上次派生的任务 ID")
+    run_count: int = Field(default=0, description="累计执行次数")
+    created_at: Optional[datetime.datetime] = Field(default=None, description="创建时间")
+    updated_at: Optional[datetime.datetime] = Field(default=None, description="更新时间")
+
+    @field_serializer('next_run_time', 'last_run_time', 'created_at', 'updated_at', when_used='json')
+    def serialize_local_times(self, v: Optional[datetime.datetime]):
+        if v is None:
+            return None
+        return v.strftime('%Y-%m-%d %H:%M:%S')
+
+    class Config:
+        from_attributes = True
 
 
 class QueueItemCreate(BaseModel):
