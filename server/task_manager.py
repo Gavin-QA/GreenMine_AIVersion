@@ -712,6 +712,25 @@ class TaskManager:
                             spawn_task_from_plan(plan, db)
                         except Exception as plan_err:
                             logger.error(f"下发调度计划 [{plan.id}] 异常: {plan_err}")
+                            # 防死循环雪崩：如果本次下发失败，安全推演下一次执行时间或单次任务标记为失败，避免每 4 秒疯狂重试刷屏
+                            try:
+                                if plan.cron_mode == "once":
+                                    plan.status = "failed"
+                                    plan.is_active = 0
+                                    plan.next_run_time = None
+                                else:
+                                    plan.next_run_time = calculate_next_run_time(
+                                        cron_mode=plan.cron_mode,
+                                        cron_spec=plan.cron_spec,
+                                        start_time_str=plan.start_time,
+                                        start_date_str=plan.start_date,
+                                        end_date_str=plan.end_date,
+                                        after_time=now_local + datetime.timedelta(minutes=1),
+                                    )
+                                db.commit()
+                            except Exception as recover_err:
+                                logger.warning(f"调度计划 [{plan.id}] 异常恢复失败: {recover_err}")
+                                db.rollback()
 
                     # 2. 检查当前是否有任务正在执行中 (保证单机独占执行)
                     with self._lock:

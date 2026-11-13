@@ -255,6 +255,7 @@ class PresetTaskRecord(Base):
     wait_ready = Column(String(256), nullable=True)
     wait_timeout = Column(Float, nullable=True)
     ignore_env_check = Column(Boolean, default=False)
+    explore_context = Column(String(256), nullable=True)
 
     is_system = Column(Boolean, default=False) # 系统默认预设 vs 用户自定义预设
     created_at = Column(DateTime, default=datetime.datetime.utcnow)

@@ -192,8 +192,8 @@ def spawn_task_from_plan(plan: SchedulePlan, db: Session) -> Optional[TaskRun]:
         start_delay=preset.start_delay,
         wait_ready=preset.wait_ready,
         wait_timeout=preset.wait_timeout,
-        ignore_env_check=bool(plan.ignore_env_check or preset.ignore_env_check),
-        explore_context=preset.explore_context,
+        ignore_env_check=bool(plan.ignore_env_check or getattr(preset, "ignore_env_check", False)),
+        explore_context=getattr(preset, "explore_context", None) or getattr(plan, "explore_context", None) or f"docs/explore_rules_{plan.app_name}.md",
         trigger_type="scheduled",
         start_time=now,
     )
@@ -248,3 +248,4 @@ def spawn_task_from_plan(plan: SchedulePlan, db: Session) -> Optional[TaskRun]:
 
     db.commit()
     return new_task
+
