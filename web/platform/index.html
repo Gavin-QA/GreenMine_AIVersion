@@ -2169,14 +2169,62 @@
                 <div class="grid-2" style="margin-bottom: 12px;">
                   <div class="form-group"
                     style="background: rgba(13, 20, 36, 0.6); padding: 12px; border-radius: 6px; border: 1px solid #1a253c; margin-bottom: 0;">
-                    <label class="form-label" style="color: #00d2ff;">🏢 目标矿山系统</label>
-                    <div style="font-weight: 600; font-size: 14px;">{{ selectedEnvInfo.env_info.app_name || '-' }}</div>
+                    <label class="form-label" style="color: #00d2ff; display: flex; justify-content: space-between; align-items: center;">
+                      <span>🏢 目标系统与启动器</span>
+                      <span v-if="selectedEnvInfo.env_info.launcher_version" class="badge" style="background: rgba(0, 210, 255, 0.15); color: #00d2ff; font-weight: bold; font-size: 11px;">
+                        版本: {{ selectedEnvInfo.env_info.launcher_version }}
+                      </span>
+                    </label>
+                    <div style="font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 8px;">
+                      <span>{{ selectedEnvInfo.env_info.app_name || '-' }}</span>
+                      <span v-if="selectedEnvInfo.env_info.machine_id" style="font-size: 11px; color: #8b9bb4; font-weight: normal; font-family: monospace;">
+                        (设备ID: {{ selectedEnvInfo.env_info.machine_id }})
+                      </span>
+                    </div>
                   </div>
                   <div class="form-group"
                     style="background: rgba(13, 20, 36, 0.6); padding: 12px; border-radius: 6px; border: 1px solid #1a253c; margin-bottom: 0;">
                     <label class="form-label" style="color: #00e676;">🌍 部署环境代号</label>
                     <div style="font-weight: 600; font-size: 14px;">{{ selectedEnvInfo.env_info.env_name ||
                       selectedEnvInfo.env_info.env_key || '-' }}</div>
+                  </div>
+                </div>
+
+                <!-- 🎙️ 语音播报模块 (TTS) 与 NATS 告警消息流 -->
+                <div class="form-group"
+                  style="background: rgba(13, 20, 36, 0.6); padding: 12px; border-radius: 6px; border: 1px solid #1a253c; margin-bottom: 12px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <label class="form-label" style="color: #a78bfa; margin-bottom: 0; display: flex; align-items: center; gap: 6px;">
+                      <span>🎙️ 语音播报模块 (TTS) 与 NATS 告警网关</span>
+                    </label>
+                    <div>
+                      <span v-if="selectedEnvInfo.env_info.tts_enabled" class="badge badge-success" style="font-size: 11px;">
+                        🟢 TTS 已启用 (监听并语音播报)
+                      </span>
+                      <span v-else class="badge" style="background: rgba(100, 116, 139, 0.2); color: #94a3b8; font-size: 11px;">
+                        ⚪ TTS 未启用
+                      </span>
+                    </div>
+                  </div>
+
+                  <div style="display: grid; grid-template-columns: 1fr; gap: 8px; font-size: 12px;">
+                    <div>
+                      <span style="color: #8b9bb4;">📡 NATS 网关地址: </span>
+                      <span style="font-family: monospace; color: #cbd5e1; word-break: break-all;">
+                        {{ selectedEnvInfo.env_info.nats_ws_url || '未配置' }}
+                      </span>
+                    </div>
+                    <div v-if="selectedEnvInfo.env_info.nats_subjects && selectedEnvInfo.env_info.nats_subjects.length > 0">
+                      <span style="color: #8b9bb4;">🎯 订阅主题 (Subjects): </span>
+                      <span v-for="subj in selectedEnvInfo.env_info.nats_subjects" :key="subj" 
+                        class="badge" style="background: rgba(167, 139, 250, 0.15); color: #c4b5fd; font-family: monospace; font-size: 11px; margin-right: 6px;">
+                        {{ subj }}
+                      </span>
+                    </div>
+                    <div v-if="selectedEnvInfo.env_info.nats_trace_id">
+                      <span style="color: #8b9bb4;">🔍 Trace ID: </span>
+                      <span style="font-family: monospace; color: #cbd5e1;">{{ selectedEnvInfo.env_info.nats_trace_id }}</span>
+                    </div>
                   </div>
                 </div>
 
@@ -2208,27 +2256,18 @@
                   </div>
                   <div class="form-group"
                     style="background: rgba(13, 20, 36, 0.6); padding: 12px; border-radius: 6px; border: 1px solid #1a253c; margin-bottom: 0;">
-                    <label class="form-label" style="color: #00d2ff;">📡 NATS 推流网关地址</label>
-                    <div style="font-family: monospace; font-size: 12px; word-break: break-all; color: #cbd5e1;">
-                      {{ selectedEnvInfo.env_info.nats_ws_url || '-' }}
+                    <label class="form-label" style="color: #00e676;">📺 像素流送端口</label>
+                    <div style="font-family: monospace; font-size: 13px; font-weight: 600; color: #00e676;">
+                      {{ selectedEnvInfo.env_info.start_port || '9527' }}
                     </div>
                   </div>
                 </div>
 
-                <div class="grid-2">
-                  <div class="form-group"
-                    style="background: rgba(13, 20, 36, 0.6); padding: 12px; border-radius: 6px; border: 1px solid #1a253c; margin-bottom: 0;">
-                    <label class="form-label" style="color: var(--text-muted);">⚙️ 启动器配置文件路径</label>
-                    <div style="font-family: monospace; font-size: 11px; word-break: break-all; color: #8b9bb4;">
-                      {{ selectedEnvInfo.env_info.config_file || '-' }}
-                    </div>
-                  </div>
-                  <div class="form-group"
-                    style="background: rgba(13, 20, 36, 0.6); padding: 12px; border-radius: 6px; border: 1px solid #1a253c; margin-bottom: 0;">
-                    <label class="form-label" style="color: var(--text-muted);">📺 像素流送端口</label>
-                    <div style="font-family: monospace; font-size: 13px; font-weight: 600; color: #00e676;">
-                      {{ selectedEnvInfo.env_info.start_port || '9527' }}
-                    </div>
+                <div class="form-group"
+                  style="background: rgba(13, 20, 36, 0.6); padding: 12px; border-radius: 6px; border: 1px solid #1a253c; margin-bottom: 0;">
+                  <label class="form-label" style="color: var(--text-muted);">⚙️ 启动器配置文件路径</label>
+                  <div style="font-family: monospace; font-size: 11px; word-break: break-all; color: #8b9bb4;">
+                    {{ selectedEnvInfo.env_info.config_file || '-' }}
                   </div>
                 </div>
               </div>
@@ -2458,7 +2497,7 @@
 
 
 
-  <script src="/static/js/app.js?v=20261113_05"></script>
+  <script src="/static/js/app.js?v=20261113_06"></script>
 
 
 

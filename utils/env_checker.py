@@ -88,6 +88,31 @@ def load_launcher_config(config_path: Path) -> Optional[Dict[str, Any]]:
         return None
 
 
+def get_pe_file_version(filepath: str) -> str:
+    """提取 Windows 可执行文件的原生版本号 (毫秒级 ctypes 直读)"""
+    if not filepath or not os.path.exists(filepath):
+        return ""
+    try:
+        import ctypes
+        size = ctypes.windll.version.GetFileVersionInfoSizeW(str(filepath), None)
+        if not size:
+            return ""
+        res = ctypes.create_string_buffer(size)
+        if not ctypes.windll.version.GetFileVersionInfoW(str(filepath), 0, size, res):
+            return ""
+        handle = ctypes.c_void_p()
+        length = ctypes.c_uint()
+        if not ctypes.windll.version.VerQueryValueW(res, "\\", ctypes.byref(handle), ctypes.byref(length)):
+            return ""
+        vals = (ctypes.c_uint32 * 4).from_address(handle.value + 8)
+        ms, ls = vals[0], vals[1]
+        v1, v2 = ms >> 16, ms & 0xFFFF
+        v3, v4 = ls >> 16, ls & 0xFFFF
+        return f"{v1}.{v2}.{v3}" if v4 == 0 else f"{v1}.{v2}.{v3}.{v4}"
+    except Exception:
+        return ""
+
+
 def check_launcher_environment(settings: Any, ignore_check: bool = False, custom_logger: Optional[logging.Logger] = None) -> bool:
     """
     在启动测试前执行前置环境准入巡检 (Pre-flight Environment Check)
@@ -102,8 +127,7 @@ def check_launcher_environment(settings: Any, ignore_check: bool = False, custom
 
     enabled = env_check_cfg.get("enabled", True)
     if not enabled:
-        log.info("ℹ️ [Pre-flight] 环境前置准入校验已禁用 (enabled: false)，跳过检测。")
-        return True
+        log.info("ℹ️ [Pre-flight] 环境前置准入严格校验已禁用 (enabled: false)，仍将采集环境基线快照并自动放行。")
 
     active_app = getattr(settings, "active_app", "zhaiwan")
     custom_path = env_check_cfg.get("config_path")
@@ -131,18 +155,37 @@ def check_launcher_environment(settings: Any, ignore_check: bool = False, custom
     ue_name = str(data.get("UEName", active_app)).strip()
     start_port = data.get("startPort", "")
 
+    # 提取 TTS 与 NATS 订阅等运维扩展参数
+    tts_enabled = bool(data.get("ttsEnabled", False))
+    nats_subjects = data.get("natsSubjects", [])
+    if isinstance(nats_subjects, str):
+        nats_subjects = [nats_subjects] if nats_subjects else []
+    elif not isinstance(nats_subjects, list):
+        nats_subjects = []
+    nats_trace_id = str(data.get("natsTraceId", "")).strip()
+    machine_id = str(data.get("machineId", "")).strip()
+
+    # 读取启动器 PE 原生版本号 (例如 1.4.2645)
+    exe_path = getattr(settings, "app_path", "") or getattr(settings, "apps", {}).get(active_app, {}).get("exe_path", "")
+    launcher_version = get_pe_file_version(exe_path)
+
     custom_envs = env_check_cfg.get("environments", {})
     env_key, env_name = detect_environment_type(nplusone_url, custom_envs)
 
     CURRENT_LAUNCHER_ENV = {
         "app_name": active_app,
+        "launcher_version": launcher_version,
+        "machine_id": machine_id,
         "config_file": str(config_file),
         "env_key": env_key,
         "env_name": env_name,
         "nplusone_url": nplusone_url,
         "big_screen_dist": big_screen_dist,
         "ue_dist": ue_dist,
+        "tts_enabled": tts_enabled,
         "nats_ws_url": nats_ws_url,
+        "nats_subjects": nats_subjects,
+        "nats_trace_id": nats_trace_id,
         "start_port": start_port
     }
 
@@ -172,18 +215,24 @@ def check_launcher_environment(settings: Any, ignore_check: bool = False, custom
         log.info("🔍 [Pre-flight 环境准入巡检] ✅ 校验通过")
     else:
         log.info("🔍 [Pre-flight 环境准入巡检] ⚠️ 环境与预期不符！")
-    log.info(f"   - 目标客户端: {active_app} (UEName: {ue_name}, 启动端口: {start_port})")
+    ver_str = f" v{launcher_version}" if launcher_version else ""
+    log.info(f"   - 目标客户端: {active_app}{ver_str} (UEName: {ue_name}, 启动端口: {start_port})")
+    if machine_id:
+        log.info(f"   - 设备识别码: {machine_id}")
     log.info(f"   - 配置文件:   {config_file}")
     log.info(f"   - 当前环境:   {env_name} [{nplusone_url}]")
     log.info(f"   - 前端包目录: {big_screen_dist}")
     log.info(f"   - UE 引擎包:  {ue_dist}")
+    tts_status_str = "已开启 (监听并播报)" if tts_enabled else "未开启"
+    log.info(f"   - 语音播报TTS: {tts_status_str}")
     if nats_ws_url:
-        log.info(f"   - 告警推流:   {nats_ws_url} (大屏顶层人员告警弹窗)")
+        subs_str = f" | 订阅主题: {', '.join(nats_subjects)}" if nats_subjects else ""
+        log.info(f"   - NATS推流网关: {nats_ws_url}{subs_str}")
     else:
-        log.info("   - 告警推流:   未配置")
+        log.info("   - NATS推流网关: 未配置")
     log.info(divider)
 
-    if passed:
+    if passed or not enabled:
         return True
 
     # 未通过处理
