@@ -1090,7 +1090,11 @@
                           @click="removeFromQueue(q)">
                           移出队列
                         </button>
-                        <span v-else style="color: var(--text-muted); font-size: 12px;">-</span>
+                        <button v-else class="btn btn-secondary"
+                          style="padding: 3px 8px; font-size: 12px; border-color: #4a5568; color: #a0aec0;"
+                          @click="removeFromQueue(q)" title="从调度历史记录中清理移出">
+                          移出
+                        </button>
                       </td>
                     </tr>
                   </tbody>
@@ -2409,7 +2413,7 @@
 
 
 
-  <script src="/static/js/app.js?v=20261112_01"></script>
+  <script src="/static/js/app.js?v=20261113_02"></script>
 
 
 

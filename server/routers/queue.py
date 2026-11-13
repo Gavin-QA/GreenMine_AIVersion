@@ -266,14 +266,10 @@ def remove_from_queue(
     if q_item.status == "running":
         # 正在执行的任务联动终止
         task_manager.stop_task(q_item.task_id)
-        q_item.status = "canceled"
-        q_item.finished_at = datetime.datetime.now()
-        db.commit()
-        return {"code": 200, "message": "正在执行的队列任务已终止并移出", "queue_id": queue_id}
 
-    # 若该任务尚未物理执行且无磁盘产物，连带清理任务记录，杜绝残留孤儿脏数据
+    # 若该任务无磁盘产物且未在物理运行，连带清理任务记录，杜绝残留孤儿脏数据
     task = db.query(TaskRun).filter(TaskRun.id == q_item.task_id).first()
-    if task and task.status == "pending" and not task.run_dir and not task_manager.is_running(task.id):
+    if task and not task.run_dir and not task_manager.is_running(task.id):
         db.delete(task)
 
     db.delete(q_item)

@@ -1008,21 +1008,16 @@ const app = createApp({
 
 
     async function stopTask(taskId) {
-
       if (!confirm('确定要终止当前任务吗？底座将优雅退出进程树。')) return;
-
       try {
-
-        await fetch(`${apiBase}/api/tasks/${taskId}/stop`, { method: 'POST' });
-
-        await fetchTasks();
-
+        const res = await fetch(`${apiBase}/api/tasks/${taskId}/stop`, { method: 'POST' });
+        if (res.ok) {
+          showToast('已终止', '任务已安全终止并归档', 'info');
+        }
+        await Promise.all([fetchTasks(), fetchTaskQueue()]);
       } catch (e) {
-
         alert('终止任务异常: ' + e);
-
       }
-
     }
 
 
@@ -2341,21 +2336,17 @@ const app = createApp({
               }
 
             } else if (msg.event === 'task_updated') {
-
               console.log('[Live-Update] ⚡ 监听到巡检任务状态变更，静默热更新...', msg.data);
-
               if (currentTab.value === 'tasks') {
-
                 fetchTasks();
-
+                fetchTaskQueue();
               }
-
             } else if (msg.event === 'data_refresh') {
-
               if (currentTab.value === 'bugs') fetchBugs();
-
-              if (currentTab.value === 'tasks') fetchTasks();
-
+              if (currentTab.value === 'tasks') {
+                fetchTasks();
+                fetchTaskQueue();
+              }
             }
 
           } catch (e) {

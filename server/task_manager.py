@@ -373,8 +373,20 @@ class TaskManager:
             proc = self.active_processes.get(task_id)
 
         if not proc or proc.poll() is not None:
-            logger.warning(f"任务 [{task_id}] 未在运行或已退出")
-            return False
+            logger.warning(f"任务 [{task_id}] 进程未在运行或已退出，同步数据库状态为终止终态")
+            db = SessionLocal()
+            try:
+                task = db.query(TaskRun).filter(TaskRun.id == task_id).first()
+                if task and task.status == "running":
+                    task.status = "stopped"
+                    task.end_time = datetime.datetime.now()
+                    db.commit()
+                self._update_queue_item_on_task_finish(db, task_id, "stopped", "用户手动终止任务 (检测到进程已退出)")
+            finally:
+                db.close()
+            with self._lock:
+                self.active_processes.pop(task_id, None)
+            return True
 
         logger.info(f"🛑 正在优雅停止任务 [{task_id}] (PID: {proc.pid})...")
 
@@ -519,7 +531,7 @@ class TaskManager:
                 TaskQueueItem.status.in_(["running", "pending"])
             ).first()
             if q_item:
-                q_item.status = "completed" if status == "completed" else ("canceled" if status == "stopped" else "failed")
+                q_item.status = "completed" if status == "completed" else ("canceled" if status in ("stopped", "canceled") else "failed")
                 q_item.finished_at = datetime.datetime.now()
                 if error_message:
                     q_item.error_message = error_message
