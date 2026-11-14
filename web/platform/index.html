@@ -942,10 +942,16 @@
 
                         </button>
 
+                        <button v-if="t.status === 'running'" class="btn btn-secondary"
+                          style="padding: 4px 10px; font-size: 12px; margin-left: 6px; border-color: #ff9100; color: #ff9100;"
+                          @click="stopTask(t.id)" title="终止任务执行">
+                          🛑 终止
+                        </button>
+
                         <button class="btn btn-secondary"
                           style="padding: 4px 10px; font-size: 12px; margin-left: 6px; border-color: #ff5252; color: #ff5252; min-width: 76px; justify-content: center;"
-                          :disabled="t.status === 'running' || deletingTaskId === t.id"
-                          :title="t.status === 'running' ? '正在运行的任务不可直接删除，请先终止' : '彻底清理该任务记录及磁盘产物'"
+                          :disabled="deletingTaskId === t.id"
+                          title="彻底清理该任务记录及关联产物"
                           @click="deleteTaskRun(t)">
                           <span v-if="deletingTaskId === t.id" class="spinner-icon"></span>
                           <span v-if="deletingTaskId === t.id">清理中...</span>
@@ -2596,7 +2602,7 @@
 
 
 
-  <script src="/static/js/app.js?v=20261114_02"></script>
+  <script src="/static/js/app.js?v=20261114_03"></script>
 
 
 

@@ -272,9 +272,9 @@ def delete_task_run(
     if not task:
         raise HTTPException(status_code=404, detail="未找到指定的任务记录")
 
-    # 1. 运行态安全互斥拦截
-    if task.status == "running" or task_manager.is_running(task_id):
-        raise HTTPException(status_code=400, detail="该任务当前正在运行中，请先点击【终止】停止任务后再执行删除")
+    # 1. 运行态安全互斥拦截：仅当物理子进程真实存活时才拦截；若物理进程已死但数据库残留 running，允许清理
+    if task_manager.is_running(task_id):
+        raise HTTPException(status_code=400, detail="该任务当前正在物理运行中，请先点击【终止】停止任务后再执行删除")
 
     # 2. 缺陷安全保护防呆
     associated_bugs = db.query(BugRecord).filter(BugRecord.task_id == task_id).all()
