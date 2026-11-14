@@ -630,9 +630,9 @@
               <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 12px; display: inline-flex; align-items: center; gap: 4px;" @click="manualRefreshLive" title="立即拉取当前物理环境切片">
                 <span>🔄</span> 立即刷新
               </button>
-              <button class="btn" :class="liveAutoRefresh ? 'btn-primary' : 'btn-secondary'" style="padding: 4px 10px; font-size: 12px; display: inline-flex; align-items: center; gap: 4px;" @click="toggleLiveAutoRefresh" title="切换是否开启 10 秒自动探针轮询">
+              <button class="btn" :class="liveAutoRefresh ? 'btn-primary' : 'btn-secondary'" style="padding: 4px 10px; font-size: 12px; display: inline-flex; align-items: center; gap: 4px;" @click="toggleLiveAutoRefresh" title="切换是否开启 4 秒自动探针轮询">
                 <span class="pulse-dot" v-if="liveAutoRefresh" style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #00e676;"></span>
-                <span>{{ liveAutoRefresh ? '⏱️ 自动轮询: 开 (10s)' : '🤫 静默模式 (无轮询)' }}</span>
+                <span>{{ liveAutoRefresh ? '⏱️ 自动轮询: 开 (4s)' : '🤫 静默模式 (无轮询)' }}</span>
               </button>
             </div>
 
@@ -2596,7 +2596,7 @@
 
 
 
-  <script src="/static/js/app.js?v=20261114_01"></script>
+  <script src="/static/js/app.js?v=20261114_02"></script>
 
 
 

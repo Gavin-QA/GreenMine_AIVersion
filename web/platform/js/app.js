@@ -2552,7 +2552,7 @@ const app = createApp({
         liveTimer = setInterval(() => {
           if (document.hidden) return; // 页面失焦或最小化时静默休眠
           fetchLiveSnapshot();
-        }, 10000);
+        }, 4000);
       }
     }
 
@@ -2568,7 +2568,7 @@ const app = createApp({
       if (liveAutoRefresh.value) {
         fetchLiveSnapshot();
         startLiveTimer();
-        showToast('⏱️ 自动轮询已开启', '物理环境心跳探针已激活 (10s 间隔)', 'info', 2500);
+        showToast('⏱️ 自动轮询已开启', '物理环境心跳探针已激活 (4s 间隔)', 'info', 2500);
       } else {
         stopLiveTimer();
         showToast('🤫 静默模式', '已暂停 HTTP 轮询，控制台已清净', 'info', 2500);
