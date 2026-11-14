@@ -10,9 +10,16 @@ const app = createApp({
 
     const apiBase = window.location.origin;
 
-    // 全局 Toast 通知状态与操作方法
+    // 全局 Toast 通知状态与操作方法 (多态支持纯文本与对象传参)
     const toasts = ref([]);
-    function showToast(title, message, type = 'success', duration = 6000) {
+    function showToast(titleOrObj, message = '', type = 'success', duration = 6000) {
+      let title = titleOrObj;
+      if (typeof titleOrObj === 'object' && titleOrObj !== null) {
+        title = titleOrObj.title || '';
+        message = titleOrObj.message || '';
+        type = titleOrObj.type || 'info';
+        duration = titleOrObj.duration !== undefined ? titleOrObj.duration : 6000;
+      }
       const id = Date.now() + Math.random().toString(36).slice(2, 6);
       toasts.value.push({ id, title, message, type });
       if (duration > 0) {
@@ -23,6 +30,83 @@ const app = createApp({
     }
     function removeToast(id) {
       toasts.value = toasts.value.filter(t => t.id !== id);
+    }
+
+    // 全局自研现代化确认与输入交互弹窗 (彻底替换原生 confirm / prompt)
+    const dialogState = reactive({
+      visible: false,
+      type: 'confirm', // 'confirm' | 'prompt'
+      icon: '',
+      title: '',
+      message: '',
+      confirmText: '确定',
+      cancelText: '取消',
+      inputValue: '',
+      inputPlaceholder: '',
+      isDanger: false,
+      resolve: null,
+    });
+    const dialogInputRef = ref(null);
+
+    function showConfirm({ title = '操作确认', message = '', icon = '', confirmText = '确定', cancelText = '取消', danger = false } = {}) {
+      return new Promise((resolve) => {
+        dialogState.type = 'confirm';
+        dialogState.icon = icon || (danger ? '⚠️' : '💬');
+        dialogState.title = title;
+        dialogState.message = message;
+        dialogState.confirmText = confirmText;
+        dialogState.cancelText = cancelText;
+        dialogState.isDanger = danger;
+        dialogState.inputValue = '';
+        dialogState.resolve = resolve;
+        dialogState.visible = true;
+      });
+    }
+
+    function showPrompt({ title = '请输入', message = '', defaultValue = '', placeholder = '', icon = '✏️', confirmText = '确定', cancelText = '取消' } = {}) {
+      return new Promise((resolve) => {
+        dialogState.type = 'prompt';
+        dialogState.icon = icon;
+        dialogState.title = title;
+        dialogState.message = message;
+        dialogState.confirmText = confirmText;
+        dialogState.cancelText = cancelText;
+        dialogState.isDanger = false;
+        dialogState.inputValue = defaultValue || '';
+        dialogState.inputPlaceholder = placeholder || '';
+        dialogState.resolve = resolve;
+        dialogState.visible = true;
+        nextTick(() => {
+          if (dialogInputRef.value) {
+            dialogInputRef.value.focus();
+            dialogInputRef.value.select();
+          }
+        });
+      });
+    }
+
+    function handleDialogConfirm() {
+      if (dialogState.resolve) {
+        if (dialogState.type === 'prompt') {
+          dialogState.resolve(dialogState.inputValue.trim());
+        } else {
+          dialogState.resolve(true);
+        }
+      }
+      dialogState.visible = false;
+      dialogState.resolve = null;
+    }
+
+    function handleDialogCancel() {
+      if (dialogState.resolve) {
+        if (dialogState.type === 'prompt') {
+          dialogState.resolve(null);
+        } else {
+          dialogState.resolve(false);
+        }
+      }
+      dialogState.visible = false;
+      dialogState.resolve = null;
     }
 
 
@@ -727,39 +811,28 @@ const app = createApp({
 
 
     async function launchPreset(preset) {
-
-      if (!confirm(`确定要立即拉起预设巡检任务【${preset.title}】吗？`)) return;
+      if (!await showConfirm({
+        title: '确认拉起预设',
+        message: `确定要立即拉起预设巡检任务【${preset.title}】吗？`,
+        confirmText: '立即拉起',
+        icon: '🚀'
+      })) return;
 
       try {
-
         const res = await fetch(`${apiBase}/api/tasks/presets/${preset.id}/launch`, { method: 'POST' });
-
         if (res.ok) {
-
           const newTask = await res.json();
-
           await fetchTasks();
-
           activeTaskId.value = newTask.id;
-
           activeTask.value = newTask;
-
           currentTab.value = 'monitor';
-
           connectTaskChannels(newTask.id);
-
         } else {
-
-          alert('拉起预设任务失败: ' + (await res.text()));
-
+          showToast('拉起失败', '拉起预设任务失败: ' + (await res.text()), 'error');
         }
-
       } catch (e) {
-
-        alert('启动异常: ' + e);
-
+        showToast('启动异常', '启动异常: ' + e, 'error');
       }
-
     }
 
 
@@ -826,7 +899,13 @@ const app = createApp({
         if (taskForm.name && taskForm.name.trim()) {
           title = taskForm.name.trim();
         } else {
-          title = prompt('请输入要保存的预设任务名称:', '我的定制巡检预设');
+          title = await showPrompt({
+            title: '保存定制预设',
+            message: '请输入要保存的预设任务名称:',
+            defaultValue: '我的定制巡检预设',
+            placeholder: '请输入预设名称...',
+            icon: '💾'
+          });
           if (!title) return;
         }
       }
@@ -885,7 +964,13 @@ const app = createApp({
 
 
     async function deletePreset(preset) {
-      if (!confirm(`确定要彻底删除预设【${preset.title}】吗？`)) return;
+      if (!await showConfirm({
+        title: '删除预设确认',
+        message: `确定要彻底删除预设【${preset.title}】吗？\n删除后将无法恢复。`,
+        confirmText: '彻底删除',
+        danger: true,
+        icon: '🗑️'
+      })) return;
       try {
         const res = await fetch(`${apiBase}/api/tasks/presets/${preset.id}`, { method: 'DELETE' });
         if (res.ok) {
@@ -977,53 +1062,36 @@ const app = createApp({
           startTask(newTask.id);
 
         } else {
-
-          alert('创建任务失败: ' + (await res.text()));
-
+          showToast('创建任务失败', await res.text(), 'error');
         }
-
       } catch (e) {
-
-        alert('创建任务异常: ' + e);
-
+        showToast('创建任务异常', String(e), 'error');
       }
-
     }
-
-
 
     async function startTask(taskId) {
-
       try {
-
         const res = await fetch(`${apiBase}/api/tasks/${taskId}/start`, { method: 'POST' });
-
         const data = await res.json();
-
         if (res.ok) {
-
           await fetchTasks();
-
           connectTaskChannels(taskId);
-
         } else {
-
-          alert(data.detail || '启动失败');
-
+          showToast('启动任务失败', data.detail || '启动失败', 'error');
         }
-
       } catch (e) {
-
-        alert('启动任务异常: ' + e);
-
+        showToast('启动任务异常', String(e), 'error');
       }
-
     }
 
-
-
     async function stopTask(taskId) {
-      if (!confirm('确定要终止当前任务吗？底座将优雅退出进程树。')) return;
+      if (!await showConfirm({
+        title: '终止任务确认',
+        message: '确定要终止当前任务吗？底座将优雅退出进程树。',
+        confirmText: '立即终止',
+        danger: true,
+        icon: '🛑'
+      })) return;
       try {
         const res = await fetch(`${apiBase}/api/tasks/${taskId}/stop`, { method: 'POST' });
         if (res.ok) {
@@ -1031,11 +1099,9 @@ const app = createApp({
         }
         await Promise.all([fetchTasks(), fetchTaskQueue()]);
       } catch (e) {
-        alert('终止任务异常: ' + e);
+        showToast('终止任务异常', String(e), 'error');
       }
     }
-
-
 
     const deletingTaskId = ref(null);
 
@@ -1055,7 +1121,13 @@ const app = createApp({
         promptMsg += `\n\n🚨 注意：该任务关联了 ${bugCount} 条缺陷记录！若其中已有提交至禅道的缺陷，已提交缺陷将予以保留，其余本地草稿证据将被物理删除。`;
       }
 
-      if (!confirm(promptMsg)) return;
+      if (!await showConfirm({
+        title: '彻底删除任务',
+        message: promptMsg,
+        danger: true,
+        confirmText: '彻底删除',
+        icon: '🗑️'
+      })) return;
 
       deletingTaskId.value = task.id;
       try {
@@ -1066,7 +1138,13 @@ const app = createApp({
           // 命中已提禅道的高危拦截
           const errData = await res.json();
           const detail = errData.detail || '任务包含已提交禅道的缺陷';
-          if (confirm(`${detail}\n\n是否仍然确认强制删除该任务的本地物理产物？(强制删除不会删除禅道上的单据)`)) {
+          if (await showConfirm({
+            title: '高危强制删除确认',
+            message: `${detail}\n\n是否仍然确认强制删除该任务的本地物理产物？(强制删除不会删除禅道上的单据)`,
+            danger: true,
+            confirmText: '强制删除',
+            icon: '⚠️'
+          })) {
             url += '&force=true';
             res = await fetch(url, { method: 'DELETE' });
           } else {
@@ -1358,7 +1436,12 @@ const app = createApp({
     }
 
     async function runScheduleNow(plan) {
-      if (!confirm(`确定要立即手动执行一次调度计划【${plan.name || plan.task_name}】吗？`)) return;
+      if (!await showConfirm({
+        title: '手动触发调度确认',
+        message: `确定要立即手动执行一次调度计划【${plan.name || plan.task_name}】吗？`,
+        confirmText: '立即执行',
+        icon: '⚡'
+      })) return;
       try {
         const res = await fetch(`${apiBase}/api/tasks/queue/schedule/${plan.id}/run_now`, { method: 'POST' });
         if (res.ok) {
@@ -1375,17 +1458,23 @@ const app = createApp({
     }
 
     async function deleteSchedule(plan) {
-      if (!confirm(`确定要彻底删除该调度计划【${plan.name || plan.task_name || plan.id}】吗？`)) return;
+      if (!await showConfirm({
+        title: '删除调度计划确认',
+        message: `确定要彻底删除该调度计划【${plan.name || plan.task_name || plan.id}】吗？\n删除后周期巡检将终止。`,
+        confirmText: '彻底删除',
+        danger: true,
+        icon: '🗑️'
+      })) return;
       try {
         const res = await fetch(`${apiBase}/api/tasks/queue/${plan.id}`, { method: 'DELETE' });
         if (res.ok) {
           showToast('已删除', '调度计划已成功删除', 'info', 3000);
           await fetchTaskQueue();
         } else {
-          alert('删除失败: ' + (await res.text()));
+          showToast('删除失败', await res.text(), 'error');
         }
       } catch (e) {
-        alert('删除异常: ' + e);
+        showToast('删除异常', String(e), 'error');
       }
     }
 
@@ -2012,39 +2101,23 @@ const app = createApp({
         });
 
         if (res.ok) {
-
           const updated = await res.json();
-
-          alert(`✅ 缺陷 [${updated.id}] 修改成功！已实时多端同步入库！`);
+          showToast('修改成功', `缺陷 [${updated.id}] 修改成功！已实时多端同步入库！`, 'success', 4000);
 
           // 更新前端内存列表
-
           const idx = bugs.value.findIndex(item => item.id === updated.id);
-
           if (idx !== -1) {
-
             bugs.value[idx] = Object.assign(bugs.value[idx], updated);
-
           }
-
           if (selectedBug.value && selectedBug.value.id === updated.id) {
-
             Object.assign(selectedBug.value, updated);
-
           }
-
           editingBug.value = null;
-
         } else {
-
-          alert('保存失败: ' + (await res.text()));
-
+          showToast('保存失败', await res.text(), 'error');
         }
-
       } catch (e) {
-
-        alert('修改缺陷异常: ' + e);
-
+        showToast('修改缺陷异常', String(e), 'error');
       }
 
     }
@@ -2224,7 +2297,12 @@ const app = createApp({
     }
 
     async function promoteCase(c) {
-      if (!confirm(`确定将探索生成的用例 [${c.filename}] 固化转存到 test_cases/ 作为常态化回归用例吗？`)) return;
+      if (!await showConfirm({
+        title: '固化为常态回归用例',
+        message: `确定将探索生成的用例 [${c.filename}] 固化转存到 test_cases/ 作为常态化回归用例吗？`,
+        confirmText: '固化转存',
+        icon: '📁'
+      })) return;
       try {
         const res = await fetch(`${apiBase}/api/cases/promote`, {
           method: 'POST',
@@ -2272,7 +2350,13 @@ const app = createApp({
       }
 
       const bugLabel = `[${bug.id}] ${bug.title || ''}`;
-      if (!confirm(`确定要彻底删除未提单缺陷 ${bugLabel} 吗？\n\n⚠️ 此操作将永久抹除该缺陷记录，不可恢复！`)) {
+      if (!await showConfirm({
+        title: '彻底删除缺陷确认',
+        message: `确定要彻底删除未提单缺陷 ${bugLabel} 吗？\n\n⚠️ 此操作将永久抹除该缺陷记录，不可恢复！`,
+        danger: true,
+        confirmText: '彻底删除',
+        icon: '🗑️'
+      })) {
         return;
       }
 
@@ -2308,7 +2392,12 @@ const app = createApp({
     }
 
     async function syncZenTao(bug) {
-      if (!confirm(`确定要将缺陷 [${bug.id}] 提交到禅道吗？`)) return;
+      if (!await showConfirm({
+        title: '提交禅道确认',
+        message: `确定要将缺陷 [${bug.id}] 提交到禅道吗？\n提单后将自动生成禅道工单并双向绑定。`,
+        confirmText: '提交禅道',
+        icon: '📤'
+      })) return;
       bug._syncing = true;
       try {
         const res = await fetch(`${apiBase}/api/bugs/${bug.id}/sync_zentao`, { method: 'POST' });
@@ -2386,13 +2475,13 @@ const app = createApp({
 
         await fetchBugs();
 
-        alert(`✅ 磁盘数据热同步成功！已更新 ${data.new_tasks || 0} 个任务批次，${data.new_bugs || 0} 条缺陷记录！`);
+        showToast('热同步成功', `已更新 ${data.new_tasks || 0} 个任务批次，${data.new_bugs || 0} 条缺陷记录！`, 'success', 5000);
 
       } catch (e) {
 
         console.error('热同步失败:', e);
 
-        alert('❌ 热同步失败，请检查服务后台日志。');
+        showToast('热同步失败', '请检查服务后台日志。', 'error', 5000);
 
       } finally {
 
@@ -2668,6 +2757,19 @@ const app = createApp({
         if (domChart) domChart.resize();
         if (ueChart) ueChart.resize();
       });
+
+      // 全局弹窗键盘事件响应 (Esc 取消 / Enter 确认)
+      window.addEventListener('keydown', (e) => {
+        if (dialogState.visible) {
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            handleDialogCancel();
+          } else if (e.key === 'Enter' && dialogState.type !== 'prompt') {
+            e.preventDefault();
+            handleDialogConfirm();
+          }
+        }
+      });
     });
 
     onUnmounted(() => {
@@ -2710,6 +2812,14 @@ const app = createApp({
       toasts,
       showToast,
       removeToast,
+
+      // 全局自研交互弹窗系统
+      dialogState,
+      dialogInputRef,
+      handleDialogConfirm,
+      handleDialogCancel,
+      showConfirm,
+      showPrompt,
 
       currentTab,
 

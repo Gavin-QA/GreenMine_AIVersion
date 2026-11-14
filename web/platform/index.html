@@ -2582,6 +2582,49 @@
 
     </main>
 
+    <!-- 🔔 全局自研现代化确认与输入交互弹窗 (彻底替换原生 confirm / prompt) -->
+    <div class="modal-overlay" v-if="dialogState.visible" style="z-index: 99999;" @click.self="handleDialogCancel">
+      <div class="modal-content" style="max-width: 480px; width: 92%; padding: 24px; border: 1px solid var(--border-color); box-shadow: 0 16px 50px rgba(0, 0, 0, 0.7); border-radius: 12px;">
+        <div class="modal-header" style="margin-bottom: 16px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
+          <h3 style="font-size: 16px; display: flex; align-items: center; gap: 8px; margin: 0; color: #fff; font-weight: 700;">
+            <span style="font-size: 18px;">{{ dialogState.icon || (dialogState.isDanger ? '⚠️' : '💬') }}</span>
+            <span>{{ dialogState.title }}</span>
+          </h3>
+          <button class="modal-close" style="background: none; border: none; color: var(--text-muted); font-size: 22px; cursor: pointer; line-height: 1;" @click="handleDialogCancel">&times;</button>
+        </div>
+
+        <div style="font-size: 14px; line-height: 1.6; color: #cbd5e1; margin-bottom: 20px; white-space: pre-wrap; word-break: break-word;">{{ dialogState.message }}</div>
+
+        <!-- Prompt 专用暗黑输入框 -->
+        <div v-if="dialogState.type === 'prompt'" style="margin-bottom: 20px;">
+          <input
+            ref="dialogInputRef"
+            type="text"
+            class="form-control"
+            v-model="dialogState.inputValue"
+            :placeholder="dialogState.inputPlaceholder"
+            style="width: 100%; box-sizing: border-box; padding: 10px 14px; font-size: 14px;"
+            @keyup.enter="handleDialogConfirm"
+            @keyup.esc="handleDialogCancel"
+          />
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 12px;">
+          <button class="btn btn-secondary" style="min-width: 80px; padding: 8px 16px;" @click="handleDialogCancel">
+            {{ dialogState.cancelText || '取消' }}
+          </button>
+          <button
+            class="btn"
+            :class="dialogState.isDanger ? 'btn-danger' : 'btn-primary'"
+            style="min-width: 80px; padding: 8px 18px; font-weight: 600;"
+            :style="dialogState.isDanger ? 'background: #ff5252; border-color: #ff5252;' : ''"
+            @click="handleDialogConfirm">
+            {{ dialogState.confirmText || '确定' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- 全局现代 Toast 通知层 -->
     <div class="toast-container" v-if="toasts && toasts.length">
       <div v-for="t in toasts" :key="t.id" :class="['toast-item', 'toast-' + t.type]">
@@ -2602,7 +2645,7 @@
 
 
 
-  <script src="/static/js/app.js?v=20261114_03"></script>
+  <script src="/static/js/app.js?v=20261115_01"></script>
 
 
 
