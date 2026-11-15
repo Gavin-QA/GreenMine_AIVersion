@@ -220,21 +220,64 @@
 
         <div v-show="currentTab === 'dashboard'">
 
-          <!-- 🌟 常用预设任务库卡片列表 -->
+          <!-- 🌟 标准预设巡检任务库 -->
           <div class="card" style="border-left: 4px solid #00d2ff;">
-            <div class="card-header">
-              <div class="card-title">🌟 标准预设巡检任务库 (免输入一键快速启动)</div>
-              <span style="font-size: 12px; color: var(--text-muted);">用户自定义配置并永久保留的专属预设方案，按 ID 顺序固定排列</span>
+            <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+              <div>
+                <div class="card-title" style="display: flex; align-items: center; gap: 8px;">
+                  <span>🌟 标准预设巡检任务库</span>
+                  <span class="badge" style="background: rgba(0, 210, 255, 0.15); color: #00d2ff; font-weight: normal; font-size: 11px;">共 {{ presetTasks.length }} 项方案</span>
+                </div>
+                <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">系统标杆方案与用户个性化预设，支持卡片/列表无缝切换与参数微调</div>
+              </div>
+
+              <!-- 右侧操作工具条: 视图切换 + 新建任务 -->
+              <div style="display: flex; align-items: center; gap: 12px;">
+                <!-- 视图切换单选按钮组 -->
+                <div style="display: inline-flex; background: rgba(13, 20, 36, 0.8); border: 1px solid #1a253c; border-radius: 6px; padding: 2px;">
+                  <button
+                    type="button"
+                    class="btn"
+                    :style="presetViewMode === 'card' ? 'background: #00d2ff; color: #05070d; font-weight: 700;' : 'background: transparent; color: var(--text-muted); border: none;'"
+                    style="padding: 5px 12px; font-size: 12px; border-radius: 4px; border: none; cursor: pointer; transition: all 0.2s;"
+                    @click="setPresetViewMode('card')"
+                    title="切换为卡片网格视图">
+                    🔲 卡片视图
+                  </button>
+                  <button
+                    type="button"
+                    class="btn"
+                    :style="presetViewMode === 'list' ? 'background: #00d2ff; color: #05070d; font-weight: 700;' : 'background: transparent; color: var(--text-muted); border: none;'"
+                    style="padding: 5px 12px; font-size: 12px; border-radius: 4px; border: none; cursor: pointer; transition: all 0.2s;"
+                    @click="setPresetViewMode('list')"
+                    title="切换为高密度数据列表视图">
+                    📋 列表视图
+                  </button>
+                </div>
+
+                <!-- ➕ 新建任务按钮 -->
+                <button
+                  type="button"
+                  class="btn btn-primary"
+                  style="padding: 7px 18px; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px;"
+                  @click="openNewTaskModal"
+                  title="唤起参数配置弹窗，新建巡检任务或保存为新预设">
+                  <span style="font-size: 14px;">➕</span> 新建任务
+                </button>
+              </div>
             </div>
 
+            <!-- 空状态 -->
             <div v-if="presetTasks.length === 0"
-              style="padding: 24px; text-align: center; color: var(--text-muted); font-size: 13px;">
-              暂无预设任务。您可以在下方【自定义巡检任务配置】中按需配置参数并点击【💾 保存为新预设】。
+              style="padding: 40px 24px; text-align: center; color: var(--text-muted); font-size: 13px;">
+              <div style="font-size: 32px; margin-bottom: 12px;">📭</div>
+              <div>暂无预设任务方案。您可以点击右上角【➕ 新建任务】按需配置参数并保存为新预设。</div>
             </div>
 
-            <div v-else class="grid-3">
-              <div v-for="p in presetTasks" :key="p.id" class="card"
-                style="background: #0d1424; margin-bottom: 0; display: flex; flex-direction: column; justify-content: space-between; border-color: #1a253c;">
+            <!-- 1. 卡片网格视图 (默认) -->
+            <div v-else-if="presetViewMode === 'card'" class="grid-3" style="margin-top: 10px;">
+              <div v-for="p in sortedPresetTasks" :key="p.id" class="card"
+                style="background: #0d1424; margin-bottom: 0; display: flex; flex-direction: column; justify-content: space-between; border-color: #1a253c; border-radius: 8px;">
                 <div>
                   <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                     <span style="font-size: 11px; color: #64748b; font-family: monospace;">#{{ p.id }}</span>
@@ -246,6 +289,7 @@
                       </span>
                       <!-- 预设快速删除按钮 -->
                       <button
+                        type="button"
                         style="background: transparent; border: 1px solid rgba(255,82,82,0.25); border-radius: 4px; color: #ff5252; cursor: pointer; padding: 1px 5px; font-size: 11px; transition: all 0.2s;"
                         onmouseover="this.style.background='rgba(255,82,82,0.2)'; this.style.borderColor='#ff5252';"
                         onmouseout="this.style.background='transparent'; this.style.borderColor='rgba(255,82,82,0.25)';"
@@ -264,328 +308,136 @@
                   <div style="font-size: 12px; color: var(--text-muted); line-height: 1.5; margin-bottom: 12px;">{{
                     p.description || '用户定制预设巡检方案' }}</div>
                   <div style="font-size: 11px; color: #8b9bb4; margin-bottom: 14px;">
-                    <span>步数: <b style="color: #00d2ff;">{{ p.max_steps ?? 0 }}</b> 步</span> &nbsp;|&nbsp;
+                    <span>步数: <b style="color: #00d2ff;">{{ p.max_steps ? p.max_steps + ' 步' : '无限制 (0步)' }}</b></span> &nbsp;|&nbsp;
                     <span>时限: <b style="color: #ffb300;">{{ p.max_times }}</b> 分钟</span>
                   </div>
                 </div>
 
                 <div
-                  style="display: flex; gap: 8px; margin-top: auto; border-top: 1px solid #1a253c; padding-top: 10px; align-items: center;">
-                  <button class="btn btn-primary"
-                    style="flex: 1.2; padding: 7px 6px; font-size: 12px; justify-content: center; white-space: nowrap;"
+                  style="display: flex; gap: 6px; margin-top: auto; border-top: 1px solid #1a253c; padding-top: 10px; align-items: center;">
+                  <button type="button" class="btn btn-secondary"
+                    style="padding: 6px 8px; font-size: 11px; justify-content: center; white-space: nowrap;"
+                    @click="openPresetDetail(p)" title="查看完整提示词与高阶参数">
+                    🔍 详情
+                  </button>
+                  <button type="button" class="btn btn-secondary"
+                    style="flex: 1; padding: 6px 8px; font-size: 11px; justify-content: center; white-space: nowrap;"
+                    @click="loadPresetToForm(p)" title="弹窗微调并可直接覆盖或另存">
+                    ✏️ 载入微调
+                  </button>
+                  <button type="button" class="btn btn-primary"
+                    style="flex: 1.2; padding: 6px 8px; font-size: 11px; justify-content: center; white-space: nowrap;"
                     @click="launchPreset(p)" title="立即以当前预设创建并启动巡检任务">
                     🚀 一键拉起
                   </button>
-                  <button class="btn btn-secondary"
-                    style="flex: 1; padding: 7px 6px; font-size: 12px; justify-content: center; white-space: nowrap;"
-                    @click="loadPresetToForm(p)" title="载入到下方表单修改并可直接覆盖或另存">
-                    ✏️ 载入微调
-                  </button>
                 </div>
               </div>
             </div>
-          </div>
 
-          <!-- 任务发起选项配置表单 -->
-          <div class="card" id="taskFormCard">
-            <div class="card-header">
-              <div class="card-title">📝 自定义巡检任务配置 (灵活调参)</div>
-            </div>
+            <!-- 2. 数据列表视图 (高密度表格，字段严格对齐) -->
+            <div v-else class="table-container" style="margin-top: 12px; overflow-x: auto;">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th style="cursor: pointer; user-select: none;" @click="togglePresetSort('title')" title="点击按任务名称排序">
+                      任务名称
+                      <span v-if="presetSortField === 'title'" style="color: #00d2ff; margin-left: 4px;">{{ presetSortOrder === 'asc' ? '▲' : '▼' }}</span>
+                      <span v-else style="color: #475569; margin-left: 4px; font-size: 11px;">↕</span>
+                    </th>
+                    <th style="cursor: pointer; user-select: none; width: 140px;" @click="togglePresetSort('app_name')" title="点击按运行矿山排序">
+                      运行矿山
+                      <span v-if="presetSortField === 'app_name'" style="color: #00d2ff; margin-left: 4px;">{{ presetSortOrder === 'asc' ? '▲' : '▼' }}</span>
+                      <span v-else style="color: #475569; margin-left: 4px; font-size: 11px;">↕</span>
+                    </th>
+                    <th style="cursor: pointer; user-select: none; width: 130px;" @click="togglePresetSort('mode')" title="点击按运行模式排序">
+                      运行模式
+                      <span v-if="presetSortField === 'mode'" style="color: #00d2ff; margin-left: 4px;">{{ presetSortOrder === 'asc' ? '▲' : '▼' }}</span>
+                      <span v-else style="color: #475569; margin-left: 4px; font-size: 11px;">↕</span>
+                    </th>
+                    <th style="cursor: pointer; user-select: none; width: 170px;" @click="togglePresetSort('max_steps')" title="点击按最大步数限制排序">
+                      最大步数限制 (Steps)
+                      <span v-if="presetSortField === 'max_steps'" style="color: #00d2ff; margin-left: 4px;">{{ presetSortOrder === 'asc' ? '▲' : '▼' }}</span>
+                      <span v-else style="color: #475569; margin-left: 4px; font-size: 11px;">↕</span>
+                    </th>
+                    <th style="cursor: pointer; user-select: none; width: 170px;" @click="togglePresetSort('max_times')" title="点击按最长运行时间排序">
+                      最长运行时间 (分钟)
+                      <span v-if="presetSortField === 'max_times'" style="color: #00d2ff; margin-left: 4px;">{{ presetSortOrder === 'asc' ? '▲' : '▼' }}</span>
+                      <span v-else style="color: #475569; margin-left: 4px; font-size: 11px;">↕</span>
+                    </th>
+                    <th style="text-align: right; width: 280px;">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="p in sortedPresetTasks" :key="p.id">
+                    <!-- 1. 任务名称 (形式 B: 标题 + #ID 小徽标混排) -->
+                    <td>
+                      <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-weight: 600; font-size: 13px; color: #fff;">{{ p.title }}</span>
+                        <span class="badge" style="font-family: monospace; font-size: 11px; padding: 1px 6px; background: rgba(100, 116, 139, 0.15); color: #94a3b8; border: 1px solid rgba(100, 116, 139, 0.3);">#{{ p.id }}</span>
+                      </div>
+                      <div style="font-size: 11px; color: var(--text-muted); margin-top: 3px; max-width: 380px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" :title="p.description">
+                        {{ p.description || '用户定制预设巡检方案' }}
+                      </div>
+                    </td>
 
-            <!-- 当前编辑预设状态提示条 -->
-            <div v-if="taskForm.preset_id"
-              style="margin-bottom: 16px; background: rgba(0, 210, 255, 0.08); border: 1px solid #00d2ff; padding: 10px 16px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center;">
-              <span style="font-size: 13px; color: #00d2ff;">
-                📌 正在微调载入的预设: <strong style="color: #fff;">【{{ taskForm.preset_title || taskForm.name }}】</strong>
-                <span style="font-size: 11px; color: var(--text-muted); margin-left: 8px;">(ID: {{ taskForm.preset_id
-                  }})</span>
-              </span>
-              <button class="btn btn-secondary"
-                style="padding: 4px 10px; font-size: 12px; border-color: #64748b; color: #cbd5e1;"
-                @click="clearLoadedPreset" title="解除当前预设绑定，切换为全新任务配置">
-                ✕ 取消微调 / 切换为新建
-              </button>
-            </div>
-
-
-
-            <div class="grid-2">
-
-              <div>
-
-                <div class="form-group">
-
-                  <label class="form-label">任务名称</label>
-
-                  <input type="text" class="form-control" v-model="taskForm.name" placeholder="请输入本次巡检任务名称">
-
-                </div>
-
-
-
-                <div class="form-group">
-                  <label class="form-label">矿山应用</label>
-                  <select class="form-control" v-model="taskForm.app_name" @change="changeLiveApp(taskForm.app_name)">
-                    <option v-for="app in options.apps" :key="app.key" :value="app.key">
-                      {{ app.name }}
-                    </option>
-                  </select>
-                </div>
-
-
-
-                <div class="form-group">
-
-                  <label class="form-label">运行模式</label>
-
-                  <select class="form-control" v-model="taskForm.mode">
-
-                    <option v-for="m in options.modes" :key="m.key" :value="m.key">
-
-                      {{ m.name }} - {{ m.desc }}
-
-                    </option>
-
-                  </select>
-
-                </div>
-
-
-
-                <!-- 自主探索模式 (explore) 专属配置 -->
-                <div v-if="taskForm.mode === 'explore'">
-                  <div class="grid-2">
-
-                    <div class="form-group">
-
-                      <label class="form-label">最大步数限制 (Steps)</label>
-
-                      <input type="number" class="form-control" v-model.number="taskForm.max_steps" min="5" max="3000">
-
-                    </div>
-
-                    <div class="form-group">
-
-                      <label class="form-label">最长运行时间 (分钟)</label>
-
-                      <input type="number" class="form-control" v-model.number="taskForm.max_times" min="1" max="1440">
-
-                    </div>
-
-                  </div>
-
-
-
-                  <div class="form-group" style="display: flex; gap: 20px; align-items: center; margin-top: 10px;">
-
-                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px;">
-
-                      <input type="checkbox" v-model="taskForm.ignore_errors">
-
-                      <span>容错继续 (报错时不阻断流程)</span>
-
-                    </label>
-
-                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px;">
-
-                      <input type="checkbox" v-model="taskForm.reset_memory">
-
-                      <span>重置长期记忆 (从零开始探索)</span>
-
-                    </label>
-
-                  </div>
-                </div>
-
-                <!-- 全量冒烟巡检模式 (smoke) 专属配置 (左栏) -->
-                <div v-else-if="taskForm.mode === 'smoke'">
-                  <div class="form-group">
-                    <label class="form-label">最长超时时间 (分钟)</label>
-                    <input type="number" class="form-control" v-model.number="taskForm.max_times" min="1" max="1440">
-                  </div>
-
-                  <div class="form-group" style="display: flex; gap: 20px; align-items: center; margin-top: 10px;">
-                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px;">
-                      <input type="checkbox" v-model="taskForm.ignore_errors">
-                      <span>容错继续 (单个页面巡检遇到异常时不阻断剩余菜单)</span>
-                    </label>
-                  </div>
-                </div>
-
-                <!-- 确定性用例模式 (case) 专属配置 -->
-                <div v-else-if="taskForm.mode === 'case'">
-                  <div class="form-group">
-                    <label class="form-label">YAML 用例脚本选择</label>
-                    <select class="form-control" v-model="taskForm.case_path">
-                      <option v-for="c in options.yaml_cases" :key="c.path" :value="c.path">
-                        {{ c.name }} {{ c.path ? '(' + c.path + ')' : '' }}
-                      </option>
-                    </select>
-                  </div>
-
-                  <div class="form-group" style="display: flex; gap: 20px; align-items: center; margin-top: 10px;">
-                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px;">
-                      <input type="checkbox" v-model="taskForm.ignore_errors">
-                      <span>用例容错继续 (单步断言异常时不强行中断)</span>
-                    </label>
-                  </div>
-                </div>
-
-              </div>
-
-
-
-              <div>
-
-                <!-- 自主探索模式 (explore) 专属右栏: 宏观提示词与模版 -->
-                <div v-if="taskForm.mode === 'explore'">
-
-                  <div class="form-group">
-
-                    <label class="form-label">预置高质量探索提示词库 (一键套用)</label>
-
-                    <div class="select-pills" style="margin-bottom: 12px;">
-
-                      <span class="pill-item" v-for="(tpl, idx) in options.prompt_templates" :key="idx"
-                        @click="applyTemplate(tpl)">
-
-                        🎯 {{ tpl.title }}
-
+                    <!-- 2. 运行矿山 -->
+                    <td>
+                      <span style="color: #00d2ff; font-weight: 600; font-size: 12px; display: inline-flex; align-items: center; gap: 4px;">
+                        <span>🎯</span> {{ getAppName(p.app_name) }}
                       </span>
+                    </td>
 
-                    </div>
+                    <!-- 3. 运行模式 -->
+                    <td>
+                      <span class="badge"
+                        :class="(p.tour || p.mode === 'smoke') ? 'badge-running' : (p.mode === 'case' ? 'badge-low' : 'badge-high')">
+                        {{ getPresetModeLabel(p) }}
+                      </span>
+                    </td>
 
+                    <!-- 4. 最大步数限制 (Steps) -->
+                    <td>
+                      <span style="font-family: monospace; font-weight: 600;" :style="p.max_steps ? 'color: #00d2ff;' : 'color: #64748b;'">
+                        {{ p.max_steps ? (p.max_steps + ' 步') : '无限制 (0步)' }}
+                      </span>
+                    </td>
 
+                    <!-- 5. 最长运行时间 (分钟) -->
+                    <td>
+                      <span style="font-family: monospace; font-weight: 600; color: #ffb300;">
+                        {{ p.max_times }} 分钟
+                      </span>
+                    </td>
 
-                    <label class="form-label">宏观探索目标提示词 (Macro Objective Prompt)</label>
-
-                    <textarea class="form-control" v-model="taskForm.macro_objective" rows="6"
-                      placeholder="输入自然语言意图，引导 AI 发起针对性探测..."></textarea>
-
-                  </div>
-
-                </div>
-
-                <!-- 全量冒烟巡检模式 (smoke) 专属右栏: 说明卡片 (免提示词干扰) -->
-                <div v-else-if="taskForm.mode === 'smoke'">
-                  <div
-                    style="background: rgba(13, 20, 36, 0.7); border: 1px solid #1a253c; border-radius: 8px; padding: 18px 20px;">
-                    <div
-                      style="font-weight: 700; color: #00d2ff; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; font-size: 14px;">
-                      <span>🚀 全量二级业务菜单极速冒烟巡检 (Smoke Tour)</span>
-                      <span
-                        style="font-size: 11px; background: rgba(0, 210, 255, 0.15); color: #00d2ff; padding: 2px 8px; border-radius: 10px; border: 1px solid rgba(0, 210, 255, 0.3);">零配置 · 全自动</span>
-                    </div>
-                    <p style="font-size: 13px; color: var(--text-muted); line-height: 1.6; margin-bottom: 12px;">
-                      系统将跳过大模型自由规划路径，按权威菜单骨架<strong>100% 顺序遍历当前系统的全部二级业务菜单</strong>，确保零遗漏。
-                    </p>
-                    <div
-                      style="background: rgba(0, 210, 255, 0.04); border: 1px solid rgba(0, 210, 255, 0.15); border-radius: 6px; padding: 10px 14px; margin-bottom: 12px; font-size: 12px; line-height: 1.7; color: #8b9bb4;">
-                      <div style="font-weight: 600; color: #00d2ff; margin-bottom: 4px;">🛡️ 每一站严格执行三阶健康度体检门禁：</div>
-                      <div>1. <strong>无声崩溃嗅探</strong>：监听控制台 TypeError / Vue 渲染期崩溃 / WebGL 上下文丢失；</div>
-                      <div>2. <strong>接口通信校验</strong>：校验滑动窗口网络通信，拦截 5xx 服务端错误、404 与超时；</div>
-                      <div>3. <strong>视觉与物理感知</strong>：多模态视觉核验页面白屏、骨架屏假死与遮罩残留。</div>
-                    </div>
-                    <div style="font-size: 12px; color: #00e676; display: flex; align-items: center; gap: 6px;">
-                      <span>💡 纯自动化执行，无需编写复杂的宏观提示词。执行完毕后自动生成缺陷归档与全景网页报告。</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div v-else-if="taskForm.mode === 'case'">
-                  <div
-                    style="background: rgba(13, 20, 36, 0.7); border: 1px solid #1a253c; border-radius: 8px; padding: 20px;">
-                    <div style="font-weight: 700; color: #00d2ff; margin-bottom: 8px;">📋 YAML 确定性业务回归模式说明</div>
-                    <p style="font-size: 13px; color: var(--text-muted); line-height: 1.6; margin-bottom: 12px;">
-                      系统将由 <strong>ActionRunner</strong> 机械臂精确执行所选自然语言 YAML 脚本，执行确定性点击、输入、物理拖拽以及与底层网络 API 的双向交叉校验。
-                    </p>
-                    <div
-                      style="font-size: 12px; color: #8b9bb4; background: rgba(0, 230, 118, 0.05); border: 1px solid rgba(0, 230, 118, 0.2); padding: 10px; border-radius: 6px;">
-                      💡 如需微调启动缓冲等待或视觉等待条件，可在下方展开<strong>【⚙️ 高级运行参数】</strong>进行配置。
-                    </div>
-                  </div>
-                </div>
-
-
-
-                <div
-                  style="margin-top: 24px; display: flex; justify-content: flex-end; gap: 12px; align-items: center; flex-wrap: wrap;">
-
-                  <button class="btn btn-secondary" style="border-color: #00d2ff; color: #00d2ff;"
-                    @click="saveCurrentFormAsPreset(false)" title="将当前填写的全部配置持久化保存为独立的新预设">
-                    💾 保存为新预设
-                  </button>
-
-                  <button v-if="taskForm.preset_id" class="btn btn-secondary"
-                    style="border-color: #ffb300; color: #ffb300; background: rgba(255, 179, 0, 0.1);"
-                    @click="saveCurrentFormAsPreset(true)" title="直接回写覆盖当前载入的原预设（保持预设 ID 与卡片排序不变）">
-                    🔄 覆盖当前预设
-                  </button>
-
-                  <button class="btn btn-primary" style="padding: 10px 24px; font-size: 14px;"
-                    @click="submitCreateTask">
-                    🚀 立即创建并启动巡检
-                  </button>
-
-                </div>
-
-              </div>
-
+                    <!-- 6. 操作 (任务详情、载入微调、一键拉起、删除) -->
+                    <td style="text-align: right;">
+                      <div style="display: inline-flex; align-items: center; gap: 6px; justify-content: flex-end;">
+                        <button type="button" class="btn btn-secondary" style="padding: 4px 9px; font-size: 11px; border-color: #3b82f6; color: #93c5fd;"
+                          @click="openPresetDetail(p)" title="查看该预设的完整提示词与详细参数">
+                          🔍 任务详情
+                        </button>
+                        <button type="button" class="btn btn-secondary" style="padding: 4px 9px; font-size: 11px; border-color: #64748b; color: #cbd5e1;"
+                          @click="loadPresetToForm(p)" title="弹窗载入配置，可微调并直接覆盖或另存">
+                          ✏️ 载入微调
+                        </button>
+                        <button type="button" class="btn btn-primary" style="padding: 4px 11px; font-size: 11px; font-weight: 600;"
+                          @click="launchPreset(p)" title="立即以当前预设创建并拉起任务">
+                          🚀 一键拉起
+                        </button>
+                        <button
+                          type="button"
+                          style="background: transparent; border: 1px solid rgba(255,82,82,0.25); border-radius: 4px; color: #ff5252; cursor: pointer; padding: 4px 7px; font-size: 11px; transition: all 0.2s;"
+                          onmouseover="this.style.background='rgba(255,82,82,0.2)'; this.style.borderColor='#ff5252';"
+                          onmouseout="this.style.background='transparent'; this.style.borderColor='rgba(255,82,82,0.25)';"
+                          @click="deletePreset(p)" title="彻底删除此预设">
+                          🗑️
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
-
-            <!-- ⚙️ 高级运行与韧性参数配置 (折叠面板) -->
-            <div style="margin-top: 20px; border-top: 1px dashed #1a253c; padding-top: 14px;">
-              <div
-                style="cursor: pointer; display: flex; align-items: center; justify-content: space-between; user-select: none;"
-                @click="taskForm.show_advanced = !taskForm.show_advanced">
-                <span
-                  style="font-size: 13px; font-weight: 600; color: #00d2ff; display: flex; align-items: center; gap: 6px;">
-                  <span>⚙️ 高级运行与韧性参数配置 (CLI 选项)</span>
-                  <span
-                    style="font-size: 11px; background: rgba(0, 210, 255, 0.15); color: #00d2ff; padding: 2px 8px; border-radius: 10px;">{{
-                    taskForm.show_advanced ? '收起' : '展开' }}</span>
-                </span>
-                <span style="font-size: 12px; color: var(--text-muted);">{{ taskForm.show_advanced ? '▲' : '▼' }}</span>
-              </div>
-
-              <div v-show="taskForm.show_advanced"
-                style="margin-top: 14px; background: rgba(5, 7, 13, 0.7); padding: 18px; border-radius: 8px; border: 1px solid #1a253c;">
-                <div class="grid-2">
-                  <div class="form-group">
-                    <label class="form-label">断点续传历史运行目录 (--resume-from)</label>
-                    <input type="text" class="form-control" v-model="taskForm.resume_from"
-                      placeholder="如 reports/runs/zhaiwan/explore_xxx (选填)">
-                  </div>
-                  <div class="form-group" v-if="taskForm.mode === 'explore'">
-                    <label class="form-label">强制重新探索业务模块 (--reexplore)</label>
-                    <input type="text" class="form-control" v-model="taskForm.reexplore" placeholder="如 智能通风、采掘设备 (选填)">
-                  </div>
-                  <div class="form-group">
-                    <label class="form-label">启动缓冲等待时间 (秒, --start-delay)</label>
-                    <input type="number" class="form-control" v-model.number="taskForm.start_delay"
-                      placeholder="默认 15 秒">
-                  </div>
-                  <div class="form-group">
-                    <label class="form-label">视觉智能就绪自然语言条件 (--wait-ready)</label>
-                    <input type="text" class="form-control" v-model="taskForm.wait_ready"
-                      placeholder="如 主看板加载就绪 (持续截屏轮询直到满足)">
-                  </div>
-                  <div class="form-group">
-                    <label class="form-label">视觉就绪最大超时 (秒, --wait-timeout)</label>
-                    <input type="number" class="form-control" v-model.number="taskForm.wait_timeout"
-                      placeholder="默认 60 秒">
-                  </div>
-                  <div class="form-group" style="display: flex; align-items: center; margin-top: 24px;">
-                    <label
-                      style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; color: #ffb300;">
-                      <input type="checkbox" v-model="taskForm.ignore_env_check">
-                      <span>强制跳过 Launcher 环境校验 (--ignore-env-check)</span>
-                    </label>
-                  </div>
-                </div>
-              </div>
-            </div>
-
           </div>
 
         </div>
@@ -2582,6 +2434,348 @@
 
     </main>
 
+    <!-- 📝 自定义巡检任务配置 / 微调弹窗 -->
+    <div class="modal-overlay" v-if="taskModalVisible" style="z-index: 9999;" @click.self="taskModalVisible = false">
+      <div class="modal-content" style="max-width: 960px; width: 95%; max-height: 90vh; display: flex; flex-direction: column; padding: 0; overflow: hidden; border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,0.8); border: 1px solid #1a253c; background: #0b1120;">
+        <!-- 弹窗头部 -->
+        <div class="modal-header" style="padding: 16px 24px; border-bottom: 1px solid #1a253c; display: flex; align-items: center; justify-content: space-between; background: #0d1424;">
+          <h3 style="font-size: 16px; margin: 0; color: #fff; font-weight: 700; display: flex; align-items: center; gap: 8px;">
+            <span>{{ taskForm.preset_id ? '✏️ 微调预设任务' : '📝 新建自定义巡检任务' }}</span>
+            <span v-if="taskForm.preset_id" class="badge" style="background: rgba(0, 210, 255, 0.15); color: #00d2ff; font-weight: normal; font-size: 11px;">#{{ taskForm.preset_id }}</span>
+          </h3>
+          <button type="button" style="background: transparent; border: none; color: #64748b; font-size: 22px; cursor: pointer; line-height: 1;" @click="taskModalVisible = false" title="关闭">&times;</button>
+        </div>
+
+        <!-- 弹窗主体 (可滚动) -->
+        <div style="flex: 1; overflow-y: auto; padding: 20px 24px;">
+          <!-- 当前编辑预设状态提示条 -->
+          <div v-if="taskForm.preset_id"
+            style="margin-bottom: 16px; background: rgba(0, 210, 255, 0.08); border: 1px solid #00d2ff; padding: 10px 16px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 13px; color: #00d2ff;">
+              📌 正在微调载入的预设: <strong style="color: #fff;">【{{ taskForm.preset_title || taskForm.name }}】</strong>
+              <span style="font-size: 11px; color: var(--text-muted); margin-left: 8px;">(ID: {{ taskForm.preset_id }})</span>
+            </span>
+            <button type="button" class="btn btn-secondary"
+              style="padding: 4px 10px; font-size: 12px; border-color: #64748b; color: #cbd5e1;"
+              @click="clearLoadedPreset" title="解除当前预设绑定，切换为全新任务配置">
+              ✕ 切换为新建空白任务
+            </button>
+          </div>
+
+          <div class="grid-2">
+            <div>
+              <div class="form-group">
+                <label class="form-label">任务名称</label>
+                <input type="text" class="form-control" v-model="taskForm.name" placeholder="请输入本次巡检任务名称">
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">矿山应用</label>
+                <select class="form-control" v-model="taskForm.app_name" @change="changeLiveApp(taskForm.app_name)">
+                  <option v-for="app in options.apps" :key="app.key" :value="app.key">
+                    {{ app.name }}
+                  </option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">运行模式</label>
+                <select class="form-control" v-model="taskForm.mode">
+                  <option v-for="m in options.modes" :key="m.key" :value="m.key">
+                    {{ m.name }} - {{ m.desc }}
+                  </option>
+                </select>
+              </div>
+
+              <!-- 自主探索模式 (explore) 专属配置 -->
+              <div v-if="taskForm.mode === 'explore'">
+                <div class="grid-2">
+                  <div class="form-group">
+                    <label class="form-label">最大步数限制 (Steps)</label>
+                    <input type="number" class="form-control" v-model.number="taskForm.max_steps" min="5" max="3000">
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">最长运行时间 (分钟)</label>
+                    <input type="number" class="form-control" v-model.number="taskForm.max_times" min="1" max="1440">
+                  </div>
+                </div>
+
+                <div class="form-group" style="display: flex; gap: 20px; align-items: center; margin-top: 10px;">
+                  <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px;">
+                    <input type="checkbox" v-model="taskForm.ignore_errors">
+                    <span>容错继续 (报错时不阻断流程)</span>
+                  </label>
+                  <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px;">
+                    <input type="checkbox" v-model="taskForm.reset_memory">
+                    <span>重置长期记忆 (从零开始探索)</span>
+                  </label>
+                </div>
+              </div>
+
+              <!-- 全量冒烟巡检模式 (smoke) 专属配置 -->
+              <div v-else-if="taskForm.mode === 'smoke'">
+                <div class="form-group">
+                  <label class="form-label">最长超时时间 (分钟)</label>
+                  <input type="number" class="form-control" v-model.number="taskForm.max_times" min="1" max="1440">
+                </div>
+                <div class="form-group" style="display: flex; gap: 20px; align-items: center; margin-top: 10px;">
+                  <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px;">
+                    <input type="checkbox" v-model="taskForm.ignore_errors">
+                    <span>容错继续 (单个页面巡检遇到异常时不阻断剩余菜单)</span>
+                  </label>
+                </div>
+              </div>
+
+              <!-- 确定性用例模式 (case) 专属配置 -->
+              <div v-else-if="taskForm.mode === 'case'">
+                <div class="form-group">
+                  <label class="form-label">YAML 用例脚本选择</label>
+                  <select class="form-control" v-model="taskForm.case_path">
+                    <option v-for="c in options.yaml_cases" :key="c.path" :value="c.path">
+                      {{ c.name }} {{ c.path ? '(' + c.path + ')' : '' }}
+                    </option>
+                  </select>
+                </div>
+                <div class="form-group" style="display: flex; gap: 20px; align-items: center; margin-top: 10px;">
+                  <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px;">
+                    <input type="checkbox" v-model="taskForm.ignore_errors">
+                    <span>用例容错继续 (单步断言异常时不强行中断)</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <!-- 自主探索模式 (explore) 专属右栏: 宏观提示词与模版 -->
+              <div v-if="taskForm.mode === 'explore'">
+                <div class="form-group">
+                  <label class="form-label">预置高质量探索提示词库 (一键套用)</label>
+                  <div class="select-pills" style="margin-bottom: 12px;">
+                    <span class="pill-item" v-for="(tpl, idx) in options.prompt_templates" :key="idx"
+                      @click="applyTemplate(tpl)">
+                      🎯 {{ tpl.title }}
+                    </span>
+                  </div>
+
+                  <label class="form-label">宏观探索目标提示词 (Macro Objective Prompt)</label>
+                  <textarea class="form-control" v-model="taskForm.macro_objective" rows="7"
+                    placeholder="输入自然语言意图，引导 AI 发起针对性探测..."></textarea>
+                </div>
+              </div>
+
+              <!-- 全量冒烟巡检模式 (smoke) 专属右栏: 说明卡片 -->
+              <div v-else-if="taskForm.mode === 'smoke'">
+                <div style="background: rgba(13, 20, 36, 0.7); border: 1px solid #1a253c; border-radius: 8px; padding: 18px 20px;">
+                  <div style="font-weight: 700; color: #00d2ff; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; font-size: 14px;">
+                    <span>🚀 全量二级业务菜单极速冒烟巡检 (Smoke Tour)</span>
+                    <span style="font-size: 11px; background: rgba(0, 210, 255, 0.15); color: #00d2ff; padding: 2px 8px; border-radius: 10px; border: 1px solid rgba(0, 210, 255, 0.3);">零配置 · 全自动</span>
+                  </div>
+                  <p style="font-size: 13px; color: var(--text-muted); line-height: 1.6; margin-bottom: 12px;">
+                    系统将跳过大模型自由规划路径，按权威菜单骨架<strong>100% 顺序遍历当前系统的全部二级业务菜单</strong>，确保零遗漏。
+                  </p>
+                  <div style="background: rgba(0, 210, 255, 0.04); border: 1px solid rgba(0, 210, 255, 0.15); border-radius: 6px; padding: 10px 14px; margin-bottom: 12px; font-size: 12px; line-height: 1.7; color: #8b9bb4;">
+                    <div style="font-weight: 600; color: #00d2ff; margin-bottom: 4px;">🛡️ 每一站严格执行三阶健康度体检门禁：</div>
+                    <div>1. <strong>无声崩溃嗅探</strong>：监听控制台 TypeError / Vue 渲染期崩溃 / WebGL 上下文丢失；</div>
+                    <div>2. <strong>接口通信校验</strong>：校验滑动窗口网络通信，拦截 5xx 服务端错误、404 与超时；</div>
+                    <div>3. <strong>视觉与物理感知</strong>：多模态视觉核验页面白屏、骨架屏假死与遮罩残留。</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 确定性用例模式 (case) 专属右栏: 说明卡片 -->
+              <div v-else-if="taskForm.mode === 'case'">
+                <div style="background: rgba(13, 20, 36, 0.7); border: 1px solid #1a253c; border-radius: 8px; padding: 20px;">
+                  <div style="font-weight: 700; color: #00d2ff; margin-bottom: 8px;">📋 YAML 确定性业务回归模式说明</div>
+                  <p style="font-size: 13px; color: var(--text-muted); line-height: 1.6; margin-bottom: 12px;">
+                    系统将由 <strong>ActionRunner</strong> 机械臂精确执行所选自然语言 YAML 脚本，执行确定性点击、输入、物理拖拽以及与底层网络 API 的双向交叉校验。
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ⚙️ 高级运行与韧性参数配置 (折叠面板) -->
+          <div style="margin-top: 20px; border-top: 1px dashed #1a253c; padding-top: 14px;">
+            <div
+              style="cursor: pointer; display: flex; align-items: center; justify-content: space-between; user-select: none;"
+              @click="taskForm.show_advanced = !taskForm.show_advanced">
+              <span
+                style="font-size: 13px; font-weight: 600; color: #00d2ff; display: flex; align-items: center; gap: 6px;">
+                <span>⚙️ 高级运行与韧性参数配置 (CLI 选项)</span>
+                <span
+                  style="font-size: 11px; background: rgba(0, 210, 255, 0.15); color: #00d2ff; padding: 2px 8px; border-radius: 10px;">{{
+                  taskForm.show_advanced ? '收起' : '展开' }}</span>
+              </span>
+              <span style="font-size: 12px; color: var(--text-muted);">{{ taskForm.show_advanced ? '▲' : '▼' }}</span>
+            </div>
+
+            <div v-show="taskForm.show_advanced"
+              style="margin-top: 14px; background: rgba(5, 7, 13, 0.7); padding: 18px; border-radius: 8px; border: 1px solid #1a253c;">
+              <div class="grid-2">
+                <div class="form-group">
+                  <label class="form-label">断点续传历史运行目录 (--resume-from)</label>
+                  <input type="text" class="form-control" v-model="taskForm.resume_from"
+                    placeholder="如 reports/runs/zhaiwan/explore_xxx (选填)">
+                </div>
+                <div class="form-group" v-if="taskForm.mode === 'explore'">
+                  <label class="form-label">强制重新探索业务模块 (--reexplore)</label>
+                  <input type="text" class="form-control" v-model="taskForm.reexplore" placeholder="如 智能通风、采掘设备 (选填)">
+                </div>
+                <div class="form-group">
+                  <label class="form-label">启动缓冲等待时间 (秒, --start-delay)</label>
+                  <input type="number" class="form-control" v-model.number="taskForm.start_delay"
+                    placeholder="默认 15 秒">
+                </div>
+                <div class="form-group">
+                  <label class="form-label">视觉智能就绪自然语言条件 (--wait-ready)</label>
+                  <input type="text" class="form-control" v-model="taskForm.wait_ready"
+                    placeholder="如 主看板加载就绪 (持续截屏轮询直到满足)">
+                </div>
+                <div class="form-group">
+                  <label class="form-label">视觉就绪最大超时 (秒, --wait-timeout)</label>
+                  <input type="number" class="form-control" v-model.number="taskForm.wait_timeout"
+                    placeholder="默认 60 秒">
+                </div>
+                <div class="form-group" style="display: flex; align-items: center; margin-top: 24px;">
+                  <label
+                    style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; color: #ffb300;">
+                    <input type="checkbox" v-model="taskForm.ignore_env_check">
+                    <span>强制跳过 Launcher 环境校验 (--ignore-env-check)</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 弹窗底部操作栏 (确认项 3: 多通道闭环) -->
+        <div style="padding: 14px 24px; border-top: 1px solid #1a253c; background: #0d1424; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+          <div style="font-size: 12px; color: var(--text-muted);">
+            💡 提示: “立即启动”将一键拉起巡检；若需沉淀为日常标准方案，可点击“保存为新预设”。
+          </div>
+          <div style="display: flex; gap: 10px; align-items: center;">
+            <button type="button" class="btn btn-secondary" @click="taskModalVisible = false" style="padding: 8px 16px;">
+              取消
+            </button>
+            <button type="button" class="btn btn-secondary" style="border-color: #00d2ff; color: #00d2ff; padding: 8px 16px;"
+              @click="saveCurrentFormAsPreset(false)" title="将当前配置持久化保存为独立的新预设">
+              💾 保存为新预设
+            </button>
+            <button type="button" v-if="taskForm.preset_id" class="btn btn-secondary"
+              style="border-color: #ffb300; color: #ffb300; background: rgba(255, 179, 0, 0.1); padding: 8px 16px;"
+              @click="saveCurrentFormAsPreset(true)" title="直接回写覆盖当前载入的原预设（保持 ID 不变）">
+              🔄 覆盖当前预设
+            </button>
+            <button type="button" class="btn btn-primary" style="padding: 8px 22px; font-weight: 600;"
+              @click="submitCreateTask" title="立即创建并启动巡检">
+              🚀 立即创建并启动
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 🔍 预设任务详情只读弹窗 (确认项 4: 方案 A) -->
+    <div class="modal-overlay" v-if="taskDetailModalVisible && activeDetailPreset" style="z-index: 9999;" @click.self="taskDetailModalVisible = false">
+      <div class="modal-content" style="max-width: 760px; width: 92%; max-height: 85vh; display: flex; flex-direction: column; padding: 0; overflow: hidden; border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,0.8); border: 1px solid #1a253c; background: #0b1120;">
+        <!-- 弹窗头部 -->
+        <div class="modal-header" style="padding: 16px 20px; border-bottom: 1px solid #1a253c; display: flex; align-items: center; justify-content: space-between; background: #0d1424;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span style="font-size: 18px;">🔍</span>
+            <div>
+              <div style="font-size: 15px; font-weight: 700; color: #fff;">{{ activeDetailPreset.title }}</div>
+              <div style="font-size: 11px; color: #64748b; font-family: monospace;">#{{ activeDetailPreset.id }}</div>
+            </div>
+          </div>
+          <button type="button" style="background: transparent; border: none; color: #64748b; font-size: 22px; cursor: pointer; line-height: 1;" @click="taskDetailModalVisible = false" title="关闭">&times;</button>
+        </div>
+
+        <!-- 弹窗主体 -->
+        <div style="flex: 1; overflow-y: auto; padding: 20px;">
+          <!-- 基础信息栅格 -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 18px;">
+            <div style="background: rgba(13, 20, 36, 0.7); border: 1px solid #1a253c; border-radius: 6px; padding: 12px;">
+              <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">运行矿山</div>
+              <div style="font-size: 13px; font-weight: 600; color: #00d2ff;">🎯 {{ getAppName(activeDetailPreset.app_name) }}</div>
+            </div>
+            <div style="background: rgba(13, 20, 36, 0.7); border: 1px solid #1a253c; border-radius: 6px; padding: 12px;">
+              <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">运行模式</div>
+              <div>
+                <span class="badge" :class="(activeDetailPreset.tour || activeDetailPreset.mode === 'smoke') ? 'badge-running' : (activeDetailPreset.mode === 'case' ? 'badge-low' : 'badge-high')">
+                  {{ getPresetModeLabel(activeDetailPreset) }}
+                </span>
+              </div>
+            </div>
+            <div style="background: rgba(13, 20, 36, 0.7); border: 1px solid #1a253c; border-radius: 6px; padding: 12px;">
+              <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">步数与时限</div>
+              <div style="font-size: 13px; font-weight: 600; color: #fff;">
+                <span>{{ activeDetailPreset.max_steps ? (activeDetailPreset.max_steps + ' 步') : '无限制 (0步)' }}</span> / 
+                <span style="color: #ffb300;">{{ activeDetailPreset.max_times }} 分钟</span>
+              </div>
+            </div>
+            <div style="background: rgba(13, 20, 36, 0.7); border: 1px solid #1a253c; border-radius: 6px; padding: 12px;">
+              <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">容错与韧性策略</div>
+              <div style="font-size: 12px; color: #00e676;">
+                {{ activeDetailPreset.ignore_errors ? '✅ 容错继续 (不阻断)' : '❌ 严格阻断' }}
+              </div>
+            </div>
+          </div>
+
+          <!-- 方案描述 -->
+          <div v-if="activeDetailPreset.description" style="margin-bottom: 16px;">
+            <div style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 6px;">方案描述说明:</div>
+            <div style="font-size: 13px; color: #cbd5e1; background: rgba(13, 20, 36, 0.5); padding: 10px 14px; border-radius: 6px; border: 1px solid #1a253c; line-height: 1.6;">
+              {{ activeDetailPreset.description }}
+            </div>
+          </div>
+
+          <!-- 宏观提示词展示 (带快捷复制) -->
+          <div v-if="activeDetailPreset.macro_objective" style="margin-bottom: 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <span style="font-size: 12px; font-weight: 600; color: #00d2ff;">🎯 宏观目标探索提示词 (Prompt):</span>
+              <button type="button" class="btn btn-secondary" style="padding: 2px 8px; font-size: 11px;" @click="copyPresetPrompt(activeDetailPreset.macro_objective)">
+                📋 复制提示词
+              </button>
+            </div>
+            <div style="font-size: 12px; color: #cbd5e1; background: rgba(5, 7, 13, 0.8); padding: 12px 14px; border-radius: 6px; border: 1px solid #1a253c; line-height: 1.7; white-space: pre-wrap; font-family: monospace; max-height: 220px; overflow-y: auto;">{{ activeDetailPreset.macro_objective }}</div>
+          </div>
+
+          <!-- YAML 用例路径 (如果存在) -->
+          <div v-if="activeDetailPreset.case_path" style="margin-bottom: 16px;">
+            <div style="font-size: 12px; font-weight: 600; color: #00d2ff; margin-bottom: 6px;">📋 YAML 脚本路径:</div>
+            <div style="font-size: 12px; color: #fff; background: rgba(5, 7, 13, 0.8); padding: 8px 12px; border-radius: 6px; border: 1px solid #1a253c; font-family: monospace;">
+              {{ activeDetailPreset.case_path }}
+            </div>
+          </div>
+
+          <!-- 高阶 CLI 参数列表 -->
+          <div>
+            <div style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 6px;">⚙️ 高阶调优参数:</div>
+            <div style="font-size: 12px; background: rgba(13, 20, 36, 0.5); padding: 10px 14px; border-radius: 6px; border: 1px solid #1a253c; line-height: 1.8; color: #94a3b8;">
+              <div>• 启动缓冲等待: <strong style="color: #fff;">{{ activeDetailPreset.start_delay != null ? (activeDetailPreset.start_delay + ' 秒') : '默认 15 秒' }}</strong></div>
+              <div>• 视觉就绪轮询超时: <strong style="color: #fff;">{{ activeDetailPreset.wait_timeout || 60 }} 秒</strong></div>
+              <div>• 环境校验准入: <strong :style="activeDetailPreset.ignore_env_check ? 'color: #ffb300;' : 'color: #00e676;'">{{ activeDetailPreset.ignore_env_check ? '跳过校验直接运行' : '严格准入校验' }}</strong></div>
+              <div v-if="activeDetailPreset.wait_ready">• 就绪判定条件: <strong style="color: #fff;">{{ activeDetailPreset.wait_ready }}</strong></div>
+              <div v-if="activeDetailPreset.resume_from">• 历史断点续传: <strong style="color: #fff;">{{ activeDetailPreset.resume_from }}</strong></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 弹窗底部操作栏 -->
+        <div style="padding: 14px 20px; border-top: 1px solid #1a253c; background: #0d1424; display: flex; justify-content: flex-end; gap: 10px; align-items: center;">
+          <button type="button" class="btn btn-secondary" @click="taskDetailModalVisible = false" style="padding: 6px 14px;">
+            关闭
+          </button>
+          <button type="button" class="btn btn-secondary" style="border-color: #64748b; color: #cbd5e1; padding: 6px 14px;" @click="editFromDetail">
+            ✏️ 前往微调
+          </button>
+          <button type="button" class="btn btn-primary" style="padding: 6px 18px; font-weight: 600;" @click="launchFromDetail">
+            🚀 立即一键拉起
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- 🔔 全局自研现代化确认与输入交互弹窗 (彻底替换原生 confirm / prompt) -->
     <div class="modal-overlay" v-if="dialogState.visible" style="z-index: 99999;" @click.self="handleDialogCancel">
       <div class="modal-content" style="max-width: 480px; width: 92%; padding: 24px; border: 1px solid var(--border-color); box-shadow: 0 16px 50px rgba(0, 0, 0, 0.7); border-radius: 12px;">
@@ -2617,7 +2811,7 @@
             class="btn"
             :class="dialogState.isDanger ? 'btn-danger' : 'btn-primary'"
             style="min-width: 80px; padding: 8px 18px; font-weight: 600;"
-            :style="dialogState.isDanger ? 'background: #ff5252; border-color: #ff5252; color: #ffffff; box-shadow: 0 2px 10px rgba(255, 82, 82, 0.4);' : ''"
+            :style="dialogState.isDanger ? 'background: #ff5252; border-color: #ff5252;' : ''"
             @click="handleDialogConfirm">
             {{ dialogState.confirmText || '确定' }}
           </button>
@@ -2645,7 +2839,7 @@
 
 
 
-  <script src="/static/js/app.js?v=20261115_01"></script>
+  <script src="/static/js/app.js?v=20261115_02"></script>
 
 
 

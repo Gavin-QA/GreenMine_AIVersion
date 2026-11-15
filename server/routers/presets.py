@@ -104,13 +104,17 @@ DEFAULT_PRESET_TASKS = [
     response_model=List[PresetTaskResponse],
     tags=["1. 平台基础与选项"],
     summary="获取预置的标准巡检任务库 (系统预设 + 用户自定义预设)",
-    description="提供常用巡检任务模板，以及用户在界面中自行保存/编辑的个性化预设方案，按 ID 升序保持固定顺序。",
+    description="提供常用巡检任务模板，以及用户在界面中自行保存/编辑的个性化预设方案。优先系统预设置顶，用户自定义预设按最新更新时间倒序排列。",
 )
 def get_preset_tasks(db: Session = Depends(get_db)):
-    # 按照 ID 升序稳定排列，避免编辑后顺序乱跳
+    # 按照 is_system 降序置顶，其次按 updated_at 倒序排列（最新修改/新建的在最前）
     return (
         db.query(PresetTaskRecord)
-        .order_by(PresetTaskRecord.id.asc())
+        .order_by(
+            PresetTaskRecord.is_system.desc(),
+            PresetTaskRecord.updated_at.desc().nullslast(),
+            PresetTaskRecord.id.asc(),
+        )
         .all()
     )
 

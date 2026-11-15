@@ -126,8 +126,110 @@ const app = createApp({
 
 
     // 预设任务库
-
     const presetTasks = ref([]);
+
+    // 预设任务库视图模式 (card 卡片 | list 列表，默认卡片)
+    const presetViewMode = ref(localStorage.getItem('presetViewMode') || 'card');
+    function setPresetViewMode(mode) {
+      presetViewMode.value = mode;
+      try {
+        localStorage.setItem('presetViewMode', mode);
+      } catch (e) {}
+    }
+
+    // 预设列表排序状态 (字段名: title, app_name, mode, max_steps, max_times, id)
+    const presetSortField = ref('');
+    const presetSortOrder = ref('asc'); // 'asc' | 'desc'
+    function togglePresetSort(field) {
+      if (presetSortField.value === field) {
+        if (presetSortOrder.value === 'asc') {
+          presetSortOrder.value = 'desc';
+        } else {
+          presetSortField.value = '';
+          presetSortOrder.value = 'asc';
+        }
+      } else {
+        presetSortField.value = field;
+        presetSortOrder.value = 'asc';
+      }
+    }
+
+    const sortedPresetTasks = computed(() => {
+      const list = (presetTasks.value || []).slice();
+      if (!presetSortField.value) return list;
+      const field = presetSortField.value;
+      const order = presetSortOrder.value === 'desc' ? -1 : 1;
+      return list.sort((a, b) => {
+        let valA = a[field];
+        let valB = b[field];
+        if (field === 'max_steps' || field === 'max_times') {
+          return ((Number(valA) || 0) - (Number(valB) || 0)) * order;
+        }
+        valA = (valA || '').toString();
+        valB = (valB || '').toString();
+        return valA.localeCompare(valB, 'zh-CN') * order;
+      });
+    });
+
+    // 预设任务弹窗控制 (新建/微调)
+    const taskModalVisible = ref(false);
+
+    function openNewTaskModal() {
+      clearLoadedPreset();
+      taskForm.name = '';
+      taskForm.mode = 'explore';
+      taskForm.tour = false;
+      taskForm.case_path = '';
+      taskForm.macro_objective = '';
+      taskForm.max_steps = 200;
+      taskForm.max_times = 60;
+      taskForm.reset_memory = false;
+      taskForm.ignore_errors = true;
+      taskForm.show_advanced = false;
+      taskForm.resume_from = '';
+      taskForm.reexplore = '';
+      taskForm.start_delay = null;
+      taskForm.wait_ready = '';
+      taskForm.wait_timeout = 60;
+      taskForm.ignore_env_check = false;
+      taskModalVisible.value = true;
+    }
+
+    // 任务详情只读弹窗 (确认项 4: 方案 A)
+    const taskDetailModalVisible = ref(false);
+    const activeDetailPreset = ref(null);
+
+    function openPresetDetail(preset) {
+      activeDetailPreset.value = preset;
+      taskDetailModalVisible.value = true;
+    }
+
+    function editFromDetail() {
+      if (!activeDetailPreset.value) return;
+      const p = activeDetailPreset.value;
+      taskDetailModalVisible.value = false;
+      loadPresetToForm(p);
+    }
+
+    function launchFromDetail() {
+      if (!activeDetailPreset.value) return;
+      const p = activeDetailPreset.value;
+      taskDetailModalVisible.value = false;
+      launchPreset(p);
+    }
+
+    async function copyPresetPrompt(text) {
+      if (!text) {
+        showToast('提示', '该预设无宏观目标提示词', 'info');
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(text);
+        showToast('复制成功', '提示词已成功复制到剪贴板！', 'success', 2000);
+      } catch (err) {
+        showToast('复制失败', String(err), 'error');
+      }
+    }
 
 
 
@@ -876,11 +978,8 @@ const app = createApp({
         taskForm.show_advanced = true;
       }
 
-      // 平滑滚动到底部表单
-      const formCard = document.getElementById('taskFormCard');
-      if (formCard) {
-        formCard.scrollIntoView({ behavior: 'smooth' });
-      }
+      // 唤起自定义任务微调弹窗
+      taskModalVisible.value = true;
     }
 
     function enqueuePreset(preset) {
@@ -946,6 +1045,7 @@ const app = createApp({
           taskForm.preset_id = saved.id;
           taskForm.preset_title = saved.title;
           taskForm.name = saved.title;
+          taskModalVisible.value = false;
           showToast(
             overwriteExisting ? '预设已成功覆盖' : '新预设已保存',
             `预设【<strong>${saved.title}</strong>】${overwriteExisting ? '覆盖更新' : '固化'}成功！已稳定保存在预设库。`,
@@ -1056,6 +1156,8 @@ const app = createApp({
           activeTaskId.value = newTask.id;
 
           activeTask.value = newTask;
+
+          taskModalVisible.value = false;
 
           currentTab.value = 'monitor';
 
@@ -2892,6 +2994,21 @@ const app = createApp({
       getAppName,
       clearLoadedPreset,
       applyTemplate,
+
+      presetViewMode,
+      setPresetViewMode,
+      presetSortField,
+      presetSortOrder,
+      togglePresetSort,
+      sortedPresetTasks,
+      taskModalVisible,
+      openNewTaskModal,
+      taskDetailModalVisible,
+      activeDetailPreset,
+      openPresetDetail,
+      editFromDetail,
+      launchFromDetail,
+      copyPresetPrompt,
 
       submitCreateTask,
 
