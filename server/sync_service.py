@@ -22,7 +22,7 @@ from typing import Dict, Any, Optional, List
 from sqlalchemy.orm import Session
 
 from .models import TaskRun, BugRecord, StepRecord, PerformanceMetric
-from utils.paths import PROJECT_ROOT, GLOBAL_BUGS_DIR, RUNS_DIR, get_all_run_folders
+from utils.paths import PROJECT_ROOT, GLOBAL_BUGS_DIR, RUNS_DIR, get_all_run_folders, is_month_folder
 
 logger = logging.getLogger("server.sync_service")
 
@@ -204,13 +204,16 @@ def sync_all_task_runs(db: Session) -> int:
 
             # ⚡ 核心极速优化：如果历史任务已入库且已有执行步数，直接毫秒级跳过，绝不重复解析磁盘大报告！
             if existing and (existing.total_steps or 0) > 0 and existing.duration and existing.duration != "未知":
-                if not existing.run_dir:
+                if existing.run_dir != rel_p:
                     existing.run_dir = rel_p
+                    existing.report_url = f"/reports/runs/{rel_p}/report.html"
+                    synced_count += 1
                 continue
 
             generator = ReportGenerator(f)
             data = generator.parse_run_data()
-            app_key = rel_p.split("/")[0] if "/" in rel_p else "zhaiwan"
+            first_seg = rel_p.split("/")[0] if "/" in rel_p else ""
+            app_key = first_seg if (first_seg and not is_month_folder(first_seg)) else "zhaiwan"
             mode_val = "smoke" if run_id.startswith("smoke_") else ("case" if run_id.startswith("yaml_") else "explore")
             kpi = data.get("kpi", {})
 

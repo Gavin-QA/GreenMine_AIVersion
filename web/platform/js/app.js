@@ -315,20 +315,48 @@ const app = createApp({
       return (presetTasks.value || []).filter(p => p.app_name === scheduleForm.app_name);
     });
 
-    // 任务列表分页
+    // 任务列表月份筛选与分页
+    const taskMonthFilter = ref('all');
     const taskPage = ref(1);
     const taskPageSize = ref(10);
     const taskPageSizes = [10, 20, 50];
     const taskPageJump = ref(1);
 
+    function extractTaskMonth(t) {
+      if (t.start_time && /^\d{4}-\d{2}/.test(t.start_time)) {
+        return t.start_time.slice(0, 7);
+      }
+      if (t.run_dir) {
+        const m = t.run_dir.match(/(\d{4}-\d{2})/);
+        if (m) return m[1];
+      }
+      return '';
+    }
+
+    const availableTaskMonths = computed(() => {
+      const s = new Set();
+      (tasks.value || []).forEach(t => {
+        const m = extractTaskMonth(t);
+        if (m) s.add(m);
+      });
+      return Array.from(s).sort().reverse();
+    });
+
+    const filteredTasks = computed(() => {
+      if (!taskMonthFilter.value || taskMonthFilter.value === 'all') {
+        return tasks.value || [];
+      }
+      return (tasks.value || []).filter(t => extractTaskMonth(t) === taskMonthFilter.value);
+    });
+
     const totalTaskPages = computed(() => {
-      const total = Math.ceil(tasks.value.length / taskPageSize.value);
+      const total = Math.ceil(filteredTasks.value.length / taskPageSize.value);
       return total > 0 ? total : 1;
     });
 
     const paginatedTasks = computed(() => {
       const start = (taskPage.value - 1) * taskPageSize.value;
-      return tasks.value.slice(start, start + taskPageSize.value);
+      return filteredTasks.value.slice(start, start + taskPageSize.value);
     });
 
     function setTaskPage(p) {
@@ -2933,6 +2961,12 @@ const app = createApp({
       taskPageJump,
       totalTaskPages,
       paginatedTasks,
+
+      taskMonthFilter,
+
+      availableTaskMonths,
+
+      filteredTasks,
       setTaskPage,
       onTaskPageSizeChange,
       jumpToTaskPage,

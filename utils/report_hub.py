@@ -38,7 +38,7 @@ PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from utils.paths import RUNS_DIR, GLOBAL_BUGS_DIR, get_all_run_folders, find_run_dir
+from utils.paths import RUNS_DIR, GLOBAL_BUGS_DIR, get_all_run_folders, find_run_dir, extract_month_from_run_id, is_month_folder
 
 logger = logging.getLogger("report_hub")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] [%(name)s] %(message)s")
@@ -118,11 +118,12 @@ class ReportHub:
                 except Exception:
                     rel_p = d.name
 
-                # 判定所属应用
-                if "/" in rel_p:
-                    app_key = rel_p.split("/")[0]
+                # 判定所属应用与所属年月
+                first_seg = rel_p.split("/")[0] if "/" in rel_p else ""
+                if first_seg and not is_month_folder(first_seg):
+                    app_key = first_seg
                 else:
-                    # 兼容历史根目录旧运行：通过日志判定或默认归属寨湾
+                    # 兼容历史根目录或仅带年月的运行：通过日志判定或默认归属寨湾
                     log_files = list(d.glob("*.log"))
                     is_liwutong = False
                     if log_files:
@@ -134,8 +135,10 @@ class ReportHub:
                             pass
                     app_key = "liwutong" if is_liwutong else "zhaiwan"
 
+                month_str = extract_month_from_run_id(d.name, d.stat().st_mtime)
                 data["app"] = app_key
                 data["app_name"] = APP_NAME_MAP.get(app_key, app_key)
+                data["month"] = month_str
                 data["rel_path"] = rel_p
                 data["folder_name"] = d.name
                 data["report_url"] = f"./{rel_p}/report.html"
@@ -377,6 +380,7 @@ class ReportHub:
                 "run_id": r.get("run_id"),
                 "app": r.get("app"),
                 "app_name": r.get("app_name"),
+                "month": r.get("month", ""),
                 "rel_path": r.get("rel_path"),
                 "duration": r.get("duration", "未知"),
                 "start_time": r.get("start_time", "未知"),
@@ -396,6 +400,7 @@ class ReportHub:
         liwutong_steps = sum(r.get("kpi", {}).get("total_steps", 0) for r in summary_runs if r.get("app") == "liwutong")
         liwutong_bugs = sum(1 for b in all_bugs if b.get("app") == "liwutong")
 
+        available_months = sorted({r["month"] for r in summary_runs if r.get("month")}, reverse=True)
         runs_json = json.dumps(summary_runs, ensure_ascii=False)
         bugs_json = json.dumps(all_bugs, ensure_ascii=False)
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -421,6 +426,7 @@ class ReportHub:
             count_bugs_explore=count_bugs_explore,
             count_bugs_smoke=count_bugs_smoke,
             count_bugs_yaml=count_bugs_yaml,
+            available_months=available_months,
             runs_json=runs_json,
             bugs_json=bugs_json,
             now_str=now_str,

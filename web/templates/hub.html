@@ -881,6 +881,17 @@
             <option value="all">全部被测项目</option>
             <option value="zhaiwan">⛰️ 寨湾矿山</option>
             <option value="liwutong">🏔️ 里伍铜矿山</option>
+            <option value="tianrui">🪨 四川天瑞</option>
+          </select>
+        </div>
+
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="color:var(--text-muted); font-size:13px; font-weight:600;">年月:</span>
+          <select id="runMonthFilter" class="hub-select" onchange="handleMonthFilterChange(this.value)">
+            <option value="all">全部月份</option>
+            {% for m in available_months %}
+            <option value="{{ m }}">📅 {{ m }}</option>
+            {% endfor %}
           </select>
         </div>
 
@@ -1010,6 +1021,13 @@
 
     let currentAppFilter = 'all';
     let currentBugAppFilter = 'all';
+    let currentMonthFilter = 'all';
+
+    function handleMonthFilterChange(month) {
+      currentMonthFilter = month || 'all';
+      currentRunPage = 1;
+      renderRuns();
+    }
 
     const appKpiStats = {
       all: {
@@ -1112,6 +1130,7 @@
         if (currentFilter === 'yaml' && !runId.startsWith('yaml_')) return false;
 
         if (currentAppFilter !== 'all' && (r.app || 'zhaiwan') !== currentAppFilter) return false;
+        if (currentMonthFilter !== 'all' && (r.month || '') !== currentMonthFilter) return false;
 
         if (searchQuery) {
           const matchId = String(runId).includes(searchQuery);
