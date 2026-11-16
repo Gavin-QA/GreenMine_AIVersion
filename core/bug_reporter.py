@@ -88,7 +88,12 @@ class BugReporter:
 
         # 1. 智能查重
 
-        dup_id = self._check_duplicate(step_prompt, actual_result)
+        dup_id = self._check_duplicate(
+            step_prompt,
+            actual_result,
+            ui_path=kwargs.get("ui_path"),
+            target_element=kwargs.get("target_element"),
+        )
 
         # 单次运行现场统一收敛至 reports/runs/<run_id>/bugs/
 
@@ -459,7 +464,7 @@ class BugReporter:
 
         return bug_id
 
-    def _check_duplicate(self, step_prompt: str, actual_result: str) -> str:
+    def _check_duplicate(self, step_prompt: str, actual_result: str, ui_path: str = None, target_element: str = None) -> str:
 
         """调用大模型查重，返回重复的 Bug ID，如果是新 Bug 则返回 None"""
 
@@ -499,7 +504,9 @@ class BugReporter:
 
             "【注意】：全局 Bug 库中包含【激活中】的问题以及【已关闭/误报屏蔽】的历史已知问题。\n"
 
-            "如果这个新崩溃的核心原因和某个已存在的 Bug 是同一个（比如同样是在某个模块找不到某个元素，或者同样的静态资源404、同样的服务端接口500），请判定为重复，并返回该老 Bug 的 ID。\n"
+            "如果这个新崩溃的核心原因和某个已存在的 Bug 是同一个（比如同样是在同一模块找不到同一个元素，或者同样的静态资源404、同样的服务端接口500），请判定为重复，并返回该老 Bug 的 ID。\n"
+
+            "【严禁跨模块误合并铁律】：不同页面路径（ui_path）、不同业务模块/卡片/表格、不同接口名的报错（尤其是 UI 数据与接口不匹配 MISMATCH 类问题，如‘隐患整改反馈’ vs ‘异常报警’），即使报错模式相似，也绝对不能判定为重复！\n"
 
             "特别地，如果匹配到了【已关闭】或【误报屏蔽】的已知历史条目，也必须判定为重复并返回对应的 ID！\n"
 
@@ -518,6 +525,10 @@ class BugReporter:
             f"【全局 Bug 库候选条目】：\n{bugs_context}\n\n"
 
             f"【新的崩溃报错】：\n"
+
+            f"- 所属页面路径 (ui_path): {ui_path or '未指定'}\n"
+
+            f"- 目标交互元素 (target_element): {target_element or '未指定'}\n"
 
             f"- 执行步骤: {step_prompt}\n"
 
@@ -548,6 +559,22 @@ class BugReporter:
             reason = result.get("reason", "无")
 
             if is_dup and dup_id:
+                # 代码级硬防呆：若新旧 Bug 均明确带有 ui_path 且所属页面路径不同，拦截跨模块误合并
+                def _norm_ui_path(p: str) -> str:
+                    if not p:
+                        return ""
+                    s = str(p).strip()
+                    for prefix in ("路径:", "路径：", "页面路径:", "页面路径："):
+                        if s.startswith(prefix):
+                            s = s[len(prefix):].strip()
+                    return "" if s in ("无", "未知路径", "首页", "未指定") else s
+
+                new_p = _norm_ui_path(ui_path)
+                old_bug = next((b for b in candidate_bugs if b.get("id") == dup_id), None)
+                old_p = _norm_ui_path(old_bug.get("ui_path") if old_bug else "")
+                if new_p and old_p and new_p != old_p:
+                    logger.warning(f"🛡️ [Deduplicate Guard] 拦截跨模块误合并: 新报错路径 '{new_p}' != 候选 Bug [{dup_id}] 路径 '{old_p}'，按新 Bug 处理。")
+                    return None
 
                 logger.info(f"💡 查重理由: {reason}")
 
