@@ -934,14 +934,9 @@ def main():
         clean_title = raw_title.replace("【AI自动化】", "").strip()
         final_title = f"【AI自动化·{app_chinese}】[{bug_id}] {clean_title}"
 
-        # 禅道严重度 mapping
-        sev_raw = bug.get("severity", 3)
-        try:
-            sev_int = int(sev_raw)
-        except Exception:
-            sev_int = 3
-        if sev_int not in (1, 2, 3, 4):
-            sev_int = 3
+        # 禅道严重度 mapping (High->2, Medium->3, Low->4, 1~4直通)
+        from utils.bug_enricher import normalize_severity
+        sev_int = normalize_severity(bug.get("severity", 3))
 
         # 智能前置 AI 守卫：自动补齐分析
         ensure_bug_ai_analysis(bug, g_file, r_files)

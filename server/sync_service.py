@@ -390,6 +390,8 @@ def sync_all_bugs(db: Session) -> int:
                 except Exception:
                     pass
 
+            from utils.bug_enricher import normalize_severity_label
+            severity_val = normalize_severity_label(rb.get("severity", "Medium"))
             exist = existing_bugs.get(b_id)
             if not exist:
                 b_rec = BugRecord(
@@ -398,7 +400,7 @@ def sync_all_bugs(db: Session) -> int:
                     run_id=raw_run_id,
                     app_name=bug_app,
                     title=rb.get("title", ""),
-                    severity=rb.get("severity", "Medium"),
+                    severity=severity_val,
                     status=rb.get("status", "激活"),
                     assignee=rb.get("assignee", "陈贻雄"),
                     zentao_id=str(rb.get("zentao_id")) if rb.get("zentao_id") else None,
@@ -438,6 +440,10 @@ def sync_all_bugs(db: Session) -> int:
 
                 if rb.get("title") and exist.title != rb.get("title"):
                     exist.title = rb.get("title")
+                    changed = True
+
+                if exist.severity != severity_val:
+                    exist.severity = severity_val
                     changed = True
 
                 if rb.get("target_element") and exist.target_element != rb.get("target_element"):

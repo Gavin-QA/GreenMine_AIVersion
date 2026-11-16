@@ -217,9 +217,11 @@ def update_bug(
         update_dict["title"] = payload.title
 
     if payload.severity is not None:
-        bug.severity = payload.severity
+        from utils.bug_enricher import normalize_severity_label
+        norm_sev = normalize_severity_label(payload.severity)
+        bug.severity = norm_sev
 
-        update_dict["severity"] = payload.severity
+        update_dict["severity"] = norm_sev
 
     if payload.status is not None:
         bug.status = payload.status
@@ -421,11 +423,12 @@ def sync_bug_to_zentao(
             uploaded_image_url=uploaded_url,
         )
 
+        from utils.bug_enricher import normalize_severity
         res = zentao.submit_bug(
             product_id=product_id,
             title=f"【AI自动化·{app_chinese}】[{bug.id}] {bug.title}",
             steps_html=steps_html,
-            severity=3 if bug.severity == "High" else 2,
+            severity=normalize_severity(bug.severity),
             assigned_to=assignee_account,
             project_id=project_id,
             execution_id=execution_id,

@@ -197,7 +197,8 @@ class BugReporter:
 
         global_step = kwargs.get("global_step")
 
-        severity = kwargs.get("severity", "Medium")
+        from utils.bug_enricher import normalize_severity_label
+        severity = normalize_severity_label(kwargs.get("severity", "Medium"))
 
         tags = kwargs.get("tags")
 

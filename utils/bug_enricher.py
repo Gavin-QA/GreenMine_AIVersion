@@ -48,6 +48,18 @@ def normalize_severity(val: Any) -> int:
     return 3
 
 
+def normalize_severity_label(val: Any) -> str:
+    """全平台统一严重程度标签：High / Medium / Low（兼容数字 1~4 与中英文）"""
+    if val is None or val == "" or val == "无":
+        return "Medium"
+    s = str(val).lower().strip()
+    if s in ["1", "2", "critical", "fatal", "blocker", "high", "major", "致命", "严重", "高"]:
+        return "High"
+    if s in ["4", "low", "minor", "trivial", "轻微", "低"]:
+        return "Low"
+    return "Medium"
+
+
 def enrich_bug_metadata(
     b_dict: Dict[str, Any],
     shots_dir: Optional[Path] = None,

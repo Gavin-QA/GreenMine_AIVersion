@@ -112,8 +112,9 @@ def save_bug_to_db(bug_dict: Dict[str, Any]) -> Optional[str]:
         app_name = bug_dict.get("app") or bug_dict.get("app_name") or "zhaiwan"
         run_id = bug_dict.get("run_id")
         task_id = bug_dict.get("task_id")
+        from utils.bug_enricher import normalize_severity_label
         title = bug_dict.get("title", "")
-        severity = bug_dict.get("severity", "Medium")
+        severity = normalize_severity_label(bug_dict.get("severity", "Medium"))
         status = bug_dict.get("status", "激活")
         assignee = bug_dict.get("assignee", "陈贻雄")
         zentao_id = str(bug_dict.get("zentao_id")) if bug_dict.get("zentao_id") else None
@@ -181,6 +182,8 @@ def save_bug_to_db(bug_dict: Dict[str, Any]) -> Optional[str]:
             if occurrences > (record.occurrences or 0):
                 record.occurrences = occurrences
             record.last_seen = now_dt
+            if bug_dict.get("severity") is not None or record.severity not in ("High", "Medium", "Low"):
+                record.severity = normalize_severity_label(bug_dict.get("severity") or record.severity)
             if run_id:
                 record.run_id = run_id
             if task_id:
