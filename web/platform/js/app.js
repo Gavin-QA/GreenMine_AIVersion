@@ -2591,6 +2591,47 @@ const app = createApp({
 
     }
 
+    const storageSummary = ref({});
+    const isCleaningStorage = ref(false);
+
+    async function fetchStorageSummary() {
+      try {
+        const res = await fetch(`${apiBase}/api/system/storage`);
+        if (res.ok) {
+          storageSummary.value = await res.json();
+        }
+      } catch (e) {
+        console.warn('获取产物磁盘占用失败:', e);
+      }
+    }
+
+    async function triggerStorageCleanup() {
+      if (isCleaningStorage.value) return;
+      const ok = await showConfirm(
+        '执行产物安全瘦身',
+        `当前 runs 目录总占用：${storageSummary.value.runs_total_human || '未知'}（过程截图占比 ${storageSummary.value.screenshots_ratio || 0}%）。\n\n将安全清理 7 天前的临时过程截图（100% 保留所有 Bug 现场、记忆与日志），是否确认执行？`,
+        { confirmText: '立即安全瘦身', cancelText: '取消', type: 'primary' }
+      );
+      if (!ok) return;
+
+      isCleaningStorage.value = true;
+      try {
+        const res = await fetch(`${apiBase}/api/system/cleanup?retain_days=7`, { method: 'POST' });
+        const data = await res.json();
+        if (data.storage_after) {
+          storageSummary.value = data.storage_after;
+        } else {
+          await fetchStorageSummary();
+        }
+        showToast('瘦身完成', `已释放 ${data.freed_human || '0 B'}（清理 ${data.cleaned_files || 0} 张临时图），当前占用 ${storageSummary.value.runs_total_human || ''}`, 'success', 6000);
+      } catch (e) {
+        console.error('磁盘清理失败:', e);
+        showToast('瘦身失败', '请检查后台服务日志。', 'error', 5000);
+      } finally {
+        isCleaningStorage.value = false;
+      }
+    }
+
 
 
 
@@ -2828,6 +2869,7 @@ const app = createApp({
       fetchTasks(); // 启动时预载任务库，保证任何页面（含监控大屏维度）均可即刻使用任务数据
       fetchCases(); // 预载用例资产清单
       fetchTaskQueue(); // 预载调度执行队列状态
+      fetchStorageSummary(); // 异步探测产物磁盘占用大盘
 
       // 根据初始默认 Tab 按需加载首屏数据与启动必要监控
       if (currentTab.value === 'dashboard') {
@@ -3041,6 +3083,12 @@ const app = createApp({
       isSyncing,
 
       triggerHotSync,
+
+      storageSummary,
+
+      isCleaningStorage,
+
+      triggerStorageCleanup,
 
       liveSelectedApp,
 

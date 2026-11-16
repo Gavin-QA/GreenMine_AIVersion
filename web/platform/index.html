@@ -143,6 +143,19 @@
 
         </div>
 
+        <div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.06); display: flex; justify-content: space-between; align-items: center; gap: 4px;">
+          <span style="font-size: 11px; color: #94a3b8; white-space: nowrap;">
+            💾 产物: <b style="color: #e2e8f0;">{{ storageSummary.runs_total_human || '...' }}</b>
+          </span>
+          <button type="button"
+            @click="triggerStorageCleanup"
+            :disabled="isCleaningStorage"
+            title="安全清理 7 天前过程截图（100%保留 Bug 现场与记忆）"
+            style="background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.35); color: #34d399; border-radius: 4px; padding: 2px 6px; font-size: 10px; cursor: pointer; white-space: nowrap;">
+            {{ isCleaningStorage ? '⏳...' : '🧹 瘦身' }}
+          </button>
+        </div>
+
       </div>
 
     </aside>
@@ -2854,7 +2867,7 @@
 
 
 
-  <script src="/static/js/app.js?v=20261116_03"></script>
+  <script src="/static/js/app.js?v=20261116_04"></script>
 
 
 

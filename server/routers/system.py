@@ -222,3 +222,37 @@ async def trigger_hot_sync_endpoint(db: Session = Depends(get_db)):
     return res
 
 
+@router.get(
+    "/api/system/storage",
+    tags=["1. 平台全局总览与控制"],
+    summary="获取工程产物磁盘占用大盘",
+    description="扫描 artifacts/ 与 reports/runs/ 磁盘占用分布，实时返回过程截图、Bug 现场证据、检查点与日志的字节数与人类可读格式。",
+)
+def get_system_storage():
+    from utils.cleaner import get_disk_usage_summary
+
+    return get_disk_usage_summary()
+
+
+@router.post(
+    "/api/system/cleanup",
+    tags=["1. 平台全局总览与控制"],
+    summary="安全执行产物存储瘦身",
+    description="安全清理或原地 WebP 压缩指定天数前的临时过程截图（100% 保留 Bug 现场截图、检查点、日志及结构化 JSON）。",
+)
+def trigger_system_cleanup(
+    retain_days: int = 7,
+    compress_webp: bool = False,
+    dry_run: bool = False,
+):
+    from utils.cleaner import clean_temp_screenshots, get_disk_usage_summary
+
+    result = clean_temp_screenshots(
+        retain_days=retain_days,
+        dry_run=dry_run,
+        compress_webp=compress_webp,
+    )
+    result["storage_after"] = get_disk_usage_summary()
+    return result
+
+

@@ -133,7 +133,9 @@ class ScreenshotMixin:
             draw.ellipse((px - r1, py - r1, px + r1, py + r1), fill=(255, 0, 85, 255))
             draw.ellipse((px - r2, py - r2, px + r2, py + r2), outline=(0, 255, 204, 200), width=int(2*dpr))
             
-            image.save(out_file, format="PNG")
+            if image.mode not in ("RGB", "L"):
+                image = image.convert("RGB")
+            image.save(out_file, format="JPEG", quality=75, optimize=True)
             logger.info(f"🖌️ 已将目标准星 ({x}, {y}) 绘制到当前截图: {out_file.name}")
         except Exception as e:
             logger.warning(f"在截图上绘制模拟光标失败: {e}")
