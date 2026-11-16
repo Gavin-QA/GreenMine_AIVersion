@@ -167,6 +167,24 @@ if STATIC_DIR.exists():
 
 REPORTS_DIR = PROJECT_ROOT / "reports"
 if REPORTS_DIR.exists():
+    from fastapi import HTTPException
+    from fastapi.responses import FileResponse
+    from utils.paths import find_run_dir
+
+    @app.get("/reports/runs/{app_name}/{run_id}/{subpath:path}", include_in_schema=False)
+    async def resolve_archived_run_asset(app_name: str, run_id: str, subpath: str):
+        """兼容按月归档后的三层目录 (<app>/<YYYY-MM>/<run_id>)，自动定位并返回运行产物"""
+        direct_file = (REPORTS_DIR / "runs" / app_name / run_id / subpath).resolve()
+        runs_root = (REPORTS_DIR / "runs").resolve()
+        if str(direct_file).startswith(str(runs_root)) and direct_file.is_file():
+            return FileResponse(direct_file)
+        run_dir = find_run_dir(run_id)
+        if run_dir:
+            target = (run_dir / subpath).resolve()
+            if str(target).startswith(str(run_dir.resolve())) and target.is_file():
+                return FileResponse(target)
+        raise HTTPException(status_code=404, detail="Run asset not found")
+
     app.mount("/reports", StaticFiles(directory=str(REPORTS_DIR)), name="reports")
 
 ARTIFACTS_DIR = PROJECT_ROOT / "artifacts"
