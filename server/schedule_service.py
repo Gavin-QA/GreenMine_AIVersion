@@ -176,7 +176,7 @@ def spawn_task_from_plan(plan: SchedulePlan, db: Session) -> Optional[TaskRun]:
     # 拷贝预设配置参数
     new_task = TaskRun(
         id=new_task_id,
-        name=f"{plan.name} (计划下发)",
+        name=plan.name,
         app_name=plan.app_name,
         mode=preset.mode,
         status="pending",
