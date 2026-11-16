@@ -63,9 +63,6 @@
                 </div>
 
                 <div style="display: flex; align-items: center; gap: 10px;">
-                  <span style="font-size: 12px; color: #00d2ff; background: rgba(0, 210, 255, 0.1); border: 1px solid rgba(0, 210, 255, 0.25); padding: 3px 10px; border-radius: 12px; white-space: nowrap;">
-                    命中 {{ filteredTasks.length }} 条
-                  </span>
                   <button type="button" class="btn btn-secondary" @click="resetTaskFilters()"
                     style="padding: 5px 12px; font-size: 12px; white-space: nowrap;" title="清空全部筛选条件">
                     ↺ 重置筛选

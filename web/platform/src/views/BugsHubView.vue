@@ -74,10 +74,6 @@
                 </select>
               </div>
 
-              <span
-                style="font-size: 12px; color: #00d2ff; background: rgba(0, 210, 255, 0.1); border: 1px solid rgba(0, 210, 255, 0.25); padding: 4px 10px; border-radius: 12px; white-space: nowrap;">
-                共 {{ bugs ? bugs.length : 0 }} 条缺陷
-              </span>
               <button class="btn btn-secondary" @click="resetBugFilters" style="padding: 5px 12px; font-size: 12px; white-space: nowrap;"
                 title="清空全部筛选条件">
                 ↺ 重置筛选
