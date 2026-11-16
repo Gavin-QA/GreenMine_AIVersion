@@ -735,20 +735,77 @@
           <!-- 子模块 1: 历史巡检任务 -->
           <div v-show="assetsSubTab === 'runs'">
 
+            <!-- 1. 独立筛选栏卡片 (同级第 1 个 div，与下方列表清晰分离) -->
+            <div class="card"
+              style="margin-bottom: 16px; padding: 14px 18px; border: 1px solid rgba(56, 189, 248, 0.25); background: linear-gradient(135deg, rgba(15, 23, 42, 0.96), rgba(13, 20, 36, 0.98));">
+              <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 14px;">
+
+                <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 18px;">
+                  <!-- 筛选项 1: 开始时间 (年月日 + 时间段 + 快捷切换) -->
+                  <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                    <span style="font-size: 12px; font-weight: 600; color: #94a3b8; white-space: nowrap;">📅 开始时间:</span>
+                    <input type="date" v-model="taskStartDate" @change="onTaskDateInputChange()"
+                      style="background: #0b1120; color: #e2e8f0; border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; font-size: 12px; outline: none; color-scheme: dark;"
+                      title="起始日期 (年-月-日)">
+                    <span style="color: #64748b; font-size: 12px;">至</span>
+                    <input type="date" v-model="taskEndDate" @change="onTaskDateInputChange()"
+                      style="background: #0b1120; color: #e2e8f0; border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; font-size: 12px; outline: none; color-scheme: dark;"
+                      title="结束日期 (年-月-日)">
+
+                    <div style="display: inline-flex; gap: 4px; margin-left: 4px;">
+                      <button type="button" class="btn btn-secondary"
+                        @click="applyQuickTaskDateRange('all')"
+                        :style="taskQuickDateRange === 'all' ? 'padding: 4px 10px; font-size: 11px; border-color: #00d2ff; color: #00d2ff; background: rgba(0, 210, 255, 0.12);' : 'padding: 4px 10px; font-size: 11px;'">
+                        全部
+                      </button>
+                      <button type="button" class="btn btn-secondary"
+                        @click="applyQuickTaskDateRange('today')"
+                        :style="taskQuickDateRange === 'today' ? 'padding: 4px 10px; font-size: 11px; border-color: #00d2ff; color: #00d2ff; background: rgba(0, 210, 255, 0.12);' : 'padding: 4px 10px; font-size: 11px;'">
+                        今天
+                      </button>
+                      <button type="button" class="btn btn-secondary"
+                        @click="applyQuickTaskDateRange('7d')"
+                        :style="taskQuickDateRange === '7d' ? 'padding: 4px 10px; font-size: 11px; border-color: #00d2ff; color: #00d2ff; background: rgba(0, 210, 255, 0.12);' : 'padding: 4px 10px; font-size: 11px;'">
+                        近 7 天
+                      </button>
+                      <button type="button" class="btn btn-secondary"
+                        @click="applyQuickTaskDateRange('month')"
+                        :style="taskQuickDateRange === 'month' ? 'padding: 4px 10px; font-size: 11px; border-color: #00d2ff; color: #00d2ff; background: rgba(0, 210, 255, 0.12);' : 'padding: 4px 10px; font-size: 11px;'">
+                        本月
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- 筛选项 2: 应用 -->
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 12px; font-weight: 600; color: #94a3b8; white-space: nowrap;">🎯 应用:</span>
+                    <select v-model="taskAppFilter" @change="onTaskPageSizeChange()"
+                      style="background: #0b1120; color: #e2e8f0; border: 1px solid var(--border); border-radius: 6px; padding: 5px 12px; font-size: 12px; outline: none; cursor: pointer; min-width: 150px;">
+                      <option value="all">全部矿山应用</option>
+                      <option v-for="app in options.apps" :key="app.key" :value="app.key">{{ app.name }}</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <span style="font-size: 12px; color: #00d2ff; background: rgba(0, 210, 255, 0.1); border: 1px solid rgba(0, 210, 255, 0.25); padding: 3px 10px; border-radius: 12px; white-space: nowrap;">
+                    命中 {{ filteredTasks.length }} 条
+                  </span>
+                  <button type="button" class="btn btn-secondary" @click="resetTaskFilters()"
+                    style="padding: 5px 12px; font-size: 12px; white-space: nowrap;" title="清空全部筛选条件">
+                    ↺ 重置筛选
+                  </button>
+                </div>
+
+              </div>
+            </div>
+
+            <!-- 2. 历史巡检任务列表卡片 (同级第 2 个 div) -->
             <div class="card">
 
-              <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+              <div class="card-header">
 
                 <div class="card-title">📁 历史巡检任务列表</div>
-
-                <div style="display: flex; align-items: center; gap: 8px;">
-                  <span style="font-size: 12px; color: var(--text-muted);">📅 年月筛选:</span>
-                  <select v-model="taskMonthFilter" @change="onTaskPageSizeChange()"
-                    style="background: #0d1424; color: #e2e8f0; border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px; font-size: 12px; outline: none; cursor: pointer;">
-                    <option value="all">全部月份 ({{ tasks ? tasks.length : 0 }})</option>
-                    <option v-for="m in availableTaskMonths" :key="m" :value="m">{{ m }}</option>
-                  </select>
-                </div>
 
               </div>
 
@@ -771,9 +828,9 @@
                     </tr>
                   </thead>
                   <tbody>
-                    <tr v-if="!tasks || tasks.length === 0">
+                    <tr v-if="!filteredTasks || filteredTasks.length === 0">
                       <td colspan="10" style="text-align: center; padding: 28px; color: var(--text-muted);">
-                        📁 暂无历史巡检任务记录
+                        📁 暂无符合筛选条件的历史巡检任务记录
                       </td>
                     </tr>
                     <tr v-else v-for="t in paginatedTasks" :key="t.id"
@@ -858,9 +915,9 @@
               </div>
 
               <!-- 任务列表分页工具栏 -->
-              <div class="pagination-container" v-if="tasks && tasks.length > 0">
+              <div class="pagination-container" v-if="filteredTasks && filteredTasks.length > 0">
                 <div class="pagination-left">
-                  <span>共 <strong style="color: #00d2ff;">{{ tasks.length }}</strong> 个任务批次</span>
+                  <span>共 <strong style="color: #00d2ff;">{{ filteredTasks.length }}</strong> 个任务批次</span>
                   <span style="color: var(--border-color);">|</span>
                   <span>每页显示</span>
                   <select class="pagination-select" v-model.number="taskPageSize" @change="onTaskPageSizeChange">
@@ -2876,7 +2933,7 @@
 
 
 
-  <script src="/static/js/app.js?v=20261116_06"></script>
+  <script src="/static/js/app.js?v=20261116_07"></script>
 
 
 

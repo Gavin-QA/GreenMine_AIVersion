@@ -315,38 +315,82 @@ const app = createApp({
       return (presetTasks.value || []).filter(p => p.app_name === scheduleForm.app_name);
     });
 
-    // 任务列表月份筛选与分页
-    const taskMonthFilter = ref('all');
+    // 任务列表多维筛选与分页 (开始时间年月日/时间段、应用)
+    const taskStartDate = ref('');
+    const taskEndDate = ref('');
+    const taskAppFilter = ref('all');
+    const taskQuickDateRange = ref('all');
     const taskPage = ref(1);
     const taskPageSize = ref(10);
     const taskPageSizes = [10, 20, 50];
     const taskPageJump = ref(1);
 
-    function extractTaskMonth(t) {
-      if (t.start_time && /^\d{4}-\d{2}/.test(t.start_time)) {
-        return t.start_time.slice(0, 7);
-      }
-      if (t.run_dir) {
-        const m = t.run_dir.match(/(\d{4}-\d{2})/);
+    function extractTaskDate(t) {
+      if (t.start_time) {
+        const m = String(t.start_time).match(/^(\d{4}-\d{2}-\d{2})/);
         if (m) return m[1];
       }
+      const fallbackSrc = t.run_dir || t.id || '';
+      const m2 = String(fallbackSrc).match(/(20\d{2})(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])/);
+      if (m2) return `${m2[1]}-${m2[2]}-${m2[3]}`;
       return '';
     }
 
-    const availableTaskMonths = computed(() => {
-      const s = new Set();
-      (tasks.value || []).forEach(t => {
-        const m = extractTaskMonth(t);
-        if (m) s.add(m);
-      });
-      return Array.from(s).sort().reverse();
-    });
+    function formatLocalYMD(dt) {
+      const y = dt.getFullYear();
+      const m = String(dt.getMonth() + 1).padStart(2, '0');
+      const d = String(dt.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    }
+
+    function applyQuickTaskDateRange(preset) {
+      taskQuickDateRange.value = preset;
+      const now = new Date();
+      const todayStr = formatLocalYMD(now);
+      if (preset === 'all') {
+        taskStartDate.value = '';
+        taskEndDate.value = '';
+      } else if (preset === 'today') {
+        taskStartDate.value = todayStr;
+        taskEndDate.value = todayStr;
+      } else if (preset === '7d') {
+        const d7 = new Date(now);
+        d7.setDate(now.getDate() - 6);
+        taskStartDate.value = formatLocalYMD(d7);
+        taskEndDate.value = todayStr;
+      } else if (preset === 'month') {
+        taskStartDate.value = `${todayStr.slice(0, 7)}-01`;
+        taskEndDate.value = todayStr;
+      }
+      onTaskPageSizeChange();
+    }
+
+    function onTaskDateInputChange() {
+      taskQuickDateRange.value = '';
+      onTaskPageSizeChange();
+    }
+
+    function resetTaskFilters() {
+      taskStartDate.value = '';
+      taskEndDate.value = '';
+      taskAppFilter.value = 'all';
+      taskQuickDateRange.value = 'all';
+      onTaskPageSizeChange();
+    }
 
     const filteredTasks = computed(() => {
-      if (!taskMonthFilter.value || taskMonthFilter.value === 'all') {
-        return tasks.value || [];
-      }
-      return (tasks.value || []).filter(t => extractTaskMonth(t) === taskMonthFilter.value);
+      return (tasks.value || []).filter(t => {
+        if (taskAppFilter.value && taskAppFilter.value !== 'all') {
+          if ((t.app_name || '') !== taskAppFilter.value) return false;
+        }
+        if (taskStartDate.value || taskEndDate.value) {
+          const d = extractTaskDate(t);
+          if (!d) return false;
+          if (taskStartDate.value && d < taskStartDate.value) return false;
+          if (taskEndDate.value && d > taskEndDate.value) return false;
+        }
+        return true;
+      });
     });
 
     const totalTaskPages = computed(() => {
@@ -2963,9 +3007,19 @@ const app = createApp({
       totalTaskPages,
       paginatedTasks,
 
-      taskMonthFilter,
+      taskStartDate,
 
-      availableTaskMonths,
+      taskEndDate,
+
+      taskAppFilter,
+
+      taskQuickDateRange,
+
+      applyQuickTaskDateRange,
+
+      onTaskDateInputChange,
+
+      resetTaskFilters,
 
       filteredTasks,
       setTaskPage,
