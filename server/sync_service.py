@@ -75,6 +75,38 @@ def cleanup_duplicate_task_runs(db: Session) -> int:
         if folder:
             by_folder[folder].append(t)
 
+    # 额外守护：处理由于服务重启等原因导致未及时挂载 run_dir 的平台派发任务
+    unattached_platform_tasks = [
+        t for t in all_tasks
+        if not t.id.startswith(("task_explore_", "task_smoke_", "task_yaml_"))
+        and not t.run_dir and not t.report_url and t.start_time
+    ]
+    if unattached_platform_tasks:
+        generic_candidates = [
+            t for t in all_tasks
+            if t.id.startswith(("task_explore_", "task_smoke_", "task_yaml_"))
+            and (t.run_dir or t.report_url) and t.start_time
+        ]
+        for pt in unattached_platform_tasks:
+            matched_gen = None
+            for gt in generic_candidates:
+                if (gt.app_name or "").lower() == (pt.app_name or "").lower():
+                    time_diff = abs((gt.start_time - pt.start_time).total_seconds())
+                    if time_diff <= 180:  # 3分钟容差内
+                        matched_gen = gt
+                        break
+            if matched_gen:
+                folder = None
+                if matched_gen.run_dir:
+                    folder = Path(matched_gen.run_dir.replace("\\", "/").strip("/")).name
+                elif matched_gen.report_url:
+                    for seg in matched_gen.report_url.replace("\\", "/").split("/"):
+                        if seg.startswith(("explore_", "smoke_", "yaml_")):
+                            folder = seg
+                            break
+                if folder and pt not in by_folder[folder]:
+                    by_folder[folder].append(pt)
+
     cleaned_count = 0
     for folder, group in by_folder.items():
         if len(group) <= 1:
@@ -92,7 +124,12 @@ def cleanup_duplicate_task_runs(db: Session) -> int:
             shadows = [t for t in group if t.id != primary.id]
 
         for s in shadows:
-            # 汇聚指标
+            # 汇聚指标与状态
+            if primary.status == "running" and s.status in ("completed", "failed", "stopped"):
+                primary.status = s.status
+                q_items = db.query(TaskQueueItem).filter(TaskQueueItem.task_id == primary.id).all()
+                for q in q_items:
+                    q.status = s.status
             if (s.total_steps or 0) > (primary.total_steps or 0):
                 primary.total_steps = s.total_steps
             if s.duration and (not primary.duration or primary.duration == "未知"):
