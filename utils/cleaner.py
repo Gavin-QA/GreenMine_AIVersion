@@ -10,9 +10,10 @@
 
 用法：
     python utils/cleaner.py --info                 # 查看当前各目录磁盘占用详情
-    python utils/cleaner.py --retain-days 7        # 清理 7 天前的过程截图（保留 Bug 现场与记忆）
-    python utils/cleaner.py --retain-days 0        # 清理所有历史运行的临时过程截图（仅留 Bug 和记忆）
-    python utils/cleaner.py --compress-webp        # 原地将臃肿过程大图无损/高压缩比转码为 WebP（体积缩减 ~85%）
+    python utils/cleaner.py --retain-days 7        # 清理 7 天前的过程截图（自动保护仍含激活 Bug 的报告，保留 Bug 现场与记忆）
+    python utils/cleaner.py --retain-days 0        # 清理所有历史运行的临时过程截图（仅留 Bug 和记忆，仍受激活 Bug 保护）
+    python utils/cleaner.py --force                # 忽略激活 Bug 保护盾，强制按天数清理
+    python utils/cleaner.py --compress-webp        # 原地将臃肿过程大图无损/高压缩比转码为 WebP（体积缩减 ~85%%）
     python utils/cleaner.py --dry-run              # 仅演练，计算可释放空间，不实际删除
 """
 
@@ -134,35 +135,76 @@ def print_disk_usage_info():
     print("=" * 65 + "\n")
 
 
+def get_active_bug_run_ids() -> dict:
+    """基于数据库与全局缺陷库获取当前仍处于『激活』状态的缺陷所属 run_id 映射（run_id -> [bug_id, ...]）"""
+    import json
+    active_map: dict = {}
+
+    db_loaded = False
+    try:
+        from server.database import SessionLocal
+        from server.models import BugRecord
+
+        db = SessionLocal()
+        try:
+            rows = db.query(BugRecord).filter(BugRecord.status.in_(["激活", "Open", ""])).all()
+            for b in rows:
+                if b.run_id:
+                    active_map.setdefault(b.run_id, []).append(b.id)
+            db_loaded = True
+        finally:
+            db.close()
+    except Exception:
+        pass
+
+    if not db_loaded and GLOBAL_BUGS_DIR.exists():
+        for gf in GLOBAL_BUGS_DIR.glob("global_bugs*.json"):
+            try:
+                items = json.loads(gf.read_text(encoding="utf-8"))
+                for b in items:
+                    st = (b.get("status") or "激活").strip()
+                    if st in ("激活", "Open", "") and b.get("run_id"):
+                        active_map.setdefault(b["run_id"], []).append(b.get("id", ""))
+            except Exception:
+                pass
+
+    return active_map
+
+
 def clean_temp_screenshots(
     retain_days: int = 7,
     dry_run: bool = False,
     compress_webp: bool = False,
     quality: int = 65,
+    protect_active_bugs: bool = True,
 ) -> dict:
-    """安全清理或原地 WebP 压缩过程截图，永久保留 Bug 现场与记忆"""
+    """安全清理或原地 WebP 压缩过程截图，默认自动保护仍含激活 Bug 的运行目录以保留完整操作上下文"""
     if not RUNS_DIR.exists():
         print("未检测到 reports/runs/ 目录。")
-        return {"cleaned_files": 0, "freed_bytes": 0, "freed_human": "0.00 B", "dry_run": dry_run}
+        return {"cleaned_files": 0, "freed_bytes": 0, "freed_human": "0.00 B", "protected_runs": [], "dry_run": dry_run}
 
     cutoff_date = datetime.now() - timedelta(days=retain_days)
     run_folders = get_all_run_folders()
+    active_bug_runs = get_active_bug_run_ids() if (protect_active_bugs and not compress_webp) else {}
 
     cleaned_bytes = 0
     cleaned_files = 0
+    protected_runs = []
 
     mode_desc = "WebP 原地高压缩瘦身" if compress_webp else "过期临时大图清理"
     print(f"\n🧹 启动{mode_desc}程序 | 保留天数: {retain_days} 天 (早于 {cutoff_date.strftime('%Y-%m-%d')} 的过程截图将处理)")
+    if protect_active_bugs and not compress_webp:
+        print("🛡️ 激活 Bug 保护盾已开启：含未处理「激活」Bug 的报告将保留全部上下文过程截图。")
     if dry_run:
         print("🔍 当前为 [预演模式 (Dry-Run)]，不执行实际写删。")
 
     if compress_webp and not dry_run:
         try:
             from PIL import Image
-            from concurrent.futures import ThreadPoolExecutor, as_completed
+            from concurrent.futures import ThreadPoolExecutor
         except ImportError:
             print("❌ 缺少 Pillow (PIL) 库，无法执行 WebP 压缩！")
-            return {"cleaned_files": 0, "freed_bytes": 0, "freed_human": "0.00 B", "error": "Missing PIL"}
+            return {"cleaned_files": 0, "freed_bytes": 0, "freed_human": "0.00 B", "protected_runs": [], "error": "Missing PIL"}
 
     img_exts = (".png", ".jpg", ".jpeg", ".webp")
     compress_targets = []
@@ -175,10 +217,44 @@ def clean_temp_screenshots(
         if mtime >= cutoff_date and retain_days > 0:
             continue
 
+        # 🛡️ 激活 Bug 保护盾：删除模式下跳过仍挂有未处理激活 Bug 的报告目录
+        if protect_active_bugs and not compress_webp and r.name in active_bug_runs:
+            protected_runs.append({"run_id": r.name, "bug_ids": active_bug_runs[r.name]})
+            continue
+
         for shot in list(shots_dir.iterdir()):
             if not shot.is_file() or shot.suffix.lower() not in img_exts:
                 continue
             file_sz = shot.stat().st_size
+
+            if compress_webp:
+                # 跳过已经很小（<= 450KB）的图，只处理膨胀 PNG 或超大图片
+                if file_sz <= 450 * 1024:
+                    continue
+                if dry_run:
+                    # 估算 WebP 压缩节省 ~85%
+                    cleaned_bytes += int(file_sz * 0.85)
+                    cleaned_files += 1
+                else:
+                    try:
+                        with Image.open(shot) as img:
+                            if img.mode not in ("RGB", "L"):
+                                img = img.convert("RGB")
+                            img.save(shot, format="WEBP", quality=quality, method=4)
+                        new_sz = shot.stat().st_size
+                        if new_sz < file_sz:
+                            cleaned_bytes += (file_sz - new_sz)
+                        cleaned_files += 1
+                    except Exception as e:
+                        print(f"压缩失败: {shot} ({e})")
+            else:
+                cleaned_bytes += file_sz
+                cleaned_files += 1
+                if not dry_run:
+                    try:
+                        shot.unlink()
+                    except Exception as e:
+                        print(f"删除失败: {shot} ({e})")
 
             if compress_webp:
                 # 跳过已经很小（<= 450KB）的图，只处理膨胀 PNG 或超大图片
@@ -224,6 +300,10 @@ def clean_temp_screenshots(
     freed_human = format_size(cleaned_bytes)
     verb = "压缩" if compress_webp else "清理"
     print(f"\n✅ 瘦身完成！{action_label} 空间: {freed_human} ({verb}了 {cleaned_files} 张临时过程大图)")
+    if protected_runs:
+        print(f"🛡️ 已保护 {len(protected_runs)} 个含「激活」Bug 的报告目录（完整保留上下文过程图）：")
+        for pr in protected_runs:
+            print(f"   ⏭️ {pr['run_id']} (关联激活缺陷: {', '.join(pr['bug_ids'])})")
     print("🔒 安全保障已生效：所有 Bug 崩溃现场截图、检查点记忆(checkpoint)、数据 JSON 及日志均已 100% 完整保留！\n")
 
     return {
@@ -232,6 +312,9 @@ def clean_temp_screenshots(
         "freed_human": freed_human,
         "retain_days": retain_days,
         "compress_webp": compress_webp,
+        "protect_active_bugs": protect_active_bugs,
+        "protected_runs": protected_runs,
+        "protected_count": len(protected_runs),
         "dry_run": dry_run,
     }
 
@@ -242,6 +325,7 @@ def main():
     parser.add_argument("--retain-days", type=int, default=None, help="保留最近 N 天的过程截图，更早的临时截图将被安全清理或压缩（推荐 7）")
     parser.add_argument("--compress-webp", action="store_true", help="不删除文件，而是将膨胀的过程大图原地压缩为 WebP 格式（体积缩减 ~85%%）")
     parser.add_argument("--quality", type=int, default=65, help="WebP 压缩画质 (1-100，默认 65)")
+    parser.add_argument("--force", action="store_true", help="强制清理，忽略激活 Bug 保护盾")
     parser.add_argument("--dry-run", action="store_true", help="演练模式，仅计算可释放空间，不执行实际删除或覆盖")
     args = parser.parse_args()
 
@@ -258,6 +342,7 @@ def main():
         dry_run=args.dry_run,
         compress_webp=args.compress_webp,
         quality=args.quality,
+        protect_active_bugs=not args.force,
     )
 
 

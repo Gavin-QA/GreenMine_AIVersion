@@ -25,6 +25,18 @@ from utils.bug_enricher import normalize_severity
 logger = logging.getLogger("bug_updater")
 
 
+def _find_run_bug_files(run_dir: Path, bug_id: str) -> List[Path]:
+    """定位单次运行目录下匹配 bug_id 的全部 JSON 文件（兼容 <bug_id>.json 与 <bug_id>_<ts>.json）"""
+    bugs_dir = run_dir / "bugs"
+    if not bugs_dir.exists():
+        return []
+    matched = []
+    for cand in bugs_dir.glob(f"{bug_id}*.json"):
+        if cand.stem == bug_id or cand.stem.startswith(f"{bug_id}_"):
+            matched.append(cand)
+    return matched
+
+
 def update_bug_record(data: Dict[str, Any]) -> Dict[str, Any]:
     """统一更新缺陷属性，同步文件 JSON 与数据库记录
 
@@ -92,26 +104,30 @@ def update_bug_record(data: Dict[str, Any]) -> Dict[str, Any]:
             except Exception as e:
                 logger.warning(f"更新全局缺陷库 {bug_file.name} 异常: {e}")
 
-    # 2. 更新对应单次测试运行目录 (reports/runs/<app>/<run_id>/bugs/<bug_id>.json)
+    # 2. 更新对应单次测试运行目录 (reports/runs/<app>/<YYYY-MM>/<run_id>/bugs/<bug_id>[_<ts>].json)
     for run_dir in get_all_run_folders():
-        run_bug_file = run_dir / "bugs" / f"{bug_id}.json"
-        if run_bug_file.exists():
-            try:
-                with open(run_bug_file, "r", encoding="utf-8") as rf:
-                    b_data = json.load(rf)
-                _apply_updates(b_data)
-                with open(run_bug_file, "w", encoding="utf-8") as rf:
-                    json.dump(b_data, rf, ensure_ascii=False, indent=2)
-                success = True
-                updated_targets.append(f"{run_dir.name}/bugs/{bug_id}.json")
+        run_bug_files = _find_run_bug_files(run_dir, bug_id)
+        if run_bug_files:
+            run_updated = False
+            for run_bug_file in run_bug_files:
+                try:
+                    with open(run_bug_file, "r", encoding="utf-8") as rf:
+                        b_data = json.load(rf)
+                    _apply_updates(b_data)
+                    with open(run_bug_file, "w", encoding="utf-8") as rf:
+                        json.dump(b_data, rf, ensure_ascii=False, indent=2)
+                    success = True
+                    run_updated = True
+                    updated_targets.append(f"{run_dir.name}/bugs/{run_bug_file.name}")
+                except Exception as e:
+                    logger.warning(f"更新运行目录 Bug 文件异常 ({run_bug_file}): {e}")
+            if run_updated:
                 try:
                     from utils.report_generator import ReportGenerator
                     ReportGenerator(run_dir).generate_html(disable_push=True, update_hub=False)
                     updated_targets.append(f"{run_dir.name}/report.html")
                 except Exception as rge:
                     logger.debug(f"重新渲染 {run_dir.name}/report.html 跳过: {rge}")
-            except Exception as e:
-                logger.warning(f"更新运行目录 Bug 文件异常 ({run_bug_file}): {e}")
 
     # 3. 同步持久化至 SQLite/MySQL 平台数据库
     try:
@@ -178,21 +194,25 @@ def delete_bug_record(bug_id: str) -> Dict[str, Any]:
             except Exception as e:
                 logger.warning(f"从全局缺陷库 {bug_file.name} 删除 Bug {bug_id} 异常: {e}")
 
-    # 2. 从单次运行目录 (reports/runs/<app>/<run_id>/bugs/<bug_id>.json) 中抹除文件
+    # 2. 从单次运行目录 (reports/runs/<app>/<YYYY-MM>/<run_id>/bugs/<bug_id>[_<ts>].json) 中抹除文件
     for run_dir in get_all_run_folders():
-        run_bug_file = run_dir / "bugs" / f"{bug_id}.json"
-        if run_bug_file.exists():
-            try:
-                run_bug_file.unlink(missing_ok=True)
-                deleted_targets.append(f"{run_dir.name}/bugs/{bug_id}.json")
+        run_bug_files = _find_run_bug_files(run_dir, bug_id)
+        if run_bug_files:
+            run_deleted = False
+            for run_bug_file in run_bug_files:
+                try:
+                    run_bug_file.unlink(missing_ok=True)
+                    deleted_targets.append(f"{run_dir.name}/bugs/{run_bug_file.name}")
+                    run_deleted = True
+                except Exception as e:
+                    logger.warning(f"删除运行目录 Bug 文件异常 ({run_bug_file}): {e}")
+            if run_deleted:
                 try:
                     from utils.report_generator import ReportGenerator
                     ReportGenerator(run_dir).generate_html(disable_push=True, update_hub=False)
                     deleted_targets.append(f"{run_dir.name}/report.html")
                 except Exception as rge:
                     logger.debug(f"删除缺陷后重新渲染 {run_dir.name}/report.html 跳过: {rge}")
-            except Exception as e:
-                logger.warning(f"删除运行目录 Bug 文件异常 ({run_bug_file}): {e}")
 
     # 3. 从数据库中彻底删除记录
     try:

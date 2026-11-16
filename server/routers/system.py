@@ -238,11 +238,12 @@ def get_system_storage():
     "/api/system/cleanup",
     tags=["1. 平台全局总览与控制"],
     summary="安全执行产物存储瘦身",
-    description="安全清理或原地 WebP 压缩指定天数前的临时过程截图（100% 保留 Bug 现场截图、检查点、日志及结构化 JSON）。",
+    description="安全清理或原地 WebP 压缩指定天数前的临时过程截图（默认自动跳过仍含「激活」Bug 的未处理报告，100% 保留上下文与 Bug 现场）。",
 )
 def trigger_system_cleanup(
     retain_days: int = 7,
     compress_webp: bool = False,
+    protect_active_bugs: bool = True,
     dry_run: bool = False,
 ):
     from utils.cleaner import clean_temp_screenshots, get_disk_usage_summary
@@ -251,6 +252,7 @@ def trigger_system_cleanup(
         retain_days=retain_days,
         dry_run=dry_run,
         compress_webp=compress_webp,
+        protect_active_bugs=protect_active_bugs,
     )
     result["storage_after"] = get_disk_usage_summary()
     return result

@@ -2637,21 +2637,22 @@ const app = createApp({
       if (isCleaningStorage.value) return;
       const ok = await showConfirm(
         '执行产物安全瘦身',
-        `当前 runs 目录总占用：${storageSummary.value.runs_total_human || '未知'}（过程截图占比 ${storageSummary.value.screenshots_ratio || 0}%）。\n\n将安全清理 7 天前的临时过程截图（100% 保留所有 Bug 现场、记忆与日志），是否确认执行？`,
+        `当前 runs 目录总占用：${storageSummary.value.runs_total_human || '未知'}（过程截图占比 ${storageSummary.value.screenshots_ratio || 0}%）。\n\n将安全清理 7 天前的临时过程截图（默认跳过仍含「激活」Bug 的未处理报告，100% 保留上下文与 Bug 现场），是否确认执行？`,
         { confirmText: '立即安全瘦身', cancelText: '取消', type: 'primary' }
       );
       if (!ok) return;
 
       isCleaningStorage.value = true;
       try {
-        const res = await fetch(`${apiBase}/api/system/cleanup?retain_days=7`, { method: 'POST' });
+        const res = await fetch(`${apiBase}/api/system/cleanup?retain_days=7&protect_active_bugs=true`, { method: 'POST' });
         const data = await res.json();
         if (data.storage_after) {
           storageSummary.value = data.storage_after;
         } else {
           await fetchStorageSummary();
         }
-        showToast('瘦身完成', `已释放 ${data.freed_human || '0 B'}（清理 ${data.cleaned_files || 0} 张临时图），当前占用 ${storageSummary.value.runs_total_human || ''}`, 'success', 6000);
+        const protMsg = data.protected_count > 0 ? `，已自动跳过 ${data.protected_count} 个含激活 Bug 的报告` : '';
+        showToast('瘦身完成', `已释放 ${data.freed_human || '0 B'}（清理 ${data.cleaned_files || 0} 张临时图${protMsg}），当前占用 ${storageSummary.value.runs_total_human || ''}`, 'success', 6000);
       } catch (e) {
         console.error('磁盘清理失败:', e);
         showToast('瘦身失败', '请检查后台服务日志。', 'error', 5000);
