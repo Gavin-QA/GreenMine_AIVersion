@@ -20,7 +20,8 @@ CURRENT_DIR = Path(__file__).resolve().parent.parent
 PROJECT_ROOT = CURRENT_DIR.parent
 
 WEB_DIR = PROJECT_ROOT / "web"
-STATIC_DIR = WEB_DIR / "platform" if (WEB_DIR / "platform").exists() else CURRENT_DIR / "static"
+_DIST_DIR = WEB_DIR / "platform" / "dist"
+STATIC_DIR = _DIST_DIR if _DIST_DIR.exists() else (WEB_DIR / "platform" if (WEB_DIR / "platform").exists() else CURRENT_DIR / "static")
 REPORTS_DIR = PROJECT_ROOT / "reports"
 
 logger = logging.getLogger("server.system")

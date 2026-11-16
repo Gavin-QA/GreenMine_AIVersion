@@ -73,6 +73,10 @@ scratch/
 # 本地大模型权重目录（体积达数 GB，严禁提交到 git）
 models/
 
+# Node.js 依赖目录 (禁止提交到 git)
+node_modules/
+web/platform/node_modules/
+
 # 数据库本地自动备份临时快照目录 (主库 data/vision_platform.db 已正式纳入 Git 版本管理)
 /data/backups/
 /data/*.bak

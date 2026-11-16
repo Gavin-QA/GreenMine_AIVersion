@@ -157,9 +157,10 @@ async def on_shutdown():
     logger.info("✨ [Shutdown] 所有长连接与守护线程释放完毕，服务退出/重载就绪！")
 
 
-# 静态文件挂载：平台前端 UI 静态资源与测试产物报告截图
+# 静态文件挂载：优先挂载 Vite 构建产物 web/platform/dist/，兼容旧版目录回退
 WEB_DIR = PROJECT_ROOT / "web"
-STATIC_DIR = WEB_DIR / "platform" if (WEB_DIR / "platform").exists() else CURRENT_DIR / "static"
+_DIST_DIR = WEB_DIR / "platform" / "dist"
+STATIC_DIR = _DIST_DIR if _DIST_DIR.exists() else (WEB_DIR / "platform" if (WEB_DIR / "platform").exists() else CURRENT_DIR / "static")
 
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")

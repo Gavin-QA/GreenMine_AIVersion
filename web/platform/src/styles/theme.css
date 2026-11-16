@@ -771,3 +771,37 @@ textarea.form-control {
   vertical-align: middle;
   margin-right: 4px;
 }
+
+
+/* ================= Element Plus 工业暗黑主题深度定制 ================= */
+html.dark {
+  --el-bg-color: #0d1424;
+  --el-bg-color-overlay: #131b2e;
+  --el-fill-color-blank: #0b1120;
+  --el-border-color: #233354;
+  --el-border-color-light: #1e2d4a;
+  --el-text-color-primary: #f0f4fc;
+  --el-text-color-regular: #cbd5e1;
+  --el-text-color-secondary: #8b9bb4;
+  --el-color-primary: #00d2ff;
+  --el-color-primary-light-3: #38bdf8;
+  --el-color-primary-light-5: #0284c7;
+  --el-color-primary-light-9: rgba(0, 210, 255, 0.14);
+}
+
+.el-date-editor.el-input__wrapper {
+  background-color: #0b1120 !important;
+  box-shadow: 0 0 0 1px #233354 inset !important;
+}
+
+.el-date-editor.el-input__wrapper:hover,
+.el-date-editor.el-input__wrapper.is-focus {
+  box-shadow: 0 0 0 1px #00d2ff inset !important;
+}
+
+.el-popper.is-light,
+.el-picker-panel {
+  background-color: #131b2e !important;
+  border-color: #233354 !important;
+  color: #f0f4fc !important;
+}

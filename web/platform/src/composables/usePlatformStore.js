@@ -1,10 +1,9 @@
-const { createApp, ref, reactive, computed, onMounted, onUnmounted, nextTick, watch } = Vue;
+import { ref, reactive, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
+import * as echarts from 'echarts'
 
 
 
-const app = createApp({
-
-  setup() {
+export function usePlatformStore() {
 
     const currentTab = ref('dashboard'); // dashboard, tasks, monitor, bugs
 
@@ -315,11 +314,36 @@ const app = createApp({
       return (presetTasks.value || []).filter(p => p.app_name === scheduleForm.app_name);
     });
 
-    // 任务列表多维筛选与分页 (开始时间年月日/时间段、应用)
-    const taskStartDate = ref('');
-    const taskEndDate = ref('');
+    // 任务列表多维筛选与分页 (Element Plus <el-date-picker type="daterange"> + 应用)
+    const taskDateRange = ref([]);
     const taskAppFilter = ref('all');
     const taskQuickDateRange = ref('all');
+    const dateShortcuts = [
+      {
+        text: '今天',
+        value: () => {
+          const d = new Date();
+          return [d, d];
+        },
+      },
+      {
+        text: '最近 7 天',
+        value: () => {
+          const end = new Date();
+          const start = new Date();
+          start.setDate(end.getDate() - 6);
+          return [start, end];
+        },
+      },
+      {
+        text: '本月',
+        value: () => {
+          const end = new Date();
+          const start = new Date(end.getFullYear(), end.getMonth(), 1);
+          return [start, end];
+        },
+      },
+    ];
     const taskPage = ref(1);
     const taskPageSize = ref(10);
     const taskPageSizes = [10, 20, 50];
@@ -348,46 +372,44 @@ const app = createApp({
       const now = new Date();
       const todayStr = formatLocalYMD(now);
       if (preset === 'all') {
-        taskStartDate.value = '';
-        taskEndDate.value = '';
+        taskDateRange.value = [];
       } else if (preset === 'today') {
-        taskStartDate.value = todayStr;
-        taskEndDate.value = todayStr;
+        taskDateRange.value = [todayStr, todayStr];
       } else if (preset === '7d') {
         const d7 = new Date(now);
         d7.setDate(now.getDate() - 6);
-        taskStartDate.value = formatLocalYMD(d7);
-        taskEndDate.value = todayStr;
+        taskDateRange.value = [formatLocalYMD(d7), todayStr];
       } else if (preset === 'month') {
-        taskStartDate.value = `${todayStr.slice(0, 7)}-01`;
-        taskEndDate.value = todayStr;
+        taskDateRange.value = [`${todayStr.slice(0, 7)}-01`, todayStr];
       }
       onTaskPageSizeChange();
     }
 
     function onTaskDateInputChange() {
-      taskQuickDateRange.value = '';
+      taskQuickDateRange.value = (!taskDateRange.value || taskDateRange.value.length === 0) ? 'all' : '';
       onTaskPageSizeChange();
     }
 
     function resetTaskFilters() {
-      taskStartDate.value = '';
-      taskEndDate.value = '';
+      taskDateRange.value = [];
       taskAppFilter.value = 'all';
       taskQuickDateRange.value = 'all';
       onTaskPageSizeChange();
     }
 
     const filteredTasks = computed(() => {
+      const range = Array.isArray(taskDateRange.value) ? taskDateRange.value : [];
+      const startD = range[0] || '';
+      const endD = range[1] || '';
       return (tasks.value || []).filter(t => {
         if (taskAppFilter.value && taskAppFilter.value !== 'all') {
           if ((t.app_name || '') !== taskAppFilter.value) return false;
         }
-        if (taskStartDate.value || taskEndDate.value) {
+        if (startD || endD) {
           const d = extractTaskDate(t);
           if (!d) return false;
-          if (taskStartDate.value && d < taskStartDate.value) return false;
-          if (taskEndDate.value && d > taskEndDate.value) return false;
+          if (startD && d < startD) return false;
+          if (endD && d > endD) return false;
         }
         return true;
       });
@@ -1894,7 +1916,7 @@ const app = createApp({
 
         const ueEl = document.getElementById('ueChart');
 
-        if (!domEl || !ueEl || !window.echarts) return;
+        if (!domEl || !ueEl || !echarts) return;
 
 
 
@@ -3007,9 +3029,9 @@ const app = createApp({
       totalTaskPages,
       paginatedTasks,
 
-      taskStartDate,
+      taskDateRange,
 
-      taskEndDate,
+      dateShortcuts,
 
       taskAppFilter,
 
@@ -3253,23 +3275,4 @@ const app = createApp({
 
     };
 
-  }
-
-});
-
-
-
-app.config.errorHandler = (err, instance, info) => {
-  console.error('[Vue ErrorHandler]', err, info);
-  const fatalBanner = document.getElementById('platform-fatal-error-banner');
-  if (!fatalBanner) {
-    const banner = document.createElement('div');
-    banner.id = 'platform-fatal-error-banner';
-    banner.style = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#ff5252;color:#fff;padding:16px 24px;border-radius:8px;z-index:999999;font-family:sans-serif;box-shadow:0 8px 30px rgba(0,0,0,0.6);font-size:14px;line-height:1.6;';
-    banner.innerHTML = `<strong>⚠️ 界面渲染拦截到异常：</strong> ${err && err.message ? err.message : String(err)}<br><span style="font-size:12px;opacity:0.9;">💡 建议按 <b>Ctrl + F5</b> 强制清除浏览器缓存后重试。</span>`;
-    document.body.appendChild(banner);
-  }
-};
-
-app.mount('#app');
-
+}
