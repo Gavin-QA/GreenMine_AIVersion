@@ -355,7 +355,21 @@ def sync_all_bugs(db: Session) -> int:
                 first_seen_dt = last_seen_dt
 
             occurrences_val = int(rb.get("occurrences") or 1)
-            actual_text = rb.get("details", {}).get("actual") if isinstance(rb.get("details"), dict) else rb.get("actual")
+            details_dict = rb.get("details") if isinstance(rb.get("details"), dict) else {}
+            actual_text = details_dict.get("actual") or rb.get("actual") or rb.get("error_log")
+            if not actual_text and raw_run_id:
+                try:
+                    from utils.paths import find_run_dir
+                    rd = find_run_dir(raw_run_id)
+                    if rd and (rd / "bugs").exists():
+                        for jf in (rd / "bugs").glob(f"{b_id}*.json"):
+                            j_data = json.loads(jf.read_text(encoding="utf-8"))
+                            j_det = j_data.get("details") if isinstance(j_data.get("details"), dict) else {}
+                            actual_text = j_det.get("actual") or j_data.get("actual") or j_data.get("error_log")
+                            if actual_text:
+                                break
+                except Exception:
+                    pass
             screenshot_val = rb.get("crash_screenshot") or rb.get("screenshot")
 
             exist = existing_bugs.get(b_id)

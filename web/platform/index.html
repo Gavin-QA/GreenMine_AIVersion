@@ -1779,7 +1779,7 @@
                 <label class="form-label">案发现场实际报错</label>
 
                 <pre
-                  style="background: #05070d; padding: 12px; border-radius: 6px; font-size: 12px; color: #ff6b6b; white-space: pre-wrap; word-break: break-all;">{{ selectedBug.actual_error }}</pre>
+                  style="background: #05070d; padding: 12px; border-radius: 6px; font-size: 12px; color: #ff6b6b; white-space: pre-wrap; word-break: break-all;">{{ selectedBug.actual_error || '（该早期归档缺陷未留存独立报错堆栈，请参考上方标题或下方 AI 智能诊断）' }}</pre>
 
               </div>
 
