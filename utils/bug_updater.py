@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from utils.paths import GLOBAL_BUGS_DIR, get_all_run_folders
-from utils.bug_enricher import normalize_severity
+from utils.bug_enricher import normalize_severity_label
 
 logger = logging.getLogger("bug_updater")
 
@@ -50,7 +50,7 @@ def update_bug_record(data: Dict[str, Any]) -> Dict[str, Any]:
     new_title = data.get("title")
     new_target_element = data.get("target_element")
     new_status = data.get("status")
-    new_severity = normalize_severity(data.get("severity")) if "severity" in data else None
+    new_severity = normalize_severity_label(data.get("severity")) if "severity" in data and data.get("severity") is not None else None
     new_assignee = data.get("assignee")
     new_ui_path = data.get("ui_path")
     new_analysis = data.get("analysis_notes")
@@ -143,7 +143,7 @@ def update_bug_record(data: Dict[str, Any]) -> Dict[str, Any]:
             if new_status:
                 b_rec.status = new_status
             if new_severity is not None:
-                b_rec.severity = str(new_severity)
+                b_rec.severity = new_severity
             if new_assignee:
                 b_rec.assignee = new_assignee
             if new_ui_path:
