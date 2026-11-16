@@ -4,80 +4,90 @@
           <!-- 1. 独立筛选栏卡片 (同级第 1 个 div，与下方缺陷列表清晰分离) -->
           <div class="card"
             style="margin-bottom: 16px; padding: 14px 18px; border: 1px solid rgba(56, 189, 248, 0.25); background: linear-gradient(135deg, rgba(15, 23, 42, 0.96), rgba(13, 20, 36, 0.98));">
-            <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
-              <!-- 1. 全局关键字检索 (Bug编号、标题、报错堆栈、禅道单号) -->
-              <div style="flex: 1; min-width: 240px; position: relative;">
-                <input type="text" class="form-control" style="width: 100%; padding-right: 30px;"
-                  placeholder="🔍 检索 Bug 编号 / 标题 / 报错堆栈 / 禅道单号..." v-model="bugSearch" @input="onBugSearchInput"
-                  @keydown.enter="fetchBugs">
-                <span v-if="isBugsLoading"
-                  style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); font-size: 12px; color: #00d2ff;"
-                  title="正在快速过滤...">
-                  ⚡
-                </span>
-              </div>
+            <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 14px;">
 
-              <!-- 2. 所属应用 / 矿山下拉项 -->
-              <div style="width: 175px;">
-                <select class="form-control" style="width: 100%;" v-model="bugAppFilter"
-                  @change="fetchBugs({ resetPage: true })">
-                  <option value="">🏔️ 全部矿山 (应用)</option>
-                  <option v-for="a in options.apps" :key="a.key" :value="a.key">
-                    🏔️ {{ a.name }} ({{ a.key }})
-                  </option>
-                </select>
-              </div>
+              <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 14px;">
+                <!-- 1. 全局关键字检索 (适中固定宽度) -->
+                <div style="width: 240px; position: relative;">
+                  <input type="text"
+                    style="width: 100%; background: #0b1120; color: #e2e8f0; border: 1px solid var(--border-color); border-radius: 6px; padding: 5px 28px 5px 10px; font-size: 12px; outline: none;"
+                    placeholder="🔍 检索编号 / 标题 / 报错 / 禅道..." v-model="bugSearch" @input="onBugSearchInput"
+                    @keydown.enter="fetchBugs">
+                  <span v-if="isBugsLoading"
+                    style="position: absolute; right: 9px; top: 50%; transform: translateY(-50%); font-size: 12px; color: #00d2ff;"
+                    title="正在快速过滤...">
+                    ⚡
+                  </span>
+                </div>
 
-              <!-- 3. 严重程度下拉项 -->
-              <div style="width: 135px;">
-                <select class="form-control" style="width: 100%;" v-model="bugSeverityFilter"
-                  @change="fetchBugs({ resetPage: true })">
-                  <option value="">⚡ 全部严重程度</option>
-                  <option value="High">🔴 High (高)</option>
-                  <option value="Medium">🟡 Medium (中)</option>
-                  <option value="Low">🟢 Low (低)</option>
-                </select>
-              </div>
+                <!-- 2. 矿山(应用) -->
+                <div style="display: flex; align-items: center; gap: 6px;">
+                  <span style="font-size: 12px; font-weight: 600; color: #94a3b8; white-space: nowrap;">🎯 矿山(应用):</span>
+                  <select v-model="bugAppFilter" @change="fetchBugs({ resetPage: true })"
+                    style="background: #0b1120; color: #e2e8f0; border: 1px solid var(--border-color); border-radius: 6px; padding: 5px 10px; font-size: 12px; outline: none; cursor: pointer; min-width: 120px;">
+                    <option value="">全部</option>
+                    <option v-for="a in options.apps" :key="a.key" :value="a.key">
+                      {{ a.name }}
+                    </option>
+                  </select>
+                </div>
 
-              <!-- 4. 责任人下拉项 -->
-              <div style="width: 145px;">
-                <select class="form-control" style="width: 100%;" v-model="bugAssigneeFilter"
-                  @change="fetchBugs({ resetPage: true })">
-                  <option value="">👤 全部责任人</option>
-                  <option value="陈贻雄">👨‍💻 陈贻雄 (前端)</option>
-                  <option value="梅本霞">👩‍💻 梅本霞 (后端)</option>
-                  <option value="李云骢">📡 李云骢 (数据接入)</option>
-                  <option value="靳正武">📡 靳正武 (数据接入)</option>
-                </select>
-              </div>
+                <!-- 3. 严重程度 -->
+                <div style="display: flex; align-items: center; gap: 6px;">
+                  <span style="font-size: 12px; font-weight: 600; color: #94a3b8; white-space: nowrap;">⚡ 严重程度:</span>
+                  <select v-model="bugSeverityFilter" @change="fetchBugs({ resetPage: true })"
+                    style="background: #0b1120; color: #e2e8f0; border: 1px solid var(--border-color); border-radius: 6px; padding: 5px 10px; font-size: 12px; outline: none; cursor: pointer; min-width: 105px;">
+                    <option value="">全部</option>
+                    <option value="High">🔴 High (高)</option>
+                    <option value="Medium">🟡 Medium (中)</option>
+                    <option value="Low">🟢 Low (低)</option>
+                  </select>
+                </div>
 
-              <!-- 5. 状态下拉项 -->
-              <div style="width: 130px;">
-                <select class="form-control" style="width: 100%;" v-model="bugStatusFilter"
-                  @change="fetchBugs({ resetPage: true })">
-                  <option value="">📌 全部状态</option>
-                  <option value="激活">🔥 激活 (Open)</option>
-                  <option value="已提单">📋 已提单</option>
-                  <option value="误报">⚪ 误报</option>
-                  <option value="已解决">✅ 已解决</option>
-                </select>
-              </div>
+                <!-- 4. 责任人 -->
+                <div style="display: flex; align-items: center; gap: 6px;">
+                  <span style="font-size: 12px; font-weight: 600; color: #94a3b8; white-space: nowrap;">👤 责任人:</span>
+                  <select v-model="bugAssigneeFilter" @change="fetchBugs({ resetPage: true })"
+                    style="background: #0b1120; color: #e2e8f0; border: 1px solid var(--border-color); border-radius: 6px; padding: 5px 10px; font-size: 12px; outline: none; cursor: pointer; min-width: 115px;">
+                    <option value="">全部</option>
+                    <option value="陈贻雄">👨‍💻 陈贻雄 (前端)</option>
+                    <option value="梅本霞">👩‍💻 梅本霞 (后端)</option>
+                    <option value="李云骢">📡 李云骢 (数据接入)</option>
+                    <option value="靳正武">📡 靳正武 (数据接入)</option>
+                  </select>
+                </div>
 
-              <!-- 6. 频次范围 3 个区间下拉项 -->
-              <div style="width: 160px;">
-                <select class="form-control" style="width: 100%;" v-model="bugOccurrencesFilter"
-                  @change="fetchBugs({ resetPage: true })">
-                  <option value="">🔄 全部频次</option>
-                  <option value="1-2">🌱 偶发/初现 (1~2 次)</option>
-                  <option value="3-9">⚡ 多发/频现 (3~9 次)</option>
-                  <option value="10+">💥 顽固/高频 (≥ 10 次)</option>
-                </select>
+                <!-- 5. 状态 -->
+                <div style="display: flex; align-items: center; gap: 6px;">
+                  <span style="font-size: 12px; font-weight: 600; color: #94a3b8; white-space: nowrap;">📌 状态:</span>
+                  <select v-model="bugStatusFilter" @change="fetchBugs({ resetPage: true })"
+                    style="background: #0b1120; color: #e2e8f0; border: 1px solid var(--border-color); border-radius: 6px; padding: 5px 10px; font-size: 12px; outline: none; cursor: pointer; min-width: 95px;">
+                    <option value="">全部</option>
+                    <option value="激活">🔥 激活 (Open)</option>
+                    <option value="已提单">📋 已提单</option>
+                    <option value="误报">⚪ 误报</option>
+                    <option value="已解决">✅ 已解决</option>
+                  </select>
+                </div>
+
+                <!-- 6. 复现频次 -->
+                <div style="display: flex; align-items: center; gap: 6px;">
+                  <span style="font-size: 12px; font-weight: 600; color: #94a3b8; white-space: nowrap;">🔄 复现频次:</span>
+                  <select v-model="bugOccurrencesFilter" @change="fetchBugs({ resetPage: true })"
+                    style="background: #0b1120; color: #e2e8f0; border: 1px solid var(--border-color); border-radius: 6px; padding: 5px 10px; font-size: 12px; outline: none; cursor: pointer; min-width: 120px;">
+                    <option value="">全部</option>
+                    <option value="1-2">🌱 偶发/初现 (1~2 次)</option>
+                    <option value="3-9">⚡ 多发/频现 (3~9 次)</option>
+                    <option value="10+">💥 顽固/高频 (≥ 10 次)</option>
+                  </select>
+                </div>
               </div>
 
               <button class="btn btn-secondary" @click="resetBugFilters" style="padding: 5px 12px; font-size: 12px; white-space: nowrap;"
                 title="清空全部筛选条件">
                 ↺ 重置筛选
               </button>
+
             </div>
           </div>
 
