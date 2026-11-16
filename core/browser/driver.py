@@ -1215,6 +1215,222 @@ class ElectronDriver(NetworkMonitorMixin, DomExtractorMixin, ScreenshotMixin, Ch
         except Exception as e:
             logger.warning(f"[MemoryProbe] 导出内存时序文件失败: {e}")
 
+    def inspect_element_data_source(
+        self,
+        x: Optional[float] = None,
+        y: Optional[float] = None,
+        text_hint: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        只读 Vue 组件数据血缘探针（零副作用，不刷新页面）：
+        定位目标坐标 (x, y) 或文本提示对应的 DOM 元素，向上回溯 Vue2/Vue3 组件实例，
+        判断展示数据是来自组件动态 state/props 还是前端模板静态硬编码。
+        """
+        if not self.page:
+            return {"ok": False, "error": "page 未初始化"}
+
+        js_code = """
+        async ({ x, y, textHint }) => {
+            try {
+                let el = null;
+                if (typeof x === 'number' && typeof y === 'number') {
+                    el = document.elementFromPoint(x, y);
+                }
+                if ((!el || (textHint && !(el.innerText || '').includes(textHint))) && textHint) {
+                    const all = Array.from(document.querySelectorAll('*'));
+                    let best = null;
+                    for (const node of all) {
+                        if (node.children.length <= 3) {
+                            const txt = (node.innerText || '').trim();
+                            if (txt && txt.includes(textHint)) {
+                                if (!best || txt.length < (best.innerText || '').trim().length) {
+                                    best = node;
+                                }
+                            }
+                        }
+                    }
+                    if (best) el = best;
+                }
+                if (!el) return { ok: false, error: '未命中目标 DOM 元素' };
+
+                const domText = (el.innerText || el.textContent || '').trim().slice(0, 200);
+                const probeToken = (textHint || domText.split(/\\s+/)[0] || '').trim();
+                let cur = el;
+                let vueVer = null;
+                let compName = null;
+                let compFile = null;
+                let rawState = {};
+                let renderStr = '';
+                const wrapperClasses = [];
+
+                while (cur) {
+                    if (typeof cur.className === 'string' && cur.className) {
+                        for (const c of cur.className.split(/\\s+/)) {
+                            if (c.endsWith('Wrapper') && !wrapperClasses.includes(c)) {
+                                wrapperClasses.push(c);
+                            }
+                        }
+                    }
+                    if (!vueVer && cur.__vue__) {
+                        const vm = cur.__vue__;
+                        vueVer = 2;
+                        compName = (vm.$options && (vm.$options.name || vm.$options._componentTag)) || 'AnonymousVue2';
+                        compFile = (vm.$options && vm.$options.__file) || null;
+                        if (vm.$data) rawState.data = vm.$data;
+                        if (vm.$props) rawState.props = vm.$props;
+                        if (vm.$options && typeof vm.$options.render === 'function') {
+                            try { renderStr = vm.$options.render.toString().slice(0, 6000); } catch (_) {}
+                        }
+                        break;
+                    }
+                    if (!vueVer && cur.__vueParentComponent) {
+                        const inst = cur.__vueParentComponent;
+                        vueVer = 3;
+                        compName = (inst.type && (inst.type.name || inst.type.__name)) || 'AnonymousVue3';
+                        compFile = (inst.type && inst.type.__file) || null;
+                        if (inst.data) rawState.data = inst.data;
+                        if (inst.props) rawState.props = inst.props;
+                        if (inst.setupState) rawState.setupState = inst.setupState;
+                        const rFn = inst.render || (inst.type && inst.type.render);
+                        if (typeof rFn === 'function') {
+                            try { renderStr = rFn.toString().slice(0, 6000); } catch (_) {}
+                        }
+                        break;
+                    }
+                    cur = cur.parentElement;
+                }
+
+                // 生产构建兜底：当 Vue3 剥离了 __vueParentComponent 时，通过 Wrapper 类名反查已加载的 JS Chunk 源码
+                if (!vueVer) {
+                    const genericWrappers = new Set(['bigScreenViewPageContentWrapper', 'bigScreenViewPageWrapper', 'bigScreenViewWrapper', 'outerFrame10Wrapper', 'layoutView9Wrapper', 'layoutView9WrapperRight']);
+                    const targetWrappers = wrapperClasses.filter(c => !genericWrappers.has(c));
+                    const candidateList = targetWrappers.length > 0 ? targetWrappers : wrapperClasses;
+
+                    const scripts = Array.from(document.querySelectorAll('script[src]')).map(s => s.src);
+                    const resources = performance.getEntriesByType('resource').filter(r => r.name.includes('.js')).map(r => r.name);
+                    const allJs = Array.from(new Set([...scripts, ...resources]));
+
+                    for (const cls of candidateList) {
+                        for (const url of allJs) {
+                            try {
+                                const txt = await (await fetch(url)).text();
+                                const idx = txt.indexOf(cls);
+                                if (idx !== -1) {
+                                    const chunkName = url.split('/').pop();
+                                    const winStart = Math.max(0, idx - 1200);
+                                    const winEnd = Math.min(txt.length, idx + 1200);
+                                    const snippet = txt.slice(winStart, winEnd);
+                                    const literalHit = probeToken && (
+                                        snippet.includes(`"${probeToken}"`) ||
+                                        snippet.includes(`'${probeToken}'`) ||
+                                        snippet.includes(probeToken)
+                                    );
+                                    const verdict = literalHit ? 'HARDCODED_IN_BUNDLE' : 'DYNAMIC_IN_BUNDLE';
+                                    const verdictDesc = literalHit
+                                        ? `100% 实锤前端硬编码写死（"${probeToken}" 直接以字面量写死在组件 ${chunkName} [${cls}] 中）`
+                                        : `组件 ${chunkName} [${cls}] 中未见 "${probeToken}" 硬编码字面量，疑似动态绑定或外部传入`;
+                                    const summary = `🔬 [组件血缘探针] 生产包 Chunk: ${chunkName} (${cls}) | 判定: ${verdictDesc}`;
+                                    return {
+                                        ok: true,
+                                        vue_found: true,
+                                        mode: 'prod_bundle_chunk',
+                                        component_name: cls,
+                                        chunk_url: url,
+                                        dom_text: domText,
+                                        probe_token: probeToken,
+                                        in_bundle_literal: Boolean(literalHit),
+                                        verdict,
+                                        verdict_desc: verdictDesc,
+                                        summary
+                                    };
+                                }
+                            } catch (_) {}
+                        }
+                    }
+
+                    return {
+                        ok: true,
+                        vue_found: false,
+                        dom_tag: el.tagName.toLowerCase(),
+                        dom_text: domText,
+                        verdict: 'NO_VUE_INSTANCE',
+                        summary: `未找到 Vue 组件实例 (tag=${el.tagName.toLowerCase()}, text="${domText.slice(0, 60)}")`
+                    };
+                }
+
+                const safeSerialize = (val, depth = 0) => {
+                    if (val === null || val === undefined) return val;
+                    if (typeof val === 'string') return val.length > 120 ? val.slice(0, 120) + '...' : val;
+                    if (typeof val === 'number' || typeof val === 'boolean') return val;
+                    if (typeof val === 'function') return '[Function]';
+                    if (depth >= 3) return Array.isArray(val) ? `[Array(${val.length})]` : '[Object]';
+                    if (Array.isArray(val)) {
+                        return val.slice(0, 5).map(v => safeSerialize(v, depth + 1));
+                    }
+                    if (typeof val === 'object') {
+                        const out = {};
+                        const keys = Object.keys(val).filter(k => !k.startsWith('_') && !k.startsWith('$')).slice(0, 20);
+                        for (const k of keys) {
+                            try { out[k] = safeSerialize(val[k], depth + 1); } catch (_) { out[k] = '[Unreadable]'; }
+                        }
+                        return out;
+                    }
+                    return String(val);
+                };
+
+                const statePreview = safeSerialize(rawState, 0);
+                const stateJson = JSON.stringify(statePreview) || '';
+                const numMatches = (probeToken.match(/\\d+(?:\\.\\d+)?/g) || []);
+
+                const inRender = probeToken ? renderStr.includes(probeToken) : false;
+                let inState = probeToken ? stateJson.includes(probeToken) : false;
+                if (!inState && numMatches.length > 0) {
+                    inState = numMatches.some(n => stateJson.includes(n));
+                }
+
+                let verdict = 'UNKNOWN';
+                let verdictDesc = '无法单凭组件快照确定来源';
+                if (inRender && !inState) {
+                    verdict = 'HARDCODED_IN_TEMPLATE';
+                    verdictDesc = `疑似前端模板静态硬编码（"${probeToken}" 直接出现在 render() 字面量中，且组件 state/props 中无对应动态值）`;
+                } else if (inState) {
+                    verdict = 'DYNAMIC_FROM_STATE';
+                    verdictDesc = `动态变量渲染（组件 state/props 中命中 "${probeToken}" 相关数据）`;
+                } else if (!renderStr && Object.keys(statePreview).length === 0) {
+                    verdict = 'STATIC_OR_EMPTY_STATE';
+                    verdictDesc = '组件 state/props 为空，疑似纯静态展示组件';
+                }
+
+                const summary = `🔬 [组件血缘探针] Vue${vueVer} 组件: ${compName}${compFile ? ' (' + compFile + ')' : ''} | 判定: ${verdictDesc}`;
+                return {
+                    ok: true,
+                    vue_found: true,
+                    vue_version: vueVer,
+                    component_name: compName,
+                    component_file: compFile,
+                    dom_text: domText,
+                    probe_token: probeToken,
+                    in_render_literal: inRender,
+                    in_component_state: inState,
+                    verdict,
+                    verdict_desc: verdictDesc,
+                    state_preview: statePreview,
+                    summary
+                };
+            } catch (err) {
+                return { ok: false, error: String(err) };
+            }
+        }
+        """
+        try:
+            res = self.page.evaluate(js_code, {"x": x, "y": y, "textHint": text_hint})
+            if isinstance(res, dict) and res.get("summary"):
+                logger.info(res["summary"])
+            return res if isinstance(res, dict) else {"ok": False, "error": "返回值异常"}
+        except Exception as e:
+            logger.warning(f"[DataSourceProbe] 组件血缘探针执行异常: {e}")
+            return {"ok": False, "error": str(e)}
+
     # 上下文管理器支持 (支持 with ElectronDriver() as driver: 语法)
     def __enter__(self):
         try:

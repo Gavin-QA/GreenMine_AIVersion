@@ -1228,12 +1228,23 @@ class ExplorerWorker:
                                         evidence_img = None
 
                                 path_str = " -> ".join(current_ui_path) if current_ui_path else "未知路径"
+                                probe_line = ""
+                                try:
+                                    if hasattr(self.driver, "inspect_element_data_source"):
+                                        px = x if 'x' in locals() else None
+                                        py = y if 'y' in locals() else None
+                                        if px is not None and py is not None:
+                                            p_res = self.driver.inspect_element_data_source(x=px, y=py, text_hint=element_desc[:30] if element_desc else None)
+                                            if isinstance(p_res, dict) and p_res.get("summary"):
+                                                probe_line = f"\n{p_res['summary']}"
+                                except Exception:
+                                    pass
                                 before_cand = str(step_img_path) if 'step_img_path' in locals() and step_img_path and Path(step_img_path).exists() else None
                                 self.bug_reporter.report_bug(
                                     run_id=self.run_id,
                                     title=f"[{self.run_id}] UI数据与接口原始报文不匹配: '{element_desc}'",
                                     step_prompt=f"[{action_type.upper()}] 核验: {check_instruction} (路径: {path_str})",
-                                    actual_result=f"数据断言失败: {reason}",
+                                    actual_result=f"数据断言失败: {reason}{probe_line}",
                                     crash_image_path=evidence_img,
                                     before_image_path=before_cand if before_cand and before_cand != evidence_img else None
                                 )
