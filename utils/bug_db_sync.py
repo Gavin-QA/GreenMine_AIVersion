@@ -127,6 +127,7 @@ def save_bug_to_db(bug_dict: Dict[str, Any]) -> Optional[str]:
         analysis_notes = bug_dict.get("analysis_notes")
         remark = bug_dict.get("remark")
         screenshot = bug_dict.get("screenshot") or bug_dict.get("screenshot_path") or bug_dict.get("crash_screenshot")
+        before_screenshot = bug_dict.get("before_screenshot") or bug_dict.get("before_screenshot_path")
         occurrences = int(bug_dict.get("occurrences") or 1)
 
         # 现场图片 Base64 提取
@@ -166,6 +167,7 @@ def save_bug_to_db(bug_dict: Dict[str, Any]) -> Optional[str]:
                 analysis_notes=analysis_notes,
                 remark=remark,
                 screenshot_path=screenshot,
+                before_screenshot_path=before_screenshot,
                 screenshot_base64=b64_img,
                 extra_data=extra_data_str,
                 occurrences=occurrences,
@@ -211,6 +213,8 @@ def save_bug_to_db(bug_dict: Dict[str, Any]) -> Optional[str]:
                 record.remark = remark
             if screenshot:
                 record.screenshot_path = screenshot
+            if before_screenshot:
+                record.before_screenshot_path = before_screenshot
             if b64_img:
                 record.screenshot_base64 = b64_img
 

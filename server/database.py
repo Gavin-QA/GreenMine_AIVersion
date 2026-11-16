@@ -127,6 +127,9 @@ def init_db():
         if "run_id" not in bug_cols:
             with engine.begin() as conn:
                 conn.execute(text("ALTER TABLE bug_records ADD COLUMN run_id VARCHAR(64)"))
+        if "before_screenshot_path" not in bug_cols:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE bug_records ADD COLUMN before_screenshot_path VARCHAR(256)"))
 
     # 针对已有 task_runs 与 preset_task_records 表平滑补齐高级调优列
     adv_columns = [

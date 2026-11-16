@@ -53,16 +53,31 @@ class ActionRunner:
             logger.debug(f"[MemoryProbe] 初始化用例内存基线跳过: {e_mem}")
 
         errors = []
+        interactive_types = {"action", "input", "drag", "slide", "zoom", "rotate_3d", "scroll", "canvas_stress_drag", "back"}
         for i, step in enumerate(steps, 1):
             self._step_counter = i
             # 在步骤开始前加入一个换行符，以便在日志中形成视觉分隔
             logger.info(f"\n--- [Step {i}/{len(steps)}] 类型: {step.get('type')} ---")
             
+            curr_run_id = report_run_id()
+            before_pic = None
+            if (step.get("type") or "").lower() in interactive_types:
+                try:
+                    before_pic = screenshot_path(f"{path.stem}_BEFORE_step_{i}", run_id=curr_run_id)
+                    self.driver.capture_screenshot(str(before_pic))
+                except Exception:
+                    before_pic = None
+
             try:
                 self._execute_step(step)
+                # 执行成功则清理临时操作前快照，避免磁盘膨胀
+                if before_pic and Path(before_pic).exists():
+                    try:
+                        Path(before_pic).unlink()
+                    except Exception:
+                        pass
             except Exception as e:
                 # 出现异常时，立刻留存案发现场截图至当前运行的专属截图目录
-                curr_run_id = report_run_id()
                 crash_pic = screenshot_path(f"{path.stem}_CRASH_step_{i}", run_id=curr_run_id)
                 self.driver.capture_screenshot(str(crash_pic))
                 logger.error(f"❌ 步骤 {i} 执行失败！现场已保存: {crash_pic}")
@@ -76,7 +91,8 @@ class ActionRunner:
                     title=title,
                     step_prompt=prompt_text,
                     actual_result=str(e),
-                    crash_image_path=str(crash_pic)
+                    crash_image_path=str(crash_pic),
+                    before_image_path=str(before_pic) if before_pic and Path(before_pic).exists() else None
                 )
                 
                 if step.get("ignore_error", should_ignore):

@@ -371,6 +371,24 @@ def sync_all_bugs(db: Session) -> int:
                 except Exception:
                     pass
             screenshot_val = rb.get("crash_screenshot") or rb.get("screenshot")
+            before_screenshot_val = rb.get("before_screenshot") or rb.get("before_screenshot_path")
+            if not before_screenshot_val and raw_run_id:
+                try:
+                    from utils.paths import find_run_dir
+                    rd = find_run_dir(raw_run_id)
+                    if rd:
+                        before_cands = list((rd / "bugs").glob(f"{b_id}*_before.*")) if (rd / "bugs").exists() else []
+                        if before_cands:
+                            before_screenshot_val = str(before_cands[0]).replace("\\", "/")
+                        elif rb.get("global_step"):
+                            import re as _re
+                            m_st = _re.search(r"\d+", str(rb["global_step"]))
+                            if m_st:
+                                step_shot = rd / "screenshots" / f"explore_step_{m_st.group(0)}.png"
+                                if step_shot.exists():
+                                    before_screenshot_val = str(step_shot).replace("\\", "/")
+                except Exception:
+                    pass
 
             exist = existing_bugs.get(b_id)
             if not exist:
@@ -390,6 +408,7 @@ def sync_all_bugs(db: Session) -> int:
                     analysis_notes=rb.get("analysis_notes"),
                     remark=rb.get("remark"),
                     screenshot_path=screenshot_val,
+                    before_screenshot_path=before_screenshot_val,
                     occurrences=occurrences_val,
                     first_seen=first_seen_dt,
                     last_seen=last_seen_dt
@@ -439,6 +458,10 @@ def sync_all_bugs(db: Session) -> int:
 
                 if screenshot_val and exist.screenshot_path != screenshot_val:
                     exist.screenshot_path = screenshot_val
+                    changed = True
+
+                if before_screenshot_val and exist.before_screenshot_path != before_screenshot_val:
+                    exist.before_screenshot_path = before_screenshot_val
                     changed = True
 
                 if rb.get("status") and exist.status != rb.get("status"):

@@ -1142,12 +1142,14 @@ class ExplorerWorker:
                         if is_browser_disconnected:
                             logger.warning(f"⚠️ [Driver Disconnected] 客户端进程已关闭或断开（如看门狗熔断自愈回收），跳过生成虚假操作崩溃 Bug: {e_exec}")
                         else:
+                            before_cand = str(step_img_path) if 'step_img_path' in locals() and step_img_path and Path(step_img_path).exists() else None
                             self.bug_reporter.report_bug(
                                 run_id=self.run_id,
                                 title=f"[{self.run_id}] 探索动作 '{element_desc}' 执行物理崩溃",
                                 step_prompt=f"[{action_type.upper()}] {element_desc} (当前路径: {path_str})",
                                 actual_result=f"底层驱动执行异常: {e_exec}",
-                                crash_image_path=crash_img_path
+                                crash_image_path=crash_img_path,
+                                before_image_path=before_cand if before_cand and before_cand != crash_img_path else None
                             )
 
                 # --- 分支 C: Auto-API 双向核验 ---
@@ -1226,12 +1228,14 @@ class ExplorerWorker:
                                         evidence_img = None
 
                                 path_str = " -> ".join(current_ui_path) if current_ui_path else "未知路径"
+                                before_cand = str(step_img_path) if 'step_img_path' in locals() and step_img_path and Path(step_img_path).exists() else None
                                 self.bug_reporter.report_bug(
                                     run_id=self.run_id,
                                     title=f"[{self.run_id}] UI数据与接口原始报文不匹配: '{element_desc}'",
                                     step_prompt=f"[{action_type.upper()}] 核验: {check_instruction} (路径: {path_str})",
                                     actual_result=f"数据断言失败: {reason}",
-                                    crash_image_path=evidence_img
+                                    crash_image_path=evidence_img,
+                                    before_image_path=before_cand if before_cand and before_cand != evidence_img else None
                                 )
                             elif is_unrelated:
                                 logger.info(f"ℹ️ [Auto-API] 候选接口非当前被测组件数据源，跳过数据断言（不纳入用例，不上报Bug）。")
@@ -1295,12 +1299,14 @@ class ExplorerWorker:
                         crash_img_cand = str(step_img_path)
 
                     path_str = " -> ".join(current_ui_path) if current_ui_path else "未知路径"
+                    before_cand = str(step_img_path) if 'step_img_path' in locals() and step_img_path and Path(step_img_path).exists() else None
                     self.bug_reporter.report_bug(
                         run_id=self.run_id,
                         title=f"[{self.run_id}] 探索操作 '{element_desc}' 触发底层异常",
                         step_prompt=f"[{action_type.upper()}] 交互目标: '{element_desc}' (页面路径: {path_str})",
                         actual_result="\n".join(actual_lines),
                         crash_image_path=crash_img_cand,
+                        before_image_path=before_cand if before_cand and before_cand != crash_img_cand else None,
                         action_type=action_type.upper(),
                         target_element=element_desc,
                         global_step=current_step,

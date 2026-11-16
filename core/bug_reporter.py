@@ -78,9 +78,9 @@ class BugReporter:
             except Exception as re_err:
                 logger.debug(f"从数据库自愈缺陷库跳过: {re_err}")
 
-    def report_bug(self, run_id: str, title: str, step_prompt: str, actual_result: str, crash_image_path: str = None, **kwargs):
+    def report_bug(self, run_id: str, title: str, step_prompt: str, actual_result: str, crash_image_path: str = None, before_image_path: str = None, **kwargs):
 
-        """记录一个新的崩溃现场，自动查重并保存。支持扩展参数。"""
+        """记录一个新的崩溃现场，自动查重并保存。支持双图对比（操作前/案发瞬间）及扩展参数。"""
 
         logger.info("=" * 60)
 
@@ -170,6 +170,23 @@ class BugReporter:
 
                 new_img_path = None
 
+        before_image_path = before_image_path or kwargs.get("before_image_path")
+        new_before_img_path = None
+        if before_image_path and Path(before_image_path).exists():
+            b_suffix = Path(before_image_path).suffix or ".png"
+            new_before_img_path = run_dir / f"{bug_id}_before{b_suffix}"
+            if new_before_img_path.exists():
+                b_timestamp = datetime.now().strftime("%H%M%S")
+                new_before_img_path = run_dir / f"{bug_id}_{b_timestamp}_before{b_suffix}"
+            try:
+                import shutil
+                shutil.copy2(before_image_path, new_before_img_path)
+                if bug_record:
+                    bug_record["before_screenshot"] = str(new_before_img_path).replace('\\', '/')
+            except Exception as e:
+                logger.warning(f"复制操作前现场截图失败: {e}")
+                new_before_img_path = None
+
         # 提取与智能推导元数据字段 (action_type, target_element, ui_path, tags, global_step, severity)
 
         action_type = kwargs.get("action_type")
@@ -242,7 +259,8 @@ class BugReporter:
                     "action_type": action_type,
                     "actual_error": actual_result,
                     "global_step": global_step,
-                    "screenshot": str(new_img_path).replace('\\', '/') if new_img_path else None
+                    "screenshot": str(new_img_path).replace('\\', '/') if new_img_path else None,
+                    "before_screenshot": str(new_before_img_path).replace('\\', '/') if new_before_img_path else None
                 }
                 rec_history = bug_record.get("recurrence_history", [])
                 if not isinstance(rec_history, list):
@@ -261,6 +279,8 @@ class BugReporter:
                     bug_record["global_step"] = global_step
                 if new_img_path:
                     bug_record["screenshot"] = str(new_img_path).replace('\\', '/')
+                if new_before_img_path:
+                    bug_record["before_screenshot"] = str(new_before_img_path).replace('\\', '/')
 
             else:
 
@@ -305,6 +325,8 @@ class BugReporter:
             },
 
             "crash_screenshot": str(new_img_path) if new_img_path else None,
+
+            "before_screenshot": str(new_before_img_path).replace('\\', '/') if new_before_img_path else None,
 
             "action_type": action_type or "无",
 
@@ -353,6 +375,7 @@ class BugReporter:
                 "analysis_notes": bug_record.get("analysis_notes") if bug_record else analysis_notes,
                 "remark": bug_record.get("remark") if bug_record else None,
                 "screenshot": str(new_img_path).replace('\\', '/') if new_img_path else None,
+                "before_screenshot": str(new_before_img_path).replace('\\', '/') if new_before_img_path else None,
                 "occurrences": bug_record.get("occurrences", 1) if bug_record else 1,
                 "details": bug_detail.get("details"),
                 "global_step": global_step,

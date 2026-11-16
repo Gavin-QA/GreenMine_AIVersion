@@ -181,6 +181,7 @@ class BugResponse(BaseModel):
     analysis_notes: Optional[str] = Field(default=None, description="大模型生成的智能初诊分析、根因推断与排查指引")
     remark: Optional[str] = Field(default=None, description="人工复核备注或关闭原因说明")
     screenshot_path: Optional[str] = Field(default=None, description="案发现场第一视角的无损高清截图相对路径")
+    before_screenshot_path: Optional[str] = Field(default=None, description="操作前现场快照截图相对路径")
     step: Optional[str] = Field(default=None, description="最新复现时的交互动作步骤描述")
     occurrences: int = Field(default=1, description="AI 语义去重累计匹配到的历史复现总次数")
     first_seen: Optional[datetime.datetime] = Field(default=None, description="该缺陷首次被捕获的时间戳")

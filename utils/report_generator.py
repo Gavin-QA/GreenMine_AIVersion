@@ -160,19 +160,35 @@ class ReportGenerator:
                             img_cand = img_cands[0]
 
                     b_info["rel_screenshot"] = f"bugs/{img_cand.name}" if img_cand.exists() else None
+                    # 优先使用 Bug 记录自带的 before_screenshot (适用于所有模式)
+                    raw_before = b_info.get("before_screenshot")
+                    if raw_before:
+                        before_name = Path(str(raw_before)).name
+                        if (bugs_dir / before_name).exists():
+                            b_info["before_screenshot"] = f"bugs/{before_name}"
+                        elif (shots_dir / before_name).exists():
+                            b_info["before_screenshot"] = f"screenshots/{before_name}"
+                        else:
+                            b_info["before_screenshot"] = None
+                    else:
+                        before_cands = list(bugs_dir.glob(f"{bug_id}*_before.*"))
+                        if before_cands:
+                            b_info["before_screenshot"] = f"bugs/{before_cands[0].name}"
+
                     b_info["card_id"] = bug_json.stem
                     b_info.setdefault("run_id", data["run_id"])
                     b_info.setdefault("date", b_info.get("creation_date", data.get("start_time", "").split(" ")[0] if data.get("start_time") else ""))
 
-                    # 关联执行树步骤与执行前截图
+                    # 关联执行树步骤与执行前截图 (兜底回退)
                     matched_step = bug_json_to_step.get(bug_json.name)
                     if not matched_step:
                         matched_step = bug_json_to_step.get(f"{b_info['card_id']}.json")
                     if matched_step:
                         b_info["step_num"] = matched_step
-                        before_file = f"explore_step_{matched_step}.png"
-                        if (shots_dir / before_file).exists():
-                            b_info["before_screenshot"] = f"screenshots/{before_file}"
+                        if not b_info.get("before_screenshot"):
+                            before_file = f"explore_step_{matched_step}.png"
+                            if (shots_dir / before_file).exists():
+                                b_info["before_screenshot"] = f"screenshots/{before_file}"
 
                     # 注入全局缺陷库权威元数据 (status, occurrences, last_seen, assignee, tags, analysis_notes, etc.)
                     if bug_id in global_bugs_map:

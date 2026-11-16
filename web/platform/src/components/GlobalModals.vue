@@ -140,16 +140,53 @@
 
               </div>
 
-              <div class="form-group" v-if="selectedBug.screenshot_path">
+              <div class="form-group" v-if="selectedBug.screenshot_path || selectedBug.before_screenshot_path">
 
-                <label class="form-label">现场快照截图</label>
+                <label class="form-label">
+                  {{ (selectedBug.before_screenshot_path && selectedBug.screenshot_path) ? '双图现场溯源对比 (操作前 vs 案发瞬间)' : '现场快照截图' }}
+                </label>
 
-                <div
+                <!-- 双图并排对比模式 -->
+                <div v-if="selectedBug.before_screenshot_path && selectedBug.screenshot_path"
+                  style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; background: #05070d; border-radius: 8px; padding: 12px; border: 1px solid var(--border-color);">
+
+                  <div style="text-align: center; position: relative; border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 6px; padding: 8px; background: rgba(16, 185, 129, 0.04);">
+                    <span style="display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 4px; color: #fff; background: rgba(16, 185, 129, 0.85); margin-bottom: 6px;">
+                      操作前 (目标位置)
+                    </span>
+                    <a :href="formatScreenshotUrl(selectedBug.before_screenshot_path)" target="_blank" title="点击查看操作前高清大图" style="display: block;">
+                      <img :src="formatScreenshotUrl(selectedBug.before_screenshot_path)"
+                        style="max-width: 100%; max-height: 420px; object-fit: contain; border-radius: 4px;"
+                        alt="操作前现场截图">
+                    </a>
+                    <div style="font-size: 10px; color: var(--text-muted); margin-top: 6px; font-family: monospace; word-break: break-all;">
+                      {{ formatScreenshotUrl(selectedBug.before_screenshot_path) }}
+                    </div>
+                  </div>
+
+                  <div style="text-align: center; position: relative; border: 1px solid rgba(244, 63, 94, 0.4); border-radius: 6px; padding: 8px; background: rgba(244, 63, 94, 0.04);">
+                    <span style="display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 4px; color: #fff; background: rgba(244, 63, 94, 0.85); margin-bottom: 6px;">
+                      案发瞬间 (报错现场)
+                    </span>
+                    <a :href="formatScreenshotUrl(selectedBug.screenshot_path)" target="_blank" title="点击查看案发现场高清大图" style="display: block;">
+                      <img :src="formatScreenshotUrl(selectedBug.screenshot_path)"
+                        style="max-width: 100%; max-height: 420px; object-fit: contain; border-radius: 4px;"
+                        alt="缺陷案发现场截图">
+                    </a>
+                    <div style="font-size: 10px; color: var(--text-muted); margin-top: 6px; font-family: monospace; word-break: break-all;">
+                      {{ formatScreenshotUrl(selectedBug.screenshot_path) }}
+                    </div>
+                  </div>
+
+                </div>
+
+                <!-- 单图降级模式 -->
+                <div v-else
                   style="text-align: center; background: #05070d; border-radius: 8px; padding: 10px; border: 1px solid var(--border-color);">
 
-                  <a :href="formatScreenshotUrl(selectedBug.screenshot_path)" target="_blank" title="点击查看大图">
+                  <a :href="formatScreenshotUrl(selectedBug.screenshot_path || selectedBug.before_screenshot_path)" target="_blank" title="点击查看大图">
 
-                    <img :src="formatScreenshotUrl(selectedBug.screenshot_path)"
+                    <img :src="formatScreenshotUrl(selectedBug.screenshot_path || selectedBug.before_screenshot_path)"
                       style="max-width: 100%; max-height: 520px; object-fit: contain; border-radius: 6px;"
                       alt="缺陷案发现场截图">
 
@@ -157,7 +194,7 @@
 
                   <div style="font-size: 11px; color: var(--text-muted); margin-top: 6px; font-family: monospace;">
 
-                    {{ formatScreenshotUrl(selectedBug.screenshot_path) }} (点击可在新标签页查看原始高清大图)
+                    {{ formatScreenshotUrl(selectedBug.screenshot_path || selectedBug.before_screenshot_path) }} (点击可在新标签页查看原始高清大图)
 
                   </div>
 
@@ -184,9 +221,12 @@
                     <div style="font-size: 11px; color: #f87171; margin-top: 2px; word-break: break-all;" v-if="h.actual_error">
                       <strong>报错:</strong> {{ h.actual_error.length > 200 ? h.actual_error.substring(0, 200) + '...' : h.actual_error }}
                     </div>
-                    <div style="margin-top: 4px;" v-if="h.screenshot">
-                      <a :href="formatScreenshotUrl(h.screenshot)" target="_blank" style="font-size: 11px; color: #38bdf8; text-decoration: underline;">
-                        🖼️ 查看该批次现场快照
+                    <div style="margin-top: 4px; display: flex; gap: 12px;" v-if="h.before_screenshot || h.screenshot">
+                      <a v-if="h.before_screenshot" :href="formatScreenshotUrl(h.before_screenshot)" target="_blank" style="font-size: 11px; color: #34d399; text-decoration: underline;">
+                        🖼️ 操作前快照
+                      </a>
+                      <a v-if="h.screenshot" :href="formatScreenshotUrl(h.screenshot)" target="_blank" style="font-size: 11px; color: #38bdf8; text-decoration: underline;">
+                        🖼️ 案发现场快照
                       </a>
                     </div>
                   </div>

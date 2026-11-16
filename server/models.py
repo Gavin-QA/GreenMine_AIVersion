@@ -122,6 +122,7 @@ class BugRecord(Base):
     analysis_notes = Column(Text, nullable=True)
     remark = Column(Text, nullable=True) # 人工复核备注或关闭原因说明 (非必填)
     screenshot_path = Column(String(256), nullable=True)
+    before_screenshot_path = Column(String(256), nullable=True) # 操作前现场快照截图路径 (双图对比)
     screenshot_base64 = Column(Text, nullable=True) # 案发截图 Base64 数据 (脱离物理磁盘防误删保险)
     extra_data = Column(Text, nullable=True) # 扩展上下文 JSON (expected, details 等全量备份)
     occurrences = Column(Integer, default=1, index=True)

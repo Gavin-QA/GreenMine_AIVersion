@@ -95,7 +95,15 @@ def enrich_bug_metadata(
         except Exception:
             pass
 
-    if shots_dir and b_dict.get("step_num") and not b_dict.get("before_screenshot"):
+    if b_dict.get("before_screenshot"):
+        raw_b = str(b_dict["before_screenshot"]).replace("\\", "/")
+        if not raw_b.startswith(("bugs/", "screenshots/")):
+            b_name = Path(raw_b).name
+            if shots_dir and (shots_dir.parent / "bugs" / b_name).exists():
+                b_dict["before_screenshot"] = f"bugs/{b_name}"
+            elif shots_dir and (shots_dir / b_name).exists():
+                b_dict["before_screenshot"] = f"screenshots/{b_name}"
+    elif shots_dir and b_dict.get("step_num"):
         before_file = f"explore_step_{b_dict['step_num']}.png"
         if (shots_dir / before_file).exists():
             b_dict["before_screenshot"] = f"screenshots/{before_file}"
