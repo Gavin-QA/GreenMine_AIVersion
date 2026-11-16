@@ -322,13 +322,13 @@
                   </button>
                   <button type="button" class="btn btn-secondary"
                     style="flex: 1; padding: 6px 8px; font-size: 11px; justify-content: center; white-space: nowrap;"
-                    @click="loadPresetToForm(p)" title="弹窗微调并可直接覆盖或另存">
-                    ✏️ 载入微调
+                    @click="loadPresetToForm(p)" title="弹窗编辑配置，可微调并直接覆盖或另存">
+                    ✏️ 编辑
                   </button>
                   <button type="button" class="btn btn-primary"
                     style="flex: 1.2; padding: 6px 8px; font-size: 11px; justify-content: center; white-space: nowrap;"
                     @click="launchPreset(p)" title="立即以当前预设创建并启动巡检任务">
-                    🚀 一键拉起
+                    🚀 立即运行
                   </button>
                 </div>
               </div>
@@ -339,7 +339,7 @@
               <table class="data-table">
                 <thead>
                   <tr>
-                    <th style="cursor: pointer; user-select: none; width: 32%; min-width: 250px; white-space: nowrap;" @click="togglePresetSort('title')" title="点击按任务名称排序">
+                    <th style="cursor: pointer; user-select: none; width: 27%; min-width: 220px; white-space: nowrap;" @click="togglePresetSort('title')" title="点击按任务名称排序">
                       <div style="display: inline-flex; align-items: center;">
                         <span>任务名称</span>
                         <span style="display: inline-flex; flex-direction: column; align-items: center; vertical-align: middle; margin-left: 6px; gap: 2px;">
@@ -348,7 +348,7 @@
                         </span>
                       </div>
                     </th>
-                    <th style="cursor: pointer; user-select: none; width: 13%; min-width: 120px; white-space: nowrap;" @click="togglePresetSort('app_name')" title="点击按运行矿山排序">
+                    <th style="cursor: pointer; user-select: none; width: 14%; min-width: 130px; white-space: nowrap;" @click="togglePresetSort('app_name')" title="点击按运行矿山排序">
                       <div style="display: inline-flex; align-items: center;">
                         <span>运行矿山</span>
                         <span style="display: inline-flex; flex-direction: column; align-items: center; vertical-align: middle; margin-left: 6px; gap: 2px;">
@@ -366,7 +366,7 @@
                         </span>
                       </div>
                     </th>
-                    <th style="cursor: pointer; user-select: none; width: 15%; min-width: 160px; white-space: nowrap;" @click="togglePresetSort('max_steps')" title="点击按最大步数限制排序">
+                    <th style="cursor: pointer; user-select: none; width: 14%; min-width: 140px; white-space: nowrap;" @click="togglePresetSort('max_steps')" title="点击按最大步数限制排序">
                       <div style="display: inline-flex; align-items: center;">
                         <span>最大步数限制 (Steps)</span>
                         <span style="display: inline-flex; flex-direction: column; align-items: center; vertical-align: middle; margin-left: 6px; gap: 2px;">
@@ -375,7 +375,7 @@
                         </span>
                       </div>
                     </th>
-                    <th style="cursor: pointer; user-select: none; width: 14%; min-width: 150px; white-space: nowrap;" @click="togglePresetSort('max_times')" title="点击按最长运行时间排序">
+                    <th style="cursor: pointer; user-select: none; width: 13%; min-width: 130px; white-space: nowrap;" @click="togglePresetSort('max_times')" title="点击按最长运行时间排序">
                       <div style="display: inline-flex; align-items: center;">
                         <span>最长运行时间 (分钟)</span>
                         <span style="display: inline-flex; flex-direction: column; align-items: center; vertical-align: middle; margin-left: 6px; gap: 2px;">
@@ -384,7 +384,7 @@
                         </span>
                       </div>
                     </th>
-                    <th style="text-align: right; width: 14%; min-width: 240px; white-space: nowrap;">操作</th>
+                    <th style="text-align: left; width: 20%; min-width: 300px; white-space: nowrap;">操作</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -429,28 +429,28 @@
                       </span>
                     </td>
 
-                    <!-- 6. 操作 (任务详情、载入微调、一键拉起、删除) -->
-                    <td style="text-align: right;">
-                      <div style="display: inline-flex; align-items: center; gap: 6px; justify-content: flex-end;">
-                        <button type="button" class="btn btn-secondary" style="padding: 4px 9px; font-size: 11px; border-color: #3b82f6; color: #93c5fd;"
+                    <!-- 6. 操作 (🔍 详情、✏️ 编辑、🚀 立即运行、🗑️ 删除，左对齐，强制单行不折行) -->
+                    <td style="text-align: left; white-space: nowrap;">
+                      <div style="display: inline-flex; align-items: center; gap: 6px; justify-content: flex-start; flex-wrap: nowrap;">
+                        <button type="button" class="btn btn-secondary" style="padding: 4px 8px; font-size: 11px; border-color: #3b82f6; color: #93c5fd; white-space: nowrap;"
                           @click="openPresetDetail(p)" title="查看该预设的完整提示词与详细参数">
-                          🔍 任务详情
+                          🔍 详情
                         </button>
-                        <button type="button" class="btn btn-secondary" style="padding: 4px 9px; font-size: 11px; border-color: #64748b; color: #cbd5e1;"
-                          @click="loadPresetToForm(p)" title="弹窗载入配置，可微调并直接覆盖或另存">
-                          ✏️ 载入微调
+                        <button type="button" class="btn btn-secondary" style="padding: 4px 8px; font-size: 11px; border-color: #64748b; color: #cbd5e1; white-space: nowrap;"
+                          @click="loadPresetToForm(p)" title="弹窗编辑配置，可微调并直接覆盖或另存">
+                          ✏️ 编辑
                         </button>
-                        <button type="button" class="btn btn-primary" style="padding: 4px 11px; font-size: 11px; font-weight: 600;"
-                          @click="launchPreset(p)" title="立即以当前预设创建并拉起任务">
-                          🚀 一键拉起
+                        <button type="button" class="btn btn-primary" style="padding: 4px 10px; font-size: 11px; font-weight: 600; white-space: nowrap;"
+                          @click="launchPreset(p)" title="立即以当前预设创建并启动巡检任务">
+                          🚀 立即运行
                         </button>
                         <button
                           type="button"
-                          style="background: transparent; border: 1px solid rgba(255,82,82,0.25); border-radius: 4px; color: #ff5252; cursor: pointer; padding: 4px 7px; font-size: 11px; transition: all 0.2s;"
+                          style="background: transparent; border: 1px solid rgba(255,82,82,0.25); border-radius: 4px; color: #ff5252; cursor: pointer; padding: 4px 8px; font-size: 11px; transition: all 0.2s; white-space: nowrap; display: inline-flex; align-items: center; gap: 4px;"
                           onmouseover="this.style.background='rgba(255,82,82,0.2)'; this.style.borderColor='#ff5252';"
                           onmouseout="this.style.background='transparent'; this.style.borderColor='rgba(255,82,82,0.25)';"
                           @click="deletePreset(p)" title="彻底删除此预设">
-                          🗑️
+                          🗑️ 删除
                         </button>
                       </div>
                     </td>
@@ -2787,10 +2787,10 @@
             关闭
           </button>
           <button type="button" class="btn btn-secondary" style="border-color: #64748b; color: #cbd5e1; padding: 6px 14px;" @click="editFromDetail">
-            ✏️ 前往微调
+            ✏️ 前往编辑
           </button>
           <button type="button" class="btn btn-primary" style="padding: 6px 18px; font-weight: 600;" @click="launchFromDetail">
-            🚀 立即一键拉起
+            🚀 立即运行
           </button>
         </div>
       </div>
@@ -2859,7 +2859,7 @@
 
 
 
-  <script src="/static/js/app.js?v=20261115_03"></script>
+  <script src="/static/js/app.js?v=20261116_01"></script>
 
 
 
