@@ -1029,9 +1029,7 @@ const app = createApp({
         wait_ready: taskForm.wait_ready || null,
         wait_timeout: taskForm.wait_timeout,
         ignore_env_check: taskForm.ignore_env_check,
-        description: isSmoke
-          ? `极速全量冒烟巡检: ${taskForm.app_name}`
-          : `用户自定义预设: ${taskForm.app_name} / ${taskForm.mode} / ${taskForm.max_steps}步`
+        description: taskForm.description || ''
       };
 
       try {

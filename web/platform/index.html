@@ -276,11 +276,11 @@
 
             <!-- 1. 卡片网格视图 (默认) -->
             <div v-else-if="presetViewMode === 'card'" class="grid-3" style="margin-top: 10px;">
-              <div v-for="p in sortedPresetTasks" :key="p.id" class="card"
+              <div v-for="(p, index) in sortedPresetTasks" :key="p.id" class="card"
                 style="background: #0d1424; margin-bottom: 0; display: flex; flex-direction: column; justify-content: space-between; border-color: #1a253c; border-radius: 8px;">
                 <div>
                   <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                    <span style="font-size: 11px; color: #64748b; font-family: monospace;">#{{ p.id }}</span>
+                    <span style="font-size: 12px; color: #64748b; font-family: monospace; font-weight: 700;">#{{ index + 1 }}</span>
                     <div style="display: flex; align-items: center; gap: 6px;">
                       <!-- 右上角运行模式徽标 -->
                       <span class="badge" style="white-space: nowrap;"
@@ -304,9 +304,7 @@
                     🎯 运行矿山: <span style="color: #fff;">{{ getAppName(p.app_name) }}</span>
                   </div>
 
-                  <div style="font-weight: 700; font-size: 14px; margin-bottom: 6px; color: #fff;">{{ p.title }}</div>
-                  <div style="font-size: 12px; color: var(--text-muted); line-height: 1.5; margin-bottom: 12px;">{{
-                    p.description || '用户定制预设巡检方案' }}</div>
+                  <div style="font-weight: 700; font-size: 14px; margin-bottom: 12px; color: #fff;">{{ p.title }}</div>
                   <div style="font-size: 11px; color: #8b9bb4; margin-bottom: 14px;">
                     <span>步数: <b style="color: #00d2ff;">{{ p.max_steps ? p.max_steps + ' 步' : '无限制 (0步)' }}</b></span> &nbsp;|&nbsp;
                     <span>时限: <b style="color: #ffb300;">{{ p.max_times }}</b> 分钟</span>
@@ -339,7 +337,8 @@
               <table class="data-table">
                 <thead>
                   <tr>
-                    <th style="cursor: pointer; user-select: none; width: 27%; min-width: 220px; white-space: nowrap;" @click="togglePresetSort('title')" title="点击按任务名称排序">
+                    <th style="text-align: center; width: 60px; min-width: 60px; white-space: nowrap;">序号</th>
+                    <th style="cursor: pointer; user-select: none; width: 25%; min-width: 200px; white-space: nowrap;" @click="togglePresetSort('title')" title="点击按任务名称排序">
                       <div style="display: inline-flex; align-items: center;">
                         <span>任务名称</span>
                         <span style="display: inline-flex; flex-direction: column; align-items: center; vertical-align: middle; margin-left: 6px; gap: 2px;">
@@ -388,16 +387,15 @@
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="p in sortedPresetTasks" :key="p.id">
-                    <!-- 1. 任务名称 (形式 B: 标题 + #ID 小徽标混排) -->
+                  <tr v-for="(p, index) in sortedPresetTasks" :key="p.id">
+                    <!-- 1. 序号 (动态行号，居中展示) -->
+                    <td style="text-align: center; font-weight: 600; color: #94a3b8; font-family: monospace; font-size: 13px;">
+                      {{ index + 1 }}
+                    </td>
+
+                    <!-- 2. 任务名称 (纯净标题展示) -->
                     <td>
-                      <div style="display: flex; align-items: center; gap: 8px;">
-                        <span style="font-weight: 600; font-size: 13px; color: #fff;">{{ p.title }}</span>
-                        <span class="badge" style="font-family: monospace; font-size: 11px; padding: 1px 6px; background: rgba(100, 116, 139, 0.15); color: #94a3b8; border: 1px solid rgba(100, 116, 139, 0.3);">#{{ p.id }}</span>
-                      </div>
-                      <div style="font-size: 11px; color: var(--text-muted); margin-top: 3px; max-width: 380px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" :title="p.description">
-                        {{ p.description || '用户定制预设巡检方案' }}
-                      </div>
+                      <span style="font-weight: 600; font-size: 13px; color: #fff;">{{ p.title }}</span>
                     </td>
 
                     <!-- 2. 运行矿山 -->
@@ -2859,7 +2857,7 @@
 
 
 
-  <script src="/static/js/app.js?v=20261116_01"></script>
+  <script src="/static/js/app.js?v=20261116_02"></script>
 
 
 
