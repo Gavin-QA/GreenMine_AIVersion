@@ -6,13 +6,15 @@ import datetime
 import json
 import logging
 import os
+import threading
+import uuid
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks, Path as FastPath
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, BackgroundTasks, Path as FastPath
 from sqlalchemy.orm import Session
 
-from ..database import get_db
+from ..database import get_db, SessionLocal
 from ..models import TaskRun, BugRecord
 from ..schemas import (
     BugResponse,
@@ -21,12 +23,20 @@ from ..schemas import (
     BugUpdateCompatibleRequest,
     BugUpdateResultResponse,
     BugDeleteResponse,
+    ZentaoSubmitRequest,
     ZentaoSyncResponse,
+    BatchZentaoSyncRequest,
+    BatchZentaoSyncStartResponse,
+    BatchZentaoSyncStatusResponse,
 )
 from utils.paths import PROJECT_ROOT
 
 logger = logging.getLogger("server.bugs")
 router = APIRouter()
+
+_batch_zentao_lock = threading.Lock()
+_batch_zentao_jobs: Dict[str, Dict[str, Any]] = {}
+_active_batch_job_id: Optional[str] = None
 
 @router.post(
     "/api/update_bug_status",
@@ -315,6 +325,385 @@ def delete_bug(
     }
 
 
+def _execute_single_zentao_sync(
+    bug: BugRecord,
+    db: Session,
+    zentao=None,
+    assignee: Optional[str] = None,
+    payload: Optional[ZentaoSubmitRequest] = None,
+    builds_cache: Optional[Dict[int, Any]] = None,
+    users_cache: Optional[List[Dict[str, Any]]] = None,
+):
+    """执行单条缺陷提交禅道的核心逻辑，返回 (zentao_id, zentao_url, r_files)。"""
+    from utils.zentao_sync import (
+        ZenTaoClient,
+        format_bug_details_html,
+        format_zentao_bug_title,
+        find_bug_in_databases,
+        image_to_base64_data_uri,
+        pick_default_opened_builds,
+        resolve_bug_assignee,
+        resolve_bug_app_key,
+        update_bug_records,
+        APP_NAME_MAP,
+    )
+    from .zentao import _format_local_screenshot_url
+    from config.settings import settings
+    from utils.bug_enricher import normalize_severity
+
+    if zentao is None:
+        zentao = ZenTaoClient()
+
+    # 1. 动态智能判定该 Bug 所属矿山应用 (多级防呆)
+    resolved_run_id = bug.run_id or (
+        Path(bug.task.run_dir).name if (bug.task and bug.task.run_dir) else None
+    )
+    resolved_app = bug.app_name or (bug.task.app_name if bug.task else None)
+    bug_dict_for_app = {
+        "app": resolved_app,
+        "run_id": resolved_run_id,
+        "ui_path": bug.ui_path,
+        "screenshot": bug.screenshot_path,
+        "crash_screenshot": bug.screenshot_path,
+        "target_element": bug.target_element,
+        "title": bug.title,
+        "actual": bug.actual_error,
+    }
+    app_key = resolve_bug_app_key(bug_dict_for_app)
+
+    # 2. 读取对应矿山应用专属的禅道产品/项目/迭代归属三元组（支持预览弹窗覆盖）
+    app_mapping = settings.get_zentao_app_mapping(app_key)
+    product_id = int(payload.product_id) if (payload and payload.product_id is not None) else app_mapping["product_id"]
+    project_id = int(payload.project_id) if (payload and payload.project_id is not None) else app_mapping["project_id"]
+    execution_id = int(payload.execution_id) if (payload and payload.execution_id is not None) else app_mapping["execution_id"]
+    module_id = int(payload.module_id) if (payload and payload.module_id is not None) else 0
+    app_chinese = APP_NAME_MAP.get(app_key, "寨湾矿山")
+
+    target_assignee = (payload.assigned_to if payload and payload.assigned_to else None) or assignee or bug.assignee or "陈贻雄"
+
+    assignee_name, assignee_account, _ = resolve_bug_assignee(
+        {"assignee": target_assignee}, override=target_assignee
+    )
+    # 如果前端传了明确的禅道账号且与本地映射表不同，尝试用禅道用户列表解析真实姓名
+    if payload and payload.assigned_to and assignee_name == assignee_account:
+        try:
+            u_list = users_cache if users_cache is not None else zentao.get_users(limit=200)
+            for u in u_list:
+                if u.get("account") == assignee_account:
+                    assignee_name = u.get("realname") or assignee_account
+                    break
+        except Exception:
+            pass
+
+    extra_dict: Dict[str, Any] = {}
+    if bug.extra_data:
+        try:
+            extra_dict = json.loads(bug.extra_data) or {}
+        except Exception:
+            extra_dict = {}
+
+    raw_bug_dict = {
+        "id": bug.id,
+        "title": bug.title,
+        "ui_path": bug.ui_path,
+        "first_ui_path": extra_dict.get("first_ui_path"),
+        "affected_modules": extra_dict.get("affected_modules") or [],
+        "recurrence_history": bug.recurrence_history or [],
+        "target_element": bug.target_element,
+        "actual": bug.actual_error,
+        "analysis_notes": bug.analysis_notes,
+        "crash_screenshot": bug.screenshot_path,
+        "occurrences": bug.occurrences,
+        "run_id": resolved_run_id,
+        "last_seen": bug.last_seen.strftime("%Y-%m-%d %H:%M:%S") if bug.last_seen else "",
+    }
+
+    # 预上传案发快照至禅道 (彻底避免富文本图片丢失)
+    shot_path = bug.screenshot_path
+    uploaded_info = None
+    if shot_path:
+        shot_file = Path(shot_path)
+        if shot_file.exists():
+            uploaded_info = zentao.upload_file(shot_file)
+
+    uploaded_url = uploaded_info.get("url") if uploaded_info else None
+    uploaded_file_ids = (
+        [uploaded_info["id"]] if (uploaded_info and "id" in uploaded_info) else []
+    )
+
+    if payload and payload.steps_html:
+        steps_html = payload.steps_html
+        local_preview_url = _format_local_screenshot_url(shot_path)
+        if local_preview_url and local_preview_url in steps_html:
+            replacement_img = uploaded_url or (image_to_base64_data_uri(Path(shot_path)) if shot_path else None)
+            if replacement_img:
+                steps_html = steps_html.replace(local_preview_url, replacement_img)
+    else:
+        steps_html, _ = format_bug_details_html(
+            bug=raw_bug_dict,
+            app_key=app_key,
+            assignee_name=assignee_name,
+            assignee_account=assignee_account,
+            uploaded_image_url=uploaded_url,
+        )
+
+    sev_val = int(payload.severity) if (payload and payload.severity is not None) else normalize_severity(bug.severity)
+    pri_val = int(payload.pri) if (payload and payload.pri is not None) else sev_val
+    bug_type = (payload.type if (payload and payload.type) else "codeerror")
+    deadline_val = (payload.deadline if (payload and payload.deadline) else (datetime.datetime.now() + datetime.timedelta(days=7)).strftime("%Y-%m-%d"))
+    os_name = (payload.os if (payload and payload.os) else "windows")
+    browser_name = (payload.browser if (payload and payload.browser) else "electron")
+
+    if payload and payload.opened_build:
+        opened_build = payload.opened_build
+    else:
+        try:
+            if builds_cache is not None and project_id in builds_cache:
+                proj_builds = builds_cache[project_id]
+            else:
+                proj_builds = zentao.get_builds(project_id) if project_id else []
+                if builds_cache is not None:
+                    builds_cache[project_id] = proj_builds
+            opened_build = pick_default_opened_builds(proj_builds, product_id=product_id)
+        except Exception:
+            opened_build = ["trunk"]
+
+    final_title = (
+        payload.title.strip()
+        if (payload and payload.title and payload.title.strip())
+        else format_zentao_bug_title(bug.title, ui_path=bug.ui_path, app_chinese=app_chinese)
+    )
+
+    res = zentao.submit_bug(
+        product_id=product_id,
+        title=final_title,
+        steps_html=steps_html,
+        severity=sev_val,
+        pri=pri_val,
+        bug_type=bug_type,
+        assigned_to=assignee_account,
+        project_id=project_id,
+        execution_id=execution_id,
+        module_id=module_id,
+        deadline=deadline_val,
+        opened_build=opened_build,
+        os_name=os_name,
+        browser_name=browser_name,
+        files=uploaded_file_ids if uploaded_file_ids else None,
+    )
+
+    z_id = str(res.get("id"))
+
+    # 更新本地数据库
+    bug.zentao_id = z_id
+    bug.status = "已提单"
+    bug.assignee = assignee_name
+    db.commit()
+
+    # 同步回填本地 JSON 库 (禁用耗时的同步渲染离线 HTML 报告)
+    _, g_file, r_files = find_bug_in_databases(bug.id)
+    update_bug_records(
+        bug.id, z_id, g_file, r_files, assignee=assignee_name, sync_reports=False
+    )
+
+    zentao_url = f"{zentao.url}/index.php?m=bug&f=view&bugID={z_id}"
+    return z_id, zentao_url, r_files
+
+
+def _run_batch_zentao_sync_job(job_id: str, bug_ids: List[str]) -> None:
+    """后台单线程串行执行批量禅道提单任务，避免 JSON 并发写入冲突与接口限流。"""
+    global _active_batch_job_id
+    from utils.zentao_sync import ZenTaoClient, rebuild_run_reports
+
+    db = SessionLocal()
+    all_r_files_map: Dict[str, Path] = {}
+    try:
+        zentao = ZenTaoClient()
+        builds_cache: Dict[int, Any] = {}
+
+        for bid in bug_ids:
+            with _batch_zentao_lock:
+                _batch_zentao_jobs[job_id]["current_bug_id"] = bid
+
+            try:
+                bug = db.query(BugRecord).filter(BugRecord.id == bid).first()
+                if not bug:
+                    with _batch_zentao_lock:
+                        job = _batch_zentao_jobs[job_id]
+                        job["failed"] += 1
+                        job["processed"] += 1
+                        job["results"].append({
+                            "bug_id": bid,
+                            "status": "failed",
+                            "message": "缺陷记录不存在",
+                        })
+                    continue
+
+                if bug.zentao_id:
+                    with _batch_zentao_lock:
+                        job = _batch_zentao_jobs[job_id]
+                        job["skipped"] += 1
+                        job["processed"] += 1
+                        job["results"].append({
+                            "bug_id": bid,
+                            "status": "skipped",
+                            "zentao_id": str(bug.zentao_id),
+                            "message": f"已存在禅道单号 #{bug.zentao_id}",
+                        })
+                    continue
+
+                z_id, zentao_url, r_files = _execute_single_zentao_sync(
+                    bug=bug,
+                    db=db,
+                    zentao=zentao,
+                    builds_cache=builds_cache,
+                )
+                for rf in r_files or []:
+                    all_r_files_map[str(rf)] = rf
+
+                with _batch_zentao_lock:
+                    job = _batch_zentao_jobs[job_id]
+                    job["succeeded"] += 1
+                    job["processed"] += 1
+                    job["results"].append({
+                        "bug_id": bid,
+                        "status": "success",
+                        "zentao_id": z_id,
+                        "zentao_url": zentao_url,
+                        "message": "提交成功",
+                    })
+            except Exception as e:
+                db.rollback()
+                logger.error(f"[BatchZenTao:{job_id}] 提单 {bid} 失败: {e}")
+                with _batch_zentao_lock:
+                    job = _batch_zentao_jobs[job_id]
+                    job["failed"] += 1
+                    job["processed"] += 1
+                    job["results"].append({
+                        "bug_id": bid,
+                        "status": "failed",
+                        "message": str(e),
+                    })
+
+        if all_r_files_map:
+            try:
+                rebuild_run_reports(list(all_r_files_map.values()))
+            except Exception as e:
+                logger.warning(f"[BatchZenTao:{job_id}] 批量重渲染历史报告异常: {e}")
+
+        with _batch_zentao_lock:
+            job = _batch_zentao_jobs[job_id]
+            job["status"] = "completed"
+            job["current_bug_id"] = None
+            job["finished_at"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    except Exception as e:
+        logger.error(f"[BatchZenTao:{job_id}] 后台任务初始化或运行异常: {e}")
+        with _batch_zentao_lock:
+            job = _batch_zentao_jobs[job_id]
+            job["status"] = "failed"
+            job["current_bug_id"] = None
+            job["error"] = str(e)
+            job["finished_at"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    finally:
+        db.close()
+        with _batch_zentao_lock:
+            if _active_batch_job_id == job_id:
+                _active_batch_job_id = None
+
+
+@router.post(
+    "/api/bugs/batch_sync_zentao",
+    response_model=BatchZentaoSyncStartResponse,
+    tags=["3. 缺陷治理与禅道同步"],
+    summary="后台串行批量将勾选的缺陷提交至禅道",
+    description="接收勾选的缺陷编号列表，在后台单线程按顺序串行提交至禅道并回填本地数据库与 JSON 资产库。",
+)
+def start_batch_sync_zentao(payload: BatchZentaoSyncRequest):
+    """启动后台串行批量禅道提单任务。"""
+    global _active_batch_job_id
+
+    unique_ids: List[str] = []
+    seen = set()
+    for raw_id in payload.bug_ids:
+        bid = (raw_id or "").strip()
+        if bid and bid not in seen:
+            seen.add(bid)
+            unique_ids.append(bid)
+
+    if not unique_ids:
+        raise HTTPException(status_code=400, detail="请至少勾选一条有效缺陷")
+
+    with _batch_zentao_lock:
+        if _active_batch_job_id and _active_batch_job_id in _batch_zentao_jobs:
+            active_job = _batch_zentao_jobs[_active_batch_job_id]
+            if active_job.get("status") == "running":
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"已有批量推禅道任务正在后台运行中 ({active_job['processed']}/{active_job['total']})，请等待完成后再发起新任务",
+                )
+
+        job_id = f"bz_{uuid.uuid4().hex[:10]}"
+        _batch_zentao_jobs[job_id] = {
+            "job_id": job_id,
+            "status": "running",
+            "total": len(unique_ids),
+            "processed": 0,
+            "succeeded": 0,
+            "skipped": 0,
+            "failed": 0,
+            "current_bug_id": unique_ids[0],
+            "started_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "finished_at": None,
+            "error": None,
+            "results": [],
+        }
+        _active_batch_job_id = job_id
+
+    t = threading.Thread(
+        target=_run_batch_zentao_sync_job,
+        args=(job_id, unique_ids),
+        daemon=True,
+        name=f"BatchZentao-{job_id}",
+    )
+    t.start()
+
+    return {
+        "code": 200,
+        "message": f"已启动后台串行批量推禅道任务，共 {len(unique_ids)} 条缺陷",
+        "job_id": job_id,
+        "total": len(unique_ids),
+    }
+
+
+@router.get(
+    "/api/bugs/batch_sync_zentao/active",
+    response_model=Optional[BatchZentaoSyncStatusResponse],
+    tags=["3. 缺陷治理与禅道同步"],
+    summary="获取当前正在运行的批量推禅道任务状态",
+)
+def get_active_batch_sync_zentao():
+    """查询当前运行中的批量推禅道任务（无则返回 null）。"""
+    with _batch_zentao_lock:
+        if _active_batch_job_id and _active_batch_job_id in _batch_zentao_jobs:
+            return dict(_batch_zentao_jobs[_active_batch_job_id])
+    return None
+
+
+@router.get(
+    "/api/bugs/batch_sync_zentao/{job_id}",
+    response_model=BatchZentaoSyncStatusResponse,
+    tags=["3. 缺陷治理与禅道同步"],
+    summary="查询批量推禅道任务进度",
+)
+def get_batch_sync_zentao_status(job_id: str):
+    """查询指定批量推禅道任务的实时进度与明细。"""
+    with _batch_zentao_lock:
+        job = _batch_zentao_jobs.get(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="批量提单任务不存在或已过期")
+        return dict(job)
+
+
 @router.post(
     "/api/bugs/{bug_id}/sync_zentao",
     response_model=ZentaoSyncResponse,
@@ -330,6 +719,7 @@ def sync_bug_to_zentao(
         default=None,
         description="可选手动覆盖指派责任人姓名 (不填则根据 AI 分流自动指派)",
     ),
+    payload: Optional[ZentaoSubmitRequest] = Body(default=None),
     background_tasks: BackgroundTasks = None,
     db: Session = Depends(get_db),
 ):
@@ -352,109 +742,13 @@ def sync_bug_to_zentao(
         raise HTTPException(status_code=404, detail="Bug not found")
 
     try:
-        from utils.zentao_sync import (
-            ZenTaoClient,
-            format_bug_details_html,
-            find_bug_in_databases,
-            resolve_bug_assignee,
-            resolve_bug_app_key,
-            APP_NAME_MAP,
-        )
+        from utils.zentao_sync import rebuild_run_reports
 
-        from config.settings import settings
-
-        zentao = ZenTaoClient()
-
-        # 1. 动态智能判定该 Bug 所属矿山应用 (多级防呆)
-        bug_dict_for_app = {
-            "app": bug.task.app_name if (bug.task and bug.task.app_name) else None,
-            "run_id": bug.task.run_id if bug.task else None,
-            "ui_path": bug.ui_path,
-            "screenshot": bug.screenshot_path,
-            "crash_screenshot": bug.screenshot_path,
-            "target_element": bug.target_element,
-            "title": bug.title,
-            "actual": bug.actual_error,
-        }
-        app_key = resolve_bug_app_key(bug_dict_for_app)
-
-        # 2. 读取对应矿山应用专属的禅道产品/项目/迭代归属三元组
-        app_mapping = settings.get_zentao_app_mapping(app_key)
-        product_id = app_mapping["product_id"]
-        project_id = app_mapping["project_id"]
-        execution_id = app_mapping["execution_id"]
-        app_chinese = APP_NAME_MAP.get(app_key, "寨湾矿山")
-
-        target_assignee = assignee or bug.assignee or "陈贻雄"
-
-        assignee_name, assignee_account, _ = resolve_bug_assignee(
-            {"assignee": target_assignee}, override=target_assignee
-        )
-
-        raw_bug_dict = {
-            "id": bug.id,
-            "title": bug.title,
-            "ui_path": bug.ui_path,
-            "target_element": bug.target_element,
-            "actual": bug.actual_error,
-            "analysis_notes": bug.analysis_notes,
-            "crash_screenshot": bug.screenshot_path,
-            "occurrences": bug.occurrences,
-        }
-
-        # 预上传案发快照至禅道 (彻底避免富文本图片丢失)
-        shot_path = bug.screenshot_path
-        uploaded_info = None
-        if shot_path:
-            shot_file = Path(shot_path)
-            if shot_file.exists():
-                uploaded_info = zentao.upload_file(shot_file)
-
-        uploaded_url = uploaded_info.get("url") if uploaded_info else None
-        uploaded_file_ids = (
-            [uploaded_info["id"]] if (uploaded_info and "id" in uploaded_info) else []
-        )
-
-        steps_html, _ = format_bug_details_html(
-            bug=raw_bug_dict,
-            app_key=app_key,
-            assignee_name=assignee_name,
-            assignee_account=assignee_account,
-            uploaded_image_url=uploaded_url,
-        )
-
-        from utils.bug_enricher import normalize_severity
-        res = zentao.submit_bug(
-            product_id=product_id,
-            title=f"【AI自动化·{app_chinese}】[{bug.id}] {bug.title}",
-            steps_html=steps_html,
-            severity=normalize_severity(bug.severity),
-            assigned_to=assignee_account,
-            project_id=project_id,
-            execution_id=execution_id,
-            files=uploaded_file_ids if uploaded_file_ids else None,
-        )
-
-        z_id = str(res.get("id"))
-
-        # 更新本地数据库
-
-        bug.zentao_id = z_id
-
-        bug.status = "已提单"
-
-        bug.assignee = assignee_name
-
-        db.commit()
-
-        # 同步回填本地 JSON 库
-
-        from utils.zentao_sync import update_bug_records, rebuild_run_reports
-
-        _, g_file, r_files = find_bug_in_databases(bug_id)
-        # 禁用耗时的同步渲染离线 HTML 报告 (sync_reports=False)，实现 1 秒级极速响应返回
-        update_bug_records(
-            bug_id, z_id, g_file, r_files, assignee=assignee_name, sync_reports=False
+        z_id, zentao_url, r_files = _execute_single_zentao_sync(
+            bug=bug,
+            db=db,
+            assignee=assignee,
+            payload=payload,
         )
 
         # 异步后台任务：默默渲染历史报告与大盘，绝不卡死前端 Web 界面
@@ -466,7 +760,7 @@ def sync_bug_to_zentao(
             "message": "禅道提交成功",
             "bug_id": bug.id,
             "zentao_id": z_id,
-            "zentao_url": f"{zentao.url}/index.php?m=bug&f=view&bugID={z_id}",
+            "zentao_url": zentao_url,
         }
 
     except Exception as e:

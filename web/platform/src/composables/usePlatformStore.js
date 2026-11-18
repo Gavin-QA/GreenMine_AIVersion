@@ -545,6 +545,50 @@ export function usePlatformStore() {
     // 模板兼容: 当前页数据直接映射
     const paginatedBugs = computed(() => bugs.value || []);
 
+    // 缺陷批量勾选与后台串行推禅道
+    const selectedBugIds = ref([]);
+    const batchZentaoJob = ref(null);
+    let batchZentaoPollTimer = null;
+
+    const selectableBugsOnPage = computed(() =>
+      (paginatedBugs.value || []).filter(b => b && !b.zentao_id)
+    );
+
+    const isAllPageBugsSelected = computed(() =>
+      selectableBugsOnPage.value.length > 0 &&
+      selectableBugsOnPage.value.every(b => selectedBugIds.value.includes(b.id))
+    );
+
+    const isSomePageBugsSelected = computed(() =>
+      selectableBugsOnPage.value.some(b => selectedBugIds.value.includes(b.id)) &&
+      !isAllPageBugsSelected.value
+    );
+
+    function toggleBugSelection(bug) {
+      if (!bug || !bug.id || bug.zentao_id) return;
+      const idx = selectedBugIds.value.indexOf(bug.id);
+      if (idx >= 0) {
+        selectedBugIds.value.splice(idx, 1);
+      } else {
+        selectedBugIds.value.push(bug.id);
+      }
+    }
+
+    function toggleSelectAllPageBugs() {
+      const pageIds = selectableBugsOnPage.value.map(b => b.id);
+      if (pageIds.length === 0) return;
+      if (isAllPageBugsSelected.value) {
+        selectedBugIds.value = selectedBugIds.value.filter(id => !pageIds.includes(id));
+      } else {
+        const merged = new Set([...selectedBugIds.value, ...pageIds]);
+        selectedBugIds.value = Array.from(merged);
+      }
+    }
+
+    function clearBugSelection() {
+      selectedBugIds.value = [];
+    }
+
     function setBugPage(p) {
       if (typeof p !== 'number') return;
       if (p < 1) p = 1;
@@ -1399,7 +1443,7 @@ export function usePlatformStore() {
       if (p === 1 || p === 10) return { text: 'P1 (紧急)', color: '#ff5252', bg: 'rgba(255, 82, 82, 0.15)' };
       if (p === 2 || p === 50) return { text: 'P2 (优先)', color: '#ffb300', bg: 'rgba(255, 179, 0, 0.15)' };
       if (p === 3 || p === 100) return { text: 'P3 (标准)', color: '#00d2ff', bg: 'rgba(0, 210, 255, 0.15)' };
-      if (p === 4 || p === 200) return { text: 'P4 (低优)', color: '#8b9bb4', bg: 'rgba(139, 155, 180, 0.15)' };
+      if (p === 4 || p === 200) return { text: 'P4 (低)', color: '#8b9bb4', bg: 'rgba(139, 155, 180, 0.15)' };
       return { text: `P${p}`, color: '#00d2ff', bg: 'rgba(0, 210, 255, 0.15)' };
     }
 
@@ -1617,12 +1661,17 @@ export function usePlatformStore() {
     async function toggleScheduleActive(plan) {
       try {
         const res = await fetch(`${apiBase}/api/tasks/queue/schedule/${plan.id}/toggle`, { method: 'POST' });
+        let data = null;
+        try {
+          data = await res.json();
+        } catch (_) {
+          data = null;
+        }
         if (res.ok) {
-          const data = await res.json();
-          showToast('状态已更新', data.message, 'success', 3500);
+          showToast('状态已更新', (data && data.message) || '操作成功', 'success', 3500);
           await fetchTaskQueue();
         } else {
-          showToast('切换失败', await res.text(), 'error', 4000);
+          showToast('无法切换状态', (data && data.detail) || '启用/停用调度计划失败', 'warning', 5000);
         }
       } catch (e) {
         showToast('请求异常', String(e), 'error', 4000);
@@ -1740,6 +1789,33 @@ export function usePlatformStore() {
 
       connectTaskChannels(t.id);
 
+    }
+
+    async function jumpToBugMonitor(bug) {
+      if (!bug) return;
+      const findMatch = () => (tasks.value || []).find(t =>
+        (bug.task_id && t.id === bug.task_id) ||
+        (bug.run_id && t.run_dir && t.run_dir.includes(bug.run_id))
+      );
+
+      let matched = findMatch();
+      if (!matched) {
+        await fetchTasks();
+        matched = findMatch();
+      }
+
+      if (matched) {
+        selectedBug.value = null;
+        currentTab.value = 'monitor';
+        switchActiveTask(matched);
+      } else {
+        showToast(
+          '⚠️ 未找到关联任务',
+          `未在任务列表中找到该缺陷关联的运行批次 (${bug.task_id || bug.run_id || '未知'})，可能已被清理。`,
+          'warning',
+          4500
+        );
+      }
     }
 
 
@@ -2232,6 +2308,28 @@ export function usePlatformStore() {
 
 
 
+    const zentaoUsers = ref([]);
+
+    async function fetchZentaoUsers() {
+      if (zentaoUsers.value.length > 0) return;
+      try {
+        const res = await fetch(`${apiBase}/api/zentao/users`);
+        if (res.ok) {
+          const list = await res.json();
+          if (Array.isArray(list) && list.length > 0) {
+            zentaoUsers.value = list;
+            return;
+          }
+        }
+      } catch (_) {}
+      zentaoUsers.value = [
+        { account: 'chenyixiong', realname: '陈贻雄' },
+        { account: 'meibenxia', realname: '梅本霞' },
+        { account: 'liyuncong', realname: '李云骢' },
+        { account: 'jinzhengwu', realname: '靳正武' },
+      ];
+    }
+
     function openEditBugModal(b) {
 
       editingBug.value = b;
@@ -2253,6 +2351,8 @@ export function usePlatformStore() {
       editForm.analysis_notes = b.analysis_notes || '';
 
       editForm.remark = b.remark || '';
+
+      fetchZentaoUsers();
 
     }
 
@@ -2585,28 +2685,211 @@ export function usePlatformStore() {
       }
     }
 
-    async function syncZenTao(bug) {
-      if (!await showConfirm({
-        title: '提交禅道确认',
-        message: `确定要将缺陷 [${bug.id}] 提交到禅道吗？\n提单后将自动生成禅道工单并双向绑定。`,
-        confirmText: '提交禅道',
-        icon: '📤'
-      })) return;
-      bug._syncing = true;
+    const zentaoPreviewVisible = ref(false);
+    const zentaoPreviewLoading = ref(false);
+    const zentaoPreviewSubmitting = ref(false);
+    const zentaoPreviewMetadataLoading = ref(false);
+    const zentaoPreviewError = ref('');
+    const zentaoPreviewTab = ref('preview'); // 'preview' | 'html'
+    const zentaoPreviewTargetBug = ref(null);
+    const zentaoPreviewMeta = ref({
+      zentao_configured: true,
+      zentao_base_url: '',
+      warning: null,
+      options: {
+        products: [],
+        projects: [],
+        executions: [],
+        modules: [],
+        builds: [],
+        users: [],
+        bug_types: [],
+      },
+    });
+    const zentaoPreviewForm = reactive({
+      bug_id: '',
+      app_key: '',
+      app_name: '',
+      title: '',
+      product_id: 11,
+      project_id: 26,
+      execution_id: 30,
+      module_id: 0,
+      type: 'codeerror',
+      severity: 3,
+      pri: 3,
+      status_label: '激活',
+      assigned_to: '',
+      assigned_to_name: '',
+      assignee_reason: '',
+      deadline: '',
+      opened_build: [],
+      os: 'windows',
+      browser: 'electron',
+      steps_html: '',
+      screenshot_url: '',
+    });
+
+    function closeZentaoPreview() {
+      if (zentaoPreviewSubmitting.value) return;
+      zentaoPreviewVisible.value = false;
+      zentaoPreviewError.value = '';
+    }
+
+    function toggleZentaoBuild(buildId) {
+      const idStr = String(buildId);
+      const idx = zentaoPreviewForm.opened_build.indexOf(idStr);
+      if (idx === -1) {
+        zentaoPreviewForm.opened_build.push(idStr);
+      } else {
+        zentaoPreviewForm.opened_build.splice(idx, 1);
+      }
+    }
+
+    async function onZentaoCascadedChange(source = 'project') {
+      zentaoPreviewMetadataLoading.value = true;
       try {
-        const res = await fetch(`${apiBase}/api/bugs/${bug.id}/sync_zentao`, { method: 'POST' });
+        const params = new URLSearchParams();
+        if (zentaoPreviewForm.project_id) params.set('project_id', String(zentaoPreviewForm.project_id));
+        if (zentaoPreviewForm.product_id) params.set('product_id', String(zentaoPreviewForm.product_id));
+        const res = await fetch(`${apiBase}/api/zentao/metadata?${params.toString()}`);
+        const data = await res.json();
+        if (!res.ok) {
+          showToast('⚠️ 刷新禅道字典失败', data.detail || '无法获取级联数据', 'warning', 4500);
+          return;
+        }
+        zentaoPreviewMeta.value.options.executions = data.executions || [];
+        zentaoPreviewMeta.value.options.modules = data.modules || [];
+        zentaoPreviewMeta.value.options.builds = data.builds || [];
+
+        if (source === 'project') {
+          const execList = data.executions || [];
+          const hasCurrentExec = execList.some(e => Number(e.id) === Number(zentaoPreviewForm.execution_id));
+          if (!hasCurrentExec) {
+            const testExec = execList.find(e => String(e.name || '').includes('测试'));
+            zentaoPreviewForm.execution_id = testExec ? Number(testExec.id) : (execList[0] ? Number(execList[0].id) : 0);
+          }
+          zentaoPreviewForm.opened_build = [...(data.recommended_builds || [])];
+        } else if (source === 'product') {
+          const modList = data.modules || [];
+          const hasCurrentMod = modList.some(m => Number(m.id) === Number(zentaoPreviewForm.module_id));
+          if (!hasCurrentMod) {
+            zentaoPreviewForm.module_id = 0;
+          }
+          zentaoPreviewForm.opened_build = [...(data.recommended_builds || [])];
+        }
+      } catch (err) {
+        showToast('⚠️ 级联拉取异常', err.message, 'warning', 4500);
+      } finally {
+        zentaoPreviewMetadataLoading.value = false;
+      }
+    }
+
+    async function syncZenTao(bug) {
+      if (!bug || !bug.id) return;
+      zentaoPreviewTargetBug.value = bug;
+      zentaoPreviewVisible.value = true;
+      zentaoPreviewLoading.value = true;
+      zentaoPreviewError.value = '';
+      zentaoPreviewTab.value = 'preview';
+      zentaoPreviewForm.bug_id = bug.id;
+
+      try {
+        const res = await fetch(`${apiBase}/api/bugs/${encodeURIComponent(bug.id)}/zentao_preview`);
+        const data = await res.json();
+        if (!res.ok) {
+          zentaoPreviewError.value = data.detail || '获取禅道提单预览数据失败';
+          return;
+        }
+        zentaoPreviewMeta.value = {
+          zentao_configured: data.zentao_configured,
+          zentao_base_url: data.zentao_base_url || '',
+          warning: data.warning || null,
+          options: data.options || {
+            products: [], projects: [], executions: [], modules: [], builds: [], users: [], bug_types: [],
+          },
+        };
+        const d = data.defaults || {};
+        Object.assign(zentaoPreviewForm, {
+          bug_id: d.bug_id || bug.id,
+          app_key: d.app_key || '',
+          app_name: d.app_name || '',
+          title: d.title || '',
+          product_id: Number(d.product_id || 11),
+          project_id: Number(d.project_id || 26),
+          execution_id: Number(d.execution_id || 0),
+          module_id: Number(d.module_id || 0),
+          type: d.type || 'codeerror',
+          severity: Number(d.severity || 3),
+          pri: Number(d.pri || 3),
+          status_label: d.status_label || '激活',
+          assigned_to: d.assigned_to || '',
+          assigned_to_name: d.assigned_to_name || '',
+          assignee_reason: d.assignee_reason || '',
+          deadline: d.deadline || '',
+          opened_build: Array.isArray(d.opened_build) ? [...d.opened_build] : [],
+          os: d.os || 'windows',
+          browser: d.browser || 'electron',
+          steps_html: d.steps_html || '',
+          screenshot_url: d.screenshot_url || '',
+        });
+      } catch (err) {
+        zentaoPreviewError.value = `网络请求异常: ${err.message}`;
+      } finally {
+        zentaoPreviewLoading.value = false;
+      }
+    }
+
+    async function confirmSyncZenTao() {
+      if (!zentaoPreviewForm.bug_id || zentaoPreviewSubmitting.value) return;
+      if (!zentaoPreviewForm.title || !zentaoPreviewForm.title.trim()) {
+        showToast('⚠️ 校验提示', '请填写缺陷标题后再提交', 'warning', 4000);
+        return;
+      }
+      zentaoPreviewSubmitting.value = true;
+      if (zentaoPreviewTargetBug.value) {
+        zentaoPreviewTargetBug.value._syncing = true;
+      }
+      try {
+        const payload = {
+          title: zentaoPreviewForm.title.trim(),
+          product_id: Number(zentaoPreviewForm.product_id),
+          project_id: Number(zentaoPreviewForm.project_id),
+          execution_id: Number(zentaoPreviewForm.execution_id || 0),
+          module_id: Number(zentaoPreviewForm.module_id || 0),
+          type: zentaoPreviewForm.type || 'codeerror',
+          severity: Number(zentaoPreviewForm.severity || 3),
+          pri: Number(zentaoPreviewForm.pri || 3),
+          assigned_to: zentaoPreviewForm.assigned_to || undefined,
+          deadline: zentaoPreviewForm.deadline || undefined,
+          opened_build: zentaoPreviewForm.opened_build.length > 0 ? [...zentaoPreviewForm.opened_build] : ['trunk'],
+          os: zentaoPreviewForm.os || 'windows',
+          browser: zentaoPreviewForm.browser || 'electron',
+          steps_html: zentaoPreviewForm.steps_html || undefined,
+        };
+        const res = await fetch(`${apiBase}/api/bugs/${encodeURIComponent(zentaoPreviewForm.bug_id)}/sync_zentao`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
         const data = await res.json();
         if (res.ok) {
+          const matchedUser = (zentaoPreviewMeta.value.options.users || []).find(
+            u => u.account === zentaoPreviewForm.assigned_to
+          );
+          const assigneeDisplay = matchedUser ? matchedUser.realname : (zentaoPreviewForm.assigned_to || '责任人');
           showToast(
             '🎉 禅道提单成功！',
-            `已成功提交至禅道 <a href="${data.zentao_url}" target="_blank">#${data.zentao_id}</a> (指派人: <strong>${bug.assignee || '责任人'}</strong>)，单据已自动双向同步！`,
+            `已成功提交至禅道 <a href="${data.zentao_url}" target="_blank">#${data.zentao_id}</a> (指派人: <strong>${assigneeDisplay}</strong>)，单据已自动双向同步！`,
             'success',
             8000
           );
+          zentaoPreviewVisible.value = false;
           await fetchBugs();
-          if (selectedBug.value && selectedBug.value.id === bug.id) {
+          if (selectedBug.value && selectedBug.value.id === zentaoPreviewForm.bug_id) {
             selectedBug.value.zentao_id = data.zentao_id;
             selectedBug.value.status = '已提单';
+            selectedBug.value.assignee = assigneeDisplay;
           }
         } else {
           showToast('⚠️ 禅道提单失败', data.detail || '接口响应异常', 'error', 6000);
@@ -2614,7 +2897,125 @@ export function usePlatformStore() {
       } catch (err) {
         showToast('⚠️ 提单请求网络异常', err.message, 'error', 6000);
       } finally {
-        bug._syncing = false;
+        zentaoPreviewSubmitting.value = false;
+        if (zentaoPreviewTargetBug.value) {
+          zentaoPreviewTargetBug.value._syncing = false;
+        }
+      }
+    }
+
+    function stopBatchZentaoPoll() {
+      if (batchZentaoPollTimer) {
+        clearInterval(batchZentaoPollTimer);
+        batchZentaoPollTimer = null;
+      }
+    }
+
+    function startBatchZentaoPoll(jobId) {
+      stopBatchZentaoPoll();
+      let lastProcessed = -1;
+      batchZentaoPollTimer = setInterval(async () => {
+        try {
+          const res = await fetch(`${apiBase}/api/bugs/batch_sync_zentao/${encodeURIComponent(jobId)}`);
+          if (!res.ok) {
+            if (res.status === 404) stopBatchZentaoPoll();
+            return;
+          }
+          const data = await res.json();
+          batchZentaoJob.value = data;
+          if (data.processed !== lastProcessed) {
+            lastProcessed = data.processed;
+            await fetchBugs();
+          }
+          if (data.status !== 'running') {
+            stopBatchZentaoPoll();
+            const doneIds = new Set(
+              (data.results || [])
+                .filter(r => r.status === 'success' || r.status === 'skipped')
+                .map(r => r.bug_id)
+            );
+            selectedBugIds.value = selectedBugIds.value.filter(id => !doneIds.has(id));
+            await fetchBugs();
+
+            if (data.status === 'completed') {
+              const failedList = (data.results || []).filter(r => r.status === 'failed');
+              const failNote = failedList.length > 0
+                ? `；失败 ${failedList.length} 条 (${failedList.slice(0, 3).map(f => f.bug_id).join(', ')})`
+                : '';
+              showToast(
+                failedList.length > 0 ? '⚠️ 批量推禅道完成（含部分失败）' : '🎉 批量推禅道全部完成',
+                `共处理 ${data.total} 条：成功 ${data.succeeded} 条，跳过 ${data.skipped} 条${failNote}`,
+                failedList.length > 0 ? 'warning' : 'success',
+                8000
+              );
+            } else {
+              showToast('❌ 批量推禅道后台异常中断', data.error || '请检查后台日志', 'error', 7000);
+            }
+          }
+        } catch (err) {
+          console.warn('轮询批量推禅道状态异常:', err);
+        }
+      }, 2000);
+    }
+
+    async function checkActiveBatchZentaoJob() {
+      try {
+        const res = await fetch(`${apiBase}/api/bugs/batch_sync_zentao/active`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data && data.job_id && data.status === 'running') {
+          batchZentaoJob.value = data;
+          startBatchZentaoPoll(data.job_id);
+        }
+      } catch (_) {}
+    }
+
+    async function batchSyncZenTao() {
+      if (selectedBugIds.value.length === 0) {
+        showToast('💡 提示', '请先勾选需要提交禅道的未提单缺陷', 'info', 3000);
+        return;
+      }
+      if (batchZentaoJob.value && batchZentaoJob.value.status === 'running') {
+        showToast('⏳ 任务运行中', `当前已有批量推禅道任务在后台执行 (${batchZentaoJob.value.processed}/${batchZentaoJob.value.total})`, 'warning', 4000);
+        return;
+      }
+
+      const count = selectedBugIds.value.length;
+      if (!await showConfirm({
+        title: '批量提交禅道确认',
+        message: `确定将已勾选的 ${count} 条缺陷提交至禅道吗？\n\n任务将在后台按顺序串行执行（不并发），自动使用各缺陷的默认项目映射、截图证据与 AI 分流责任人，期间您可自由切换页面或继续其他操作。`,
+        confirmText: `后台提交 (${count} 条)`,
+        icon: '🚀'
+      })) {
+        return;
+      }
+
+      try {
+        const res = await fetch(`${apiBase}/api/bugs/batch_sync_zentao`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ bug_ids: [...selectedBugIds.value] }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          showToast('⚠️ 启动批量提单失败', data.detail || '接口响应异常', 'error', 5000);
+          return;
+        }
+        batchZentaoJob.value = {
+          job_id: data.job_id,
+          status: 'running',
+          total: data.total,
+          processed: 0,
+          succeeded: 0,
+          skipped: 0,
+          failed: 0,
+          current_bug_id: selectedBugIds.value[0],
+          results: [],
+        };
+        showToast('🚀 已开启后台串行提单', `共 ${data.total} 条缺陷正在后台排队提交禅道，可实时查看进度条。`, 'info', 5000);
+        startBatchZentaoPoll(data.job_id);
+      } catch (err) {
+        showToast('❌ 请求异常', err.message || '网络连接失败', 'error', 5000);
       }
     }
 
@@ -2965,6 +3366,7 @@ export function usePlatformStore() {
       fetchCases(); // 预载用例资产清单
       fetchTaskQueue(); // 预载调度执行队列状态
       fetchStorageSummary(); // 异步探测产物磁盘占用大盘
+      checkActiveBatchZentaoJob(); // 恢复后台运行中的批量推禅道进度
 
       // 根据初始默认 Tab 按需加载首屏数据与启动必要监控
       if (currentTab.value === 'dashboard') {
@@ -3011,6 +3413,7 @@ export function usePlatformStore() {
 
     onUnmounted(() => {
       stopLiveTimer();
+      stopBatchZentaoPoll();
       if (platformReconnectTimer) clearTimeout(platformReconnectTimer);
       if (platformWs) platformWs.close();
       if (logWs) logWs.close();
@@ -3129,6 +3532,7 @@ export function usePlatformStore() {
       editForm,
 
       openEditBugModal,
+      zentaoUsers,
 
       submitBugEdit,
 
@@ -3171,6 +3575,7 @@ export function usePlatformStore() {
       deletingTaskId,
 
       switchActiveTask,
+      jumpToBugMonitor,
 
       onMonitorTargetChange,
 
@@ -3188,6 +3593,27 @@ export function usePlatformStore() {
       deletingBugId,
 
       syncZenTao,
+      selectedBugIds,
+      selectableBugsOnPage,
+      isAllPageBugsSelected,
+      isSomePageBugsSelected,
+      toggleBugSelection,
+      toggleSelectAllPageBugs,
+      clearBugSelection,
+      batchZentaoJob,
+      batchSyncZenTao,
+      zentaoPreviewVisible,
+      zentaoPreviewLoading,
+      zentaoPreviewSubmitting,
+      zentaoPreviewMetadataLoading,
+      zentaoPreviewError,
+      zentaoPreviewTab,
+      zentaoPreviewMeta,
+      zentaoPreviewForm,
+      closeZentaoPreview,
+      toggleZentaoBuild,
+      onZentaoCascadedChange,
+      confirmSyncZenTao,
       reanalyzeBug,
       reanalyzingBugId,
 

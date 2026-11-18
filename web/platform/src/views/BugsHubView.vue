@@ -94,9 +94,41 @@
           <!-- 2. 缺陷列表卡片 (同级第 2 个 div) -->
           <div class="card">
 
-            <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+            <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
               <div class="card-title">🐛 全局缺陷治理中枢 (AI 智能查重去重与分流)</div>
-              <span style="font-size: 12px; color: var(--text-muted);">✨ 智能关联实时过滤</span>
+
+              <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                <!-- 后台批量推禅道进度条 -->
+                <div v-if="batchZentaoJob && batchZentaoJob.status === 'running'"
+                  style="display: flex; align-items: center; gap: 8px; padding: 4px 10px; border-radius: 6px; background: rgba(0, 210, 255, 0.1); border: 1px solid rgba(0, 210, 255, 0.35); font-size: 12px; color: #00d2ff;">
+                  <span class="spinner-icon"></span>
+                  <span>
+                    后台推禅道中: <strong>{{ batchZentaoJob.processed }}/{{ batchZentaoJob.total }}</strong>
+                    (成功 {{ batchZentaoJob.succeeded }}<template v-if="batchZentaoJob.skipped"> · 跳过 {{ batchZentaoJob.skipped }}</template><template v-if="batchZentaoJob.failed"> · 失败 {{ batchZentaoJob.failed }}</template>)
+                  </span>
+                </div>
+
+                <!-- 勾选批量操作栏 -->
+                <template v-if="selectedBugIds && selectedBugIds.length > 0">
+                  <span style="font-size: 12px; color: #94a3b8;">
+                    已选 <strong style="color: #00d2ff;">{{ selectedBugIds.length }}</strong> 条
+                  </span>
+                  <button class="btn btn-primary"
+                    style="padding: 5px 12px; font-size: 12px;"
+                    :disabled="batchZentaoJob && batchZentaoJob.status === 'running'"
+                    @click="batchSyncZenTao">
+                    🚀 批量推禅道 ({{ selectedBugIds.length }})
+                  </button>
+                  <button class="btn btn-secondary"
+                    style="padding: 5px 10px; font-size: 12px;"
+                    @click="clearBugSelection">
+                    清空选择
+                  </button>
+                </template>
+
+                <span v-else-if="!batchZentaoJob || batchZentaoJob.status !== 'running'"
+                  style="font-size: 12px; color: var(--text-muted);">✨ 智能关联实时过滤</span>
+              </div>
             </div>
 
 
@@ -108,6 +140,16 @@
                 <thead>
 
                   <tr>
+
+                    <th style="width: 38px; text-align: center;">
+                      <input type="checkbox"
+                        :checked="isAllPageBugsSelected"
+                        :indeterminate.prop="isSomePageBugsSelected"
+                        :disabled="!selectableBugsOnPage || selectableBugsOnPage.length === 0"
+                        @change="toggleSelectAllPageBugs"
+                        title="全选/取消全选当前页未提单缺陷"
+                        style="cursor: pointer; accent-color: #00d2ff; width: 15px; height: 15px;">
+                    </th>
 
                     <th>Bug 编号</th>
 
@@ -134,7 +176,7 @@
 
                   <tr v-if="isBugsLoading && (!bugs || bugs.length === 0)">
 
-                    <td colspan="9" style="text-align: center; padding: 28px; color: #00d2ff;">
+                    <td colspan="10" style="text-align: center; padding: 28px; color: #00d2ff;">
 
                       ⚡ 正在极速检索缺陷资产...
 
@@ -144,7 +186,7 @@
 
                   <tr v-else-if="!bugs || bugs.length === 0">
 
-                    <td colspan="9" style="text-align: center; padding: 28px; color: var(--text-muted);">
+                    <td colspan="10" style="text-align: center; padding: 28px; color: var(--text-muted);">
 
                       🔍 未检索到匹配的缺陷记录
 
@@ -154,6 +196,16 @@
 
                   <tr v-else v-for="b in paginatedBugs" :key="b.id"
                     :style="deletingBugId === b.id ? 'opacity: 0.45; transition: opacity 0.3s; pointer-events: none;' : ''">
+
+                    <td style="text-align: center;">
+                      <input type="checkbox"
+                        :checked="selectedBugIds.includes(b.id)"
+                        :disabled="!!b.zentao_id"
+                        @change="toggleBugSelection(b)"
+                        :title="b.zentao_id ? '已提交禅道 (#' + b.zentao_id + ')，无需重复勾选' : '勾选该缺陷用于批量推禅道'"
+                        style="accent-color: #00d2ff; width: 15px; height: 15px;"
+                        :style="{ cursor: b.zentao_id ? 'not-allowed' : 'pointer', opacity: b.zentao_id ? 0.35 : 1 }">
+                    </td>
 
                     <td style="font-family: monospace; font-weight: 600; color: #00d2ff;">
                       {{ b.id }}

@@ -11,7 +11,7 @@ Electron Vision AI - 服务端 API 数据契约与 Pydantic 校验模型集 (Sch
 3. ORM 自动解包支持：全面启用 from_attributes = True。
 """
 
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Union
 from pydantic import BaseModel, Field, field_serializer, field_validator
 import datetime
 
@@ -767,6 +767,139 @@ class AmbientMetricsHistoryResponse(BaseModel):
     hours: int = Field(description="查询回溯时间范围 (小时)", examples=[24])
     total_points: int = Field(description="检索到的时序样本点总数", examples=[180])
     metrics: List[AmbientMetricPointResponse] = Field(default_factory=list, description="性能指标时序明细列表")
+
+
+class ZentaoOptionItem(BaseModel):
+    """禅道通用下拉选项契约"""
+    id: Union[int, str] = Field(description="选项 ID")
+    name: str = Field(description="选项展示名称")
+
+
+class ZentaoUserOption(BaseModel):
+    """禅道成员选项契约"""
+    account: str = Field(description="禅道登录账号", examples=["liyuncong"])
+    realname: str = Field(description="真实姓名", examples=["李云骢"])
+
+
+class ZentaoBuildOption(BaseModel):
+    """禅道影响版本（Build）选项契约"""
+    id: str = Field(description="构建版本 ID（或 trunk）", examples=["169"])
+    name: str = Field(description="构建版本名称", examples=["bigScreen-web-zhaiwan-20261116-build001"])
+    product: Optional[int] = Field(default=None, description="所属产品 ID")
+    execution: Optional[int] = Field(default=None, description="所属执行 ID")
+    date: Optional[str] = Field(default=None, description="打包日期")
+    tag: Optional[str] = Field(default=None, description="版本类型标签 (web / ue / trunk)")
+
+
+class ZentaoPreviewOptions(BaseModel):
+    """禅道提单预览弹窗动态下拉字典"""
+    products: List[ZentaoOptionItem] = Field(default_factory=list)
+    projects: List[ZentaoOptionItem] = Field(default_factory=list)
+    executions: List[ZentaoOptionItem] = Field(default_factory=list)
+    modules: List[ZentaoOptionItem] = Field(default_factory=list)
+    builds: List[ZentaoBuildOption] = Field(default_factory=list)
+    users: List[ZentaoUserOption] = Field(default_factory=list)
+    bug_types: List[ZentaoOptionItem] = Field(default_factory=list)
+
+
+class ZentaoPreviewDefaults(BaseModel):
+    """禅道提单预览默认值（AI 智能计算 + 动态版本匹配）"""
+    bug_id: str
+    app_key: str
+    app_name: str
+    title: str
+    product_id: int
+    project_id: int
+    execution_id: int
+    module_id: int = 0
+    type: str = "codeerror"
+    severity: int = 3
+    pri: int = 3
+    status: str = "active"
+    status_label: str = "激活"
+    assigned_to: str
+    assigned_to_name: str
+    assignee_reason: str = ""
+    deadline: str
+    opened_build: List[str] = Field(default_factory=list)
+    os: str = "windows"
+    browser: str = "electron"
+    steps_html: str
+    screenshot_url: Optional[str] = None
+
+
+class ZentaoPreviewResponse(BaseModel):
+    """获取禅道提单预览信息响应模型"""
+    zentao_configured: bool
+    zentao_base_url: str
+    defaults: ZentaoPreviewDefaults
+    options: ZentaoPreviewOptions
+    warning: Optional[str] = None
+
+
+class ZentaoCascadedMetadataResponse(BaseModel):
+    """切换项目或产品时级联拉取的禅道动态元数据"""
+    executions: List[ZentaoOptionItem] = Field(default_factory=list)
+    modules: List[ZentaoOptionItem] = Field(default_factory=list)
+    builds: List[ZentaoBuildOption] = Field(default_factory=list)
+    recommended_builds: List[str] = Field(default_factory=list)
+
+
+class ZentaoSubmitRequest(BaseModel):
+    """禅道提单提交请求体（支持预览弹窗人工微调后提交）"""
+    title: Optional[str] = Field(default=None, description="缺陷标题")
+    product_id: Optional[int] = Field(default=None, description="所属产品 ID")
+    project_id: Optional[int] = Field(default=None, description="所属项目 ID")
+    execution_id: Optional[int] = Field(default=None, description="所属执行 ID")
+    module_id: Optional[int] = Field(default=None, description="所属模块 ID (0 为 /)")
+    type: Optional[str] = Field(default=None, description="Bug 类型 (如 codeerror)")
+    severity: Optional[int] = Field(default=None, ge=1, le=4, description="严重程度 (1-4)")
+    pri: Optional[int] = Field(default=None, ge=1, le=4, description="优先级 (1-4)")
+    assigned_to: Optional[str] = Field(default=None, description="指派给账号或姓名")
+    deadline: Optional[str] = Field(default=None, description="截止日期 YYYY-MM-DD")
+    opened_build: Optional[List[str]] = Field(default=None, description="影响版本 ID 列表")
+    os: Optional[str] = Field(default=None, description="操作系统")
+    browser: Optional[str] = Field(default=None, description="浏览器")
+    steps_html: Optional[str] = Field(default=None, description="重现步骤富文本 HTML")
+
+
+class BatchZentaoSyncRequest(BaseModel):
+    """批量提交禅道请求体"""
+    bug_ids: List[str] = Field(..., min_length=1, description="待批量提交的全局缺陷编号列表")
+
+
+class BatchZentaoSyncItemResult(BaseModel):
+    """批量提交禅道单条处理结果"""
+    bug_id: str
+    status: str  # "success" | "skipped" | "failed"
+    zentao_id: Optional[str] = None
+    zentao_url: Optional[str] = None
+    message: Optional[str] = None
+
+
+class BatchZentaoSyncStartResponse(BaseModel):
+    """启动批量提交禅道响应"""
+    code: int = 200
+    message: str
+    job_id: str
+    total: int
+
+
+class BatchZentaoSyncStatusResponse(BaseModel):
+    """批量提交禅道后台任务进度响应"""
+    job_id: str
+    status: str  # "running" | "completed" | "failed"
+    total: int
+    processed: int
+    succeeded: int
+    skipped: int
+    failed: int
+    current_bug_id: Optional[str] = None
+    started_at: Optional[str] = None
+    finished_at: Optional[str] = None
+    error: Optional[str] = None
+    results: List[BatchZentaoSyncItemResult] = Field(default_factory=list)
+
 
 
 
