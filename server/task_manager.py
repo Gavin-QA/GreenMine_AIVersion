@@ -537,12 +537,6 @@ class TaskManager:
                     q_item.error_message = error_message
                 db.commit()
                 logger.info(f"🤖 [QueueExecutor] 队列项 [{q_item.id}] 状态已流转为: {q_item.status}")
-
-                # 周期巡检自动推演并排期下一次任务 (天 / 周 / 月)
-                cron_mode = getattr(q_item, "cron_mode", "once")
-                is_active = getattr(q_item, "is_active", 1)
-                if cron_mode and cron_mode in ("daily", "weekly", "monthly") and is_active:
-                    self._schedule_next_recurring_task(db, q_item)
         except Exception as e:
             logger.debug(f"更新队列项状态异常: {e}")
 

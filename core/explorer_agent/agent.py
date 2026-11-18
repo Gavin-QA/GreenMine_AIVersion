@@ -442,6 +442,12 @@ class ExplorerAgent:
         if total_menus_limit:
             menu_items = menu_items[:total_menus_limit]
 
+        # 与 explore 模式对齐：启动默认已在【首页 -> 矿山简介】，若直接点击不会触发路由与接口刷新，
+        # 因此将其自动后置到队列末尾，先巡检其他页面，最后再真实点回首页完成接口与健康体检闭环
+        if len(menu_items) > 1 and menu_items[0] == ("首页", "矿山简介"):
+            menu_items = menu_items[1:] + [menu_items[0]]
+            logger.info("🔄 [Smoke Tour] 检测到首项为默认初始页【首页 -> 矿山简介】，已自动后置到末尾以触发真实路由回跳与接口校验")
+
         total_menus = len(menu_items)
         if total_menus == 0:
             logger.warning("⚠️ [Smoke Tour] 未解析到任何二级业务菜单！请检查对应 docs/explore_rules_<app>.md 的基准菜单表格。")
@@ -465,62 +471,56 @@ class ExplorerAgent:
             # ----------------------------------------------------
             # 阶段一：二级菜单智能跳转 (Smart Hover + Click)
             # ----------------------------------------------------
-            if idx == 1 and l1 == "首页" and l2 == "矿山简介":
+            try:
+                info = self.driver.get_viewport_info()
+                width, height = info.get("width", 2560), info.get("height", 1440)
+
+                # 悬停 L1 一级菜单
+                hover_img_path = self.explore_dir / f"smoke_jump_{idx}_hover.png"
+                b64_hover = self.driver.capture_screenshot_base64(str(hover_img_path))
+                dom_hover = self.driver.extract_interactive_elements()
+                hx, hy = self.vision.find_element(
+                    instruction=f"顶部一级菜单【{l1}】",
+                    base64_image=b64_hover,
+                    viewport_width=width,
+                    viewport_height=height,
+                    dom_elements=dom_hover
+                )
+                self.driver.hover(hx, hy, delay_after=1.5)
+
+                # 点击 L2 下拉菜单选项
+                click_img_path = self.explore_dir / f"smoke_jump_{idx}_click.png"
+                b64_click = self.driver.capture_screenshot_base64(str(click_img_path))
+                dom_click = self.driver.extract_interactive_elements()
+                cx, cy = self.vision.find_element(
+                    instruction=f"下拉菜单中的【{l2}】选项",
+                    base64_image=b64_click,
+                    viewport_width=width,
+                    viewport_height=height,
+                    dom_elements=dom_click
+                )
+                self.driver.click(cx, cy, delay_after=1.5)
+
                 self.driver.set_page_scope(f"{l1} -> {l2}")
                 self.last_l2_route = (l1, l2)
                 jump_ok = True
                 jump_success_count += 1
-            else:
-                try:
-                    info = self.driver.get_viewport_info()
-                    width, height = info.get("width", 2560), info.get("height", 1440)
-
-                    # 悬停 L1 一级菜单
-                    hover_img_path = self.explore_dir / f"smoke_jump_{idx}_hover.png"
-                    b64_hover = self.driver.capture_screenshot_base64(str(hover_img_path))
-                    dom_hover = self.driver.extract_interactive_elements()
-                    hx, hy = self.vision.find_element(
-                        instruction=f"顶部一级菜单【{l1}】",
-                        base64_image=b64_hover,
-                        viewport_width=width,
-                        viewport_height=height,
-                        dom_elements=dom_hover
-                    )
-                    self.driver.hover(hx, hy, delay_after=1.5)
-
-                    # 点击 L2 下拉菜单选项
-                    click_img_path = self.explore_dir / f"smoke_jump_{idx}_click.png"
-                    b64_click = self.driver.capture_screenshot_base64(str(click_img_path))
-                    dom_click = self.driver.extract_interactive_elements()
-                    cx, cy = self.vision.find_element(
-                        instruction=f"下拉菜单中的【{l2}】选项",
-                        base64_image=b64_click,
-                        viewport_width=width,
-                        viewport_height=height,
-                        dom_elements=dom_click
-                    )
-                    self.driver.click(cx, cy, delay_after=1.5)
-
-                    self.driver.set_page_scope(f"{l1} -> {l2}")
-                    self.last_l2_route = (l1, l2)
-                    jump_ok = True
-                    jump_success_count += 1
-                except Exception as j_err:
-                    jump_err_msg = str(j_err)
-                    logger.error(f"❌ [Smoke Jump] 跳转至【{l1} -> {l2}】失败: {jump_err_msg}")
-                    self.bug_reporter.report_bug(
-                        run_id=self.run_id,
-                        title=f"[{self.run_id}] 冒烟巡检菜单跳转失败: 【{l1} -> {l2}】",
-                        step_prompt=f"[SMOKE-JUMP] 悬停【{l1}】并点击【{l2}】",
-                        actual_result=jump_err_msg,
-                        crash_image_path=str(click_img_path) if 'click_img_path' in locals() and click_img_path.exists() else (str(hover_img_path) if 'hover_img_path' in locals() and hover_img_path.exists() else None),
-                        before_image_path=str(hover_img_path) if 'hover_img_path' in locals() and hover_img_path.exists() else None,
-                        action_type="SMOKE_JUMP",
-                        target_element=f"{l1} -> {l2}",
-                        global_step=idx,
-                        severity="High",
-                        ui_path=f"{l1} -> {l2}"
-                    )
+            except Exception as j_err:
+                jump_err_msg = str(j_err)
+                logger.error(f"❌ [Smoke Jump] 跳转至【{l1} -> {l2}】失败: {jump_err_msg}")
+                self.bug_reporter.report_bug(
+                    run_id=self.run_id,
+                    title=f"[{self.run_id}] 冒烟巡检菜单跳转失败: 【{l1} -> {l2}】",
+                    step_prompt=f"[SMOKE-JUMP] 悬停【{l1}】并点击【{l2}】",
+                    actual_result=jump_err_msg,
+                    crash_image_path=str(click_img_path) if 'click_img_path' in locals() and click_img_path.exists() else (str(hover_img_path) if 'hover_img_path' in locals() and hover_img_path.exists() else None),
+                    before_image_path=str(hover_img_path) if 'hover_img_path' in locals() and hover_img_path.exists() else None,
+                    action_type="SMOKE_JUMP",
+                    target_element=f"{l1} -> {l2}",
+                    global_step=idx,
+                    severity="High",
+                    ui_path=f"{l1} -> {l2}"
+                )
 
             # ----------------------------------------------------
             # 阶段二：当前页面三阶健康度体检 (直接委托给 Worker 统一质检单兵)

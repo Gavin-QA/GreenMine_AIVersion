@@ -5,7 +5,13 @@ import * as echarts from 'echarts'
 
 export function usePlatformStore() {
 
-    const currentTab = ref('dashboard'); // dashboard, tasks, monitor, bugs
+    const TAB_STORAGE_KEY = 'vision_platform_current_tab';
+    const ASSETS_SUBTAB_KEY = 'vision_platform_assets_subtab';
+    const SETTINGS_SUBTAB_KEY = 'vision_platform_settings_subtab';
+
+    const validTabs = ['dashboard', 'monitor', 'tasks', 'bugs', 'settings'];
+    const savedTab = localStorage.getItem(TAB_STORAGE_KEY);
+    const currentTab = ref(validTabs.includes(savedTab) ? savedTab : 'dashboard'); // dashboard, tasks, monitor, bugs, settings
 
     const apiBase = window.location.origin;
 
@@ -457,8 +463,45 @@ export function usePlatformStore() {
       { app_name: 'liwutong', title: '里伍铜矿山', online: false, ue_pid: null, ue_commit_mb: 0, ue_memory_mb: 0 }
     ]);
 
-    // 任务与产物库内顶栏 Tab 状态 ('runs' | 'cases')
-    const assetsSubTab = ref('runs');
+    // 任务与产物库内二级菜单状态 ('runs' | 'queue' | 'cases')
+    const validAssetsSub = ['runs', 'queue', 'cases'];
+    const savedAssetsSub = localStorage.getItem(ASSETS_SUBTAB_KEY);
+    const assetsSubTab = ref(validAssetsSub.includes(savedAssetsSub) ? savedAssetsSub : 'runs');
+
+    // 系统配置二级菜单状态 ('overview' | 'cleanup')
+    const validSettingsSub = ['overview', 'cleanup'];
+    const savedSettingsSub = localStorage.getItem(SETTINGS_SUBTAB_KEY);
+    const settingsSubTab = ref(validSettingsSub.includes(savedSettingsSub) ? savedSettingsSub : 'overview');
+
+    // 含二级菜单的一级菜单展开状态（默认全部收起；若刷新恢复时处于对应菜单则展开）
+    const navExpanded = reactive({
+      tasks: currentTab.value === 'tasks',
+      settings: currentTab.value === 'settings',
+    });
+
+    function selectPrimaryMenu(tab) {
+      if (tab === 'tasks') {
+        if (currentTab.value !== 'tasks') {
+          currentTab.value = 'tasks';
+          assetsSubTab.value = 'runs';
+          navExpanded.tasks = true;
+        } else {
+          navExpanded.tasks = !navExpanded.tasks;
+        }
+        return;
+      }
+      if (tab === 'settings') {
+        if (currentTab.value !== 'settings') {
+          currentTab.value = 'settings';
+          settingsSubTab.value = 'overview';
+          navExpanded.settings = true;
+        } else {
+          navExpanded.settings = !navExpanded.settings;
+        }
+        return;
+      }
+      currentTab.value = tab;
+    }
 
     // 运行环境与配置基线快照弹窗状态
     const selectedEnvInfo = ref(null);
@@ -3088,6 +3131,23 @@ export function usePlatformStore() {
 
     const storageSummary = ref({});
     const isCleaningStorage = ref(false);
+    const lastCleanupResult = ref(null);
+    const systemConfigOverview = ref(null);
+    const isLoadingConfigOverview = ref(false);
+
+    async function fetchSystemConfigOverview() {
+      isLoadingConfigOverview.value = true;
+      try {
+        const res = await fetch(`${apiBase}/api/system/config-overview`);
+        if (res.ok) {
+          systemConfigOverview.value = await res.json();
+        }
+      } catch (e) {
+        console.warn('获取系统配置总览失败:', e);
+      } finally {
+        isLoadingConfigOverview.value = false;
+      }
+    }
 
     async function fetchStorageSummary() {
       try {
@@ -3100,26 +3160,50 @@ export function usePlatformStore() {
       }
     }
 
-    async function triggerStorageCleanup() {
+    async function triggerStorageCleanup(opts = {}) {
       if (isCleaningStorage.value) return;
-      const ok = await showConfirm(
-        '执行产物安全瘦身',
-        `当前 runs 目录总占用：${storageSummary.value.runs_total_human || '未知'}（过程截图占比 ${storageSummary.value.screenshots_ratio || 0}%）。\n\n将安全清理 7 天前的临时过程截图（默认跳过仍含「激活」Bug 的未处理报告，100% 保留上下文与 Bug 现场），是否确认执行？`,
-        { confirmText: '立即安全瘦身', cancelText: '取消', type: 'primary' }
-      );
-      if (!ok) return;
+      const retainDays = opts.retain_days !== undefined ? Number(opts.retain_days) : 7;
+      const compressWebp = Boolean(opts.compress_webp);
+      const protectActiveBugs = opts.protect_active_bugs !== undefined ? Boolean(opts.protect_active_bugs) : true;
+      const dryRun = Boolean(opts.dry_run);
+
+      if (!dryRun) {
+        const actionDesc = compressWebp
+          ? `将对 ${retainDays} 天前的临时过程截图执行 WebP 高压缩转码`
+          : `将安全清理 ${retainDays} 天前的临时过程截图`;
+        const protDesc = protectActiveBugs ? '（自动跳过仍含「激活」Bug 的未处理报告，100% 保留 Bug 现场与记忆）' : '（注意：已关闭激活 Bug 保护）';
+        const ok = await showConfirm({
+          title: '执行产物安全瘦身',
+          message: `当前 runs 目录总占用：${storageSummary.value.runs_total_human || '未知'}（过程截图占比 ${storageSummary.value.screenshots_ratio || 0}%）。\n\n${actionDesc}${protDesc}，是否确认执行？`,
+          confirmText: '立即执行',
+          cancelText: '取消',
+          danger: !protectActiveBugs,
+        });
+        if (!ok) return;
+      }
 
       isCleaningStorage.value = true;
       try {
-        const res = await fetch(`${apiBase}/api/system/cleanup?retain_days=7&protect_active_bugs=true`, { method: 'POST' });
+        const params = new URLSearchParams({
+          retain_days: String(retainDays),
+          compress_webp: String(compressWebp),
+          protect_active_bugs: String(protectActiveBugs),
+          dry_run: String(dryRun),
+        });
+        const res = await fetch(`${apiBase}/api/system/cleanup?${params.toString()}`, { method: 'POST' });
         const data = await res.json();
+        lastCleanupResult.value = { ...data, dry_run: dryRun, timestamp: new Date().toLocaleTimeString() };
         if (data.storage_after) {
           storageSummary.value = data.storage_after;
         } else {
           await fetchStorageSummary();
         }
-        const protMsg = data.protected_count > 0 ? `，已自动跳过 ${data.protected_count} 个含激活 Bug 的报告` : '';
-        showToast('瘦身完成', `已释放 ${data.freed_human || '0 B'}（清理 ${data.cleaned_files || 0} 张临时图${protMsg}），当前占用 ${storageSummary.value.runs_total_human || ''}`, 'success', 6000);
+        const protMsg = data.protected_count > 0 ? `，跳过 ${data.protected_count} 个含激活 Bug 的报告` : '';
+        if (dryRun) {
+          showToast('预演估算完成', `预计可释放 ${data.freed_human || '0 B'}（涉及 ${data.cleaned_files || 0} 张过程图${protMsg}）`, 'info', 6000);
+        } else {
+          showToast('瘦身完成', `已释放 ${data.freed_human || '0 B'}（处理 ${data.cleaned_files || 0} 张过程图${protMsg}），当前占用 ${storageSummary.value.runs_total_human || ''}`, 'success', 6000);
+        }
       } catch (e) {
         console.error('磁盘清理失败:', e);
         showToast('瘦身失败', '请检查后台服务日志。', 'error', 5000);
@@ -3308,6 +3392,10 @@ export function usePlatformStore() {
 
     // 智能 Tab 驱动：仅在用户切换到对应 Tab 时按需发起数据获取，彻底消灭全站高频无意义轮询
     watch(currentTab, (newTab) => {
+      localStorage.setItem(TAB_STORAGE_KEY, newTab);
+      if (newTab === 'tasks') navExpanded.tasks = true;
+      if (newTab === 'settings') navExpanded.settings = true;
+
       if (newTab === 'bugs') {
         fetchBugs();
       } else if (newTab === 'tasks') {
@@ -3315,6 +3403,12 @@ export function usePlatformStore() {
           fetchCases();
         } else {
           fetchTasks();
+        }
+      } else if (newTab === 'settings') {
+        if (settingsSubTab.value === 'cleanup') {
+          fetchStorageSummary();
+        } else {
+          fetchSystemConfigOverview();
         }
       } else if (newTab === 'monitor') {
         fetchTasks(); // 预载最新任务清单，保证“当前查看维度”下拉选项时刻齐全
@@ -3349,6 +3443,7 @@ export function usePlatformStore() {
     });
 
     watch(assetsSubTab, (newSub) => {
+      localStorage.setItem(ASSETS_SUBTAB_KEY, newSub);
       if (newSub === 'cases') {
         fetchCases();
       } else if (newSub === 'queue') {
@@ -3358,17 +3453,34 @@ export function usePlatformStore() {
       }
     });
 
+    watch(settingsSubTab, (newSub) => {
+      localStorage.setItem(SETTINGS_SUBTAB_KEY, newSub);
+      if (newSub === 'cleanup') {
+        fetchStorageSummary();
+      } else {
+        fetchSystemConfigOverview();
+      }
+    });
+
+    function handleGlobalKeydown(e) {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'r' || e.key === 'R')) {
+        localStorage.removeItem(TAB_STORAGE_KEY);
+        localStorage.removeItem(ASSETS_SUBTAB_KEY);
+        localStorage.removeItem(SETTINGS_SUBTAB_KEY);
+      }
+    }
+
     onMounted(() => {
+      window.addEventListener('keydown', handleGlobalKeydown);
       fetchOptions();
       fetchPresetTasks();
       fetchLiveAppsStatus();
       fetchTasks(); // 启动时预载任务库，保证任何页面（含监控大屏维度）均可即刻使用任务数据
       fetchCases(); // 预载用例资产清单
       fetchTaskQueue(); // 预载调度执行队列状态
-      fetchStorageSummary(); // 异步探测产物磁盘占用大盘
       checkActiveBatchZentaoJob(); // 恢复后台运行中的批量推禅道进度
 
-      // 根据初始默认 Tab 按需加载首屏数据与启动必要监控
+      // 根据当前恢复的 Tab 按需加载首屏数据与启动必要监控
       if (currentTab.value === 'dashboard') {
         fetchLiveSnapshot();
         startLiveTimer();
@@ -3380,6 +3492,12 @@ export function usePlatformStore() {
         fetchBugs();
       } else if (currentTab.value === 'cases') {
         fetchCases();
+      } else if (currentTab.value === 'settings') {
+        if (settingsSubTab.value === 'cleanup') {
+          fetchStorageSummary();
+        } else {
+          fetchSystemConfigOverview();
+        }
       }
 
       initPlatformWebSocket();
@@ -3625,7 +3743,17 @@ export function usePlatformStore() {
 
       isCleaningStorage,
 
+      lastCleanupResult,
+
+      fetchStorageSummary,
+
       triggerStorageCleanup,
+
+      systemConfigOverview,
+
+      isLoadingConfigOverview,
+
+      fetchSystemConfigOverview,
 
       liveSelectedApp,
 
@@ -3638,6 +3766,12 @@ export function usePlatformStore() {
       changeLiveTimeSpan,
 
       assetsSubTab,
+
+      settingsSubTab,
+
+      navExpanded,
+
+      selectPrimaryMenu,
 
       selectedEnvInfo,
 

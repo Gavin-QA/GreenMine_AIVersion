@@ -85,6 +85,33 @@ def create_task(payload: TaskCreate, db: Session = Depends(get_db)):
     return task
 
 
+def _attach_active_bugs_count(db: Session, tasks: List[TaskRun]) -> List[TaskRun]:
+    """批量统计每个任务当前仍处于「激活」状态的缺陷数，避免 N+1 查询"""
+    if not tasks:
+        return tasks
+
+    active_rows = (
+        db.query(BugRecord.id, BugRecord.task_id, BugRecord.run_id)
+        .filter(BugRecord.status == "激活")
+        .all()
+    )
+    by_task_id = {}
+    by_run_id = {}
+    for bug_id, tid, rid in active_rows:
+        if tid:
+            by_task_id.setdefault(tid, set()).add(bug_id)
+        if rid:
+            by_run_id.setdefault(rid, set()).add(bug_id)
+
+    for t in tasks:
+        matched_ids = set(by_task_id.get(t.id, ()))
+        if t.run_dir:
+            run_name = Path(t.run_dir).name
+            matched_ids.update(by_run_id.get(run_name, ()))
+        t.active_bugs_count = len(matched_ids)
+    return tasks
+
+
 @router.get(
     "/api/tasks",
     response_model=List[TaskResponse],
@@ -120,7 +147,8 @@ def list_tasks(
         # 处于排队中的调度计划只在“执行调度队列看板”中呈现，严禁在未真正执行前占位显示
         q = q.filter(TaskRun.status != "pending")
 
-    return q.offset(offset).limit(limit).all()
+    tasks = q.offset(offset).limit(limit).all()
+    return _attach_active_bugs_count(db, tasks)
 
 
 
@@ -141,6 +169,7 @@ def get_task(
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
+    _attach_active_bugs_count(db, [task])
     return task
 
 

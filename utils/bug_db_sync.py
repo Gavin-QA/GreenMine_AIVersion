@@ -143,6 +143,9 @@ def save_bug_to_db(bug_dict: Dict[str, Any]) -> Optional[str]:
             "details": bug_dict.get("details"),
             "global_step": bug_dict.get("global_step"),
             "creation_date": bug_dict.get("creation_date") or bug_dict.get("date"),
+            "recurrence_history": bug_dict.get("recurrence_history") or [],
+            "affected_modules": bug_dict.get("affected_modules") or [],
+            "first_ui_path": bug_dict.get("first_ui_path"),
         }
         extra_data_str = json.dumps(extra_info, ensure_ascii=False)
 

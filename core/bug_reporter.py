@@ -278,6 +278,13 @@ class BugReporter:
                 bug_record["step"] = step_prompt
                 bug_record["actual"] = actual_result
                 if ui_path: bug_record["ui_path"] = ui_path
+                mods = list(bug_record.get("affected_modules") or [])
+                for cand_m in (bug_record.get("first_ui_path"), ui_path):
+                    cm = str(cand_m or "").strip()
+                    if cm and cm not in ("无", "未知", "未知路径", "未指定") and cm not in mods:
+                        mods.append(cm)
+                if mods:
+                    bug_record["affected_modules"] = mods
                 if target_element: bug_record["target_element"] = target_element
                 if action_type: bug_record["action_type"] = action_type
                 if global_step:
@@ -387,6 +394,7 @@ class BugReporter:
                 "global_step": global_step,
                 "date": now_date,
                 "recurrence_history": bug_record.get("recurrence_history", []) if bug_record else [],
+                "affected_modules": bug_record.get("affected_modules", []) if bug_record else ([ui_path] if ui_path else []),
                 "first_step": bug_record.get("first_step") if bug_record else None,
                 "first_ui_path": bug_record.get("first_ui_path") if bug_record else None,
                 "first_screenshot": bug_record.get("first_screenshot") if bug_record else None,
@@ -422,13 +430,47 @@ class BugReporter:
 
     def _create_new_bug(self, run_id, title, step, actual, date):
 
-        # 自动生成递增 ID
+        # 自动生成全平台全局唯一递增 ID（跨所有矿山 JSON 库 + SQLite 主键表取最大序号 + 1，杜绝跨项目撞号或删单回退撞号）
 
         date_prefix = datetime.now().strftime("%Y%m%d")
+        id_prefix = f"BUG-{date_prefix}-"
+        max_num = 0
 
-        todays_bugs = [b for b in self.global_bugs if b["id"].startswith(f"BUG-{date_prefix}")]
+        def _extract_seq(bid: str) -> int:
+            if not bid or not str(bid).startswith(id_prefix):
+                return 0
+            tail = str(bid)[len(id_prefix):]
+            return int(tail) if tail.isdigit() else 0
 
-        next_num = len(todays_bugs) + 1
+        for b in self.global_bugs:
+            max_num = max(max_num, _extract_seq(b.get("id", "")))
+
+        try:
+            for g_file in self.global_bugs_file.parent.glob("global_bugs*.json"):
+                try:
+                    g_list = json.loads(g_file.read_text(encoding="utf-8"))
+                    if isinstance(g_list, list):
+                        for gb in g_list:
+                            max_num = max(max_num, _extract_seq(gb.get("id", "")))
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        try:
+            from server.database import SessionLocal
+            from server.models import BugRecord
+            _db = SessionLocal()
+            try:
+                rows = _db.query(BugRecord.id).filter(BugRecord.id.like(f"{id_prefix}%")).all()
+                for (row_id,) in rows:
+                    max_num = max(max_num, _extract_seq(row_id))
+            finally:
+                _db.close()
+        except Exception:
+            pass
+
+        next_num = max_num + 1
 
         bug_id = f"BUG-{date_prefix}-{next_num:03d}"
 
@@ -504,9 +546,11 @@ class BugReporter:
 
             "【注意】：全局 Bug 库中包含【激活中】的问题以及【已关闭/误报屏蔽】的历史已知问题。\n"
 
-            "如果这个新崩溃的核心原因和某个已存在的 Bug 是同一个（比如同样是在同一模块找不到同一个元素，或者同样的静态资源404、同样的服务端接口500），请判定为重复，并返回该老 Bug 的 ID。\n"
+            "如果这个新崩溃的核心原因和某个已存在的 Bug 是同一个（比如同样是在同一模块找不到同一个元素，或者同样的静态资源404、同样的服务端接口500、或者同一页面内点击不同列表条目/文件行触发的同一底层 JS 报错如 crypto.randomUUID is not a function），请判定为重复，并返回该老 Bug 的 ID。\n"
 
-            "【严禁跨模块误合并铁律】：不同页面路径（ui_path）、不同业务模块/卡片/表格、不同接口名的报错（尤其是 UI 数据与接口不匹配 MISMATCH 类问题，如‘隐患整改反馈’ vs ‘异常报警’），即使报错模式相似，也绝对不能判定为重复！\n"
+            "【跨页面全局技术报错可合并】：若属于与具体业务无关的全局公共库/浏览器运行时错误（如相同的 `[page_error]` 堆栈 `crypto.randomUUID is not a function`、`ChunkLoadError` 或相同的静态资源 404），即使出现在不同 `ui_path` 页面，也可合并到同一根因老 Bug。\n"
+
+            "【严禁跨业务模块误合并铁律】：对于业务强绑定的报错——包括不同页面路径（ui_path）、不同业务模块/卡片/表格、不同接口名的报错（尤其是 UI 数据与接口不匹配 MISMATCH 类问题、图表核验、物理常识异常，如‘隐患整改反馈’ vs ‘异常报警’），即使报错模式相似，也绝对不能判定为重复！\n"
 
             "特别地，如果匹配到了【已关闭】或【误报屏蔽】的已知历史条目，也必须判定为重复并返回对应的 ID！\n"
 
@@ -572,7 +616,34 @@ class BugReporter:
                 new_p = _norm_ui_path(ui_path)
                 old_bug = next((b for b in candidate_bugs if b.get("id") == dup_id), None)
                 old_p = _norm_ui_path(old_bug.get("ui_path") if old_bug else "")
-                if new_p and old_p and new_p != old_p:
+                old_actual = str(old_bug.get("actual") or old_bug.get("actual_error") or "") if old_bug else ""
+                new_actual = str(actual_result or "")
+
+                def _is_global_shared_js_error(a: str, b: str) -> bool:
+                    """仅当新旧报错均为全局公共 JS 运行时/资源加载错误，或命中完全相同的后端接口 URL + 业务报错时，才允许跨 ui_path 合并"""
+                    global_markers = (
+                        "crypto.randomUUID",
+                        "ChunkLoadError",
+                        "Loading chunk",
+                        "ERR_CONNECTION_REFUSED",
+                    )
+                    if any(m in a and m in b for m in global_markers):
+                        return True
+                    # 同为 [page_error] 且剥离前缀后核心报错文本完全一致
+                    if "[page_error]" in a and "[page_error]" in b:
+                        core_a = a.split("[page_error]", 1)[1].strip().splitlines()[0].strip()
+                        core_b = b.split("[page_error]", 1)[1].strip().splitlines()[0].strip()
+                        if core_a and core_a == core_b:
+                            return True
+                    # 同为 [api_biz_error] 且命中相同的底层接口 URL（如公共组件/悬浮入口接口报错）
+                    if "[api_biz_error]" in a and "[api_biz_error]" in b:
+                        urls_a = set(re.findall(r"URL:\s*([^\s,\)]+)", a))
+                        urls_b = set(re.findall(r"URL:\s*([^\s,\)]+)", b))
+                        if urls_a and urls_b and (urls_a & urls_b):
+                            return True
+                    return False
+
+                if new_p and old_p and new_p != old_p and not _is_global_shared_js_error(new_actual, old_actual):
                     logger.warning(f"🛡️ [Deduplicate Guard] 拦截跨模块误合并: 新报错路径 '{new_p}' != 候选 Bug [{dup_id}] 路径 '{old_p}'，按新 Bug 处理。")
                     return None
 

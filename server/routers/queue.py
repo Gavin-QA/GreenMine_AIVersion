@@ -284,12 +284,10 @@ def toggle_schedule_plan(
         raise HTTPException(status_code=404, detail="未找到指定的调度计划")
 
     now = datetime.datetime.now()
-    plan.is_active = 0 if plan.is_active else 1
-    plan.updated_at = now
+    target_active = 0 if plan.is_active else 1
 
-    if plan.is_active:
-        plan.status = "active"
-        plan.next_run_time = calculate_next_run_time(
+    if target_active:
+        next_run = calculate_next_run_time(
             cron_mode=plan.cron_mode,
             cron_spec=plan.cron_spec,
             start_time_str=plan.start_time,
@@ -297,10 +295,21 @@ def toggle_schedule_plan(
             end_date_str=plan.end_date,
             after_time=now,
         )
-        msg = f"计划已启用，下次触发时间: {plan.next_run_time.strftime('%Y-%m-%d %H:%M:%S') if plan.next_run_time else '未排期'}"
+        if next_run is None:
+            raise HTTPException(
+                status_code=400,
+                detail="无法启用：该计划已超过有效期或没有可排期的下次执行时间，请先点击【✏️ 编辑】调整有效期或执行时间后再启用。",
+            )
+        plan.is_active = 1
+        plan.status = "active"
+        plan.next_run_time = next_run
+        plan.updated_at = now
+        msg = f"计划已启用，下次触发时间: {next_run.strftime('%Y-%m-%d %H:%M:%S')}"
     else:
+        plan.is_active = 0
         plan.status = "paused"
         plan.next_run_time = None
+        plan.updated_at = now
         msg = "计划已停用"
 
     db.commit()

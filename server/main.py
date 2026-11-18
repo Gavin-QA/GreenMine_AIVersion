@@ -6,6 +6,7 @@ FastAPI 主应用实例初始化、生命周期管理、中间件配置、静态
 """
 
 import logging
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -22,6 +23,7 @@ from .routers import (
     bugs_router,
     performance_router,
     cases_router,
+    zentao_router,
     websockets_router,
     active_websockets,
     platform_subscribers,
@@ -30,9 +32,42 @@ from .routers import (
 CURRENT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = CURRENT_DIR.parent
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s [%(levelname)s] [%(name)s] %(message)s"
-)
+LOG_FORMAT = "%(asctime)s [%(levelname)s] [%(name)s] %(message)s"
+logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
+
+
+def _setup_server_file_logging() -> Path:
+    """配置后端服务持久化轮转日志（单文件 10MB，最多保留 7 份，防止磁盘膨胀）"""
+    log_dir = PROJECT_ROOT / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = (log_dir / "server.log").resolve()
+
+    def _has_file_handler(target_logger: logging.Logger) -> bool:
+        return any(
+            isinstance(h, RotatingFileHandler)
+            and Path(getattr(h, "baseFilename", "")).resolve() == log_file
+            for h in target_logger.handlers
+        )
+
+    file_handler = RotatingFileHandler(
+        str(log_file),
+        maxBytes=10 * 1024 * 1024,
+        backupCount=7,
+        encoding="utf-8",
+    )
+    file_handler.setLevel(logging.INFO)
+    file_handler.setFormatter(logging.Formatter(LOG_FORMAT))
+
+    # 挂载到 root 与 uvicorn 核心 logger（不修改 propagate，避免控制台重复输出）
+    for name in (None, "uvicorn.error", "uvicorn.access"):
+        target = logging.getLogger(name)
+        if not _has_file_handler(target):
+            target.addHandler(file_handler)
+
+    return log_file
+
+
+SERVER_LOG_FILE = _setup_server_file_logging()
 logger = logging.getLogger("server.api")
 
 # Swagger 规范元数据定义
@@ -95,6 +130,7 @@ def on_startup():
     """服务冷启动生命周期钩子：冷启动自动物理快照、初始化数据库结构并自动同步已有全局缺陷库"""
     from .database import backup_database
 
+    logger.info(f"📝 后端服务持久化日志已就绪: {SERVER_LOG_FILE} (单文件上限 10MB，保留 7 份)")
     backup_database(max_backups=5)
 
     logger.info("⚡ 正在初始化数据库引擎与表结构 (含自动平滑迁移)...")
@@ -201,4 +237,5 @@ app.include_router(tasks_router)
 app.include_router(bugs_router)
 app.include_router(performance_router)
 app.include_router(cases_router)
+app.include_router(zentao_router)
 app.include_router(websockets_router)

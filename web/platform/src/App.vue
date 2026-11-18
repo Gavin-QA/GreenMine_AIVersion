@@ -32,14 +32,18 @@
           <span>实时监控大屏</span>
         </li>
 
-        <!-- 3. 任务与产物库 (二级全部展开) -->
+        <!-- 3. 任务与产物库 (默认收起，可展开/收起) -->
         <li class="nav-group">
           <div class="nav-item" :class="{ active: currentTab === 'tasks' && !assetsSubTab }"
-            @click="currentTab = 'tasks'; if (!assetsSubTab) assetsSubTab = 'runs'">
-            <span class="nav-icon">📁</span>
-            <span style="font-weight: 600;">任务与产物库</span>
+            @click="selectPrimaryMenu('tasks')"
+            style="justify-content: space-between;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span class="nav-icon">📁</span>
+              <span style="font-weight: 600;">任务与产物库</span>
+            </div>
+            <span style="font-size: 11px; color: var(--text-muted);">{{ navExpanded.tasks ? '▾' : '▸' }}</span>
           </div>
-          <ul class="sub-nav-menu">
+          <ul v-show="navExpanded.tasks" class="sub-nav-menu">
             <li class="sub-nav-item" :class="{ active: currentTab === 'tasks' && assetsSubTab === 'runs' }"
               @click="currentTab = 'tasks'; assetsSubTab = 'runs'">
               <span style="margin-right: 6px;">📑</span>
@@ -49,10 +53,6 @@
               @click="currentTab = 'tasks'; assetsSubTab = 'queue'">
               <span style="margin-right: 6px;">⏱️</span>
               <span style="flex: 1;">调度执行队列</span>
-              <span v-if="pendingQueueCount > 0" class="badge"
-                style="background: #ff5252; color: #fff; padding: 1px 6px; border-radius: 10px; font-size: 10px;">
-                {{ pendingQueueCount }}
-              </span>
             </li>
             <li class="sub-nav-item" :class="{ active: currentTab === 'tasks' && assetsSubTab === 'cases' }"
               @click="currentTab = 'tasks'; assetsSubTab = 'cases'">
@@ -66,6 +66,31 @@
         <li class="nav-item" :class="{ active: currentTab === 'bugs' }" @click="currentTab = 'bugs'">
           <span class="nav-icon">🐛</span>
           <span>缺陷治理中枢</span>
+        </li>
+
+        <!-- 5. 系统配置 (默认收起，可展开/收起) -->
+        <li class="nav-group">
+          <div class="nav-item" :class="{ active: currentTab === 'settings' && !settingsSubTab }"
+            @click="selectPrimaryMenu('settings')"
+            style="justify-content: space-between;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span class="nav-icon">⚙️</span>
+              <span style="font-weight: 600;">系统配置</span>
+            </div>
+            <span style="font-size: 11px; color: var(--text-muted);">{{ navExpanded.settings ? '▾' : '▸' }}</span>
+          </div>
+          <ul v-show="navExpanded.settings" class="sub-nav-menu">
+            <li class="sub-nav-item" :class="{ active: currentTab === 'settings' && settingsSubTab === 'overview' }"
+              @click="currentTab = 'settings'; settingsSubTab = 'overview'">
+              <span style="margin-right: 6px;">📋</span>
+              <span>配置总览</span>
+            </li>
+            <li class="sub-nav-item" :class="{ active: currentTab === 'settings' && settingsSubTab === 'cleanup' }"
+              @click="currentTab = 'settings'; settingsSubTab = 'cleanup'">
+              <span style="margin-right: 6px;">🧹</span>
+              <span>磁盘清理</span>
+            </li>
+          </ul>
         </li>
 
       </ul>
@@ -96,19 +121,6 @@
 
         </div>
 
-        <div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.06); display: flex; justify-content: space-between; align-items: center; gap: 4px;">
-          <span style="font-size: 11px; color: #94a3b8; white-space: nowrap;">
-            💾 产物: <b style="color: #e2e8f0;">{{ storageSummary.runs_total_human || '...' }}</b>
-          </span>
-          <button type="button"
-            @click="triggerStorageCleanup"
-            :disabled="isCleaningStorage"
-            title="安全清理 7 天前过程截图（100%保留 Bug 现场与记忆）"
-            style="background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.35); color: #34d399; border-radius: 4px; padding: 2px 6px; font-size: 10px; cursor: pointer; white-space: nowrap;">
-            {{ isCleaningStorage ? '⏳...' : '🧹 瘦身' }}
-          </button>
-        </div>
-
       </div>
 
     </aside>
@@ -131,6 +143,10 @@
           <span v-if="currentTab === 'tasks'">📁 任务与产物库</span>
 
           <span v-if="currentTab === 'bugs'">🐛 缺陷知识库与禅道协同</span>
+
+          <span v-if="currentTab === 'settings'">
+            {{ settingsSubTab === 'cleanup' ? '🧹 系统配置 · 磁盘清理' : '⚙️ 系统配置 · 配置总览' }}
+          </span>
 
         </div>
 
@@ -188,6 +204,7 @@
         <MonitorView />
         <TasksAssetsView />
         <BugsHubView />
+        <SystemConfigView />
       </div>
     </main>
     <GlobalModals />
@@ -201,6 +218,7 @@ import DashboardView from './views/DashboardView.vue'
 import MonitorView from './views/MonitorView.vue'
 import TasksAssetsView from './views/TasksAssetsView.vue'
 import BugsHubView from './views/BugsHubView.vue'
+import SystemConfigView from './views/SystemConfigView.vue'
 import GlobalModals from './components/GlobalModals.vue'
 
 export default {
@@ -209,6 +227,7 @@ export default {
     MonitorView,
     TasksAssetsView,
     BugsHubView,
+    SystemConfigView,
     GlobalModals,
   },
   setup() {

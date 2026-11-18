@@ -68,16 +68,45 @@
 
               </div>
 
+              <div class="grid-2">
+
+                <div class="form-group">
+
+                  <label class="form-label">首次发现时间</label>
+
+                  <div style="font-family: monospace; color: #cbd5e1;">{{ formatDateTime(selectedBug.first_seen) || '-' }}</div>
+
+                </div>
+
+                <div class="form-group">
+
+                  <label class="form-label">最近复现时间</label>
+
+                  <div style="font-family: monospace; color: #38bdf8; font-weight: 600;">{{ formatDateTime(selectedBug.last_seen) || '-' }}</div>
+
+                </div>
+
+              </div>
+
               <div class="form-group" v-if="selectedBug.run_id || selectedBug.task_id">
 
-                <label class="form-label">📍 案发运行批次 (Run ID)</label>
+                <label class="form-label">📍 案发运行批次 (Run ID / Task ID)</label>
 
-                <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
 
-                  <code
-                    style="background: #0f172a; color: #38bdf8; padding: 4px 8px; border-radius: 4px; font-size: 13px; border: 1px solid #1e293b; font-family: monospace;">{{ selectedBug.run_id || selectedBug.task_id }}</code>
+                  <code v-if="selectedBug.run_id"
+                    style="background: #0f172a; color: #38bdf8; padding: 4px 8px; border-radius: 4px; font-size: 12px; border: 1px solid #1e293b; font-family: monospace;">{{ selectedBug.run_id }}</code>
 
-                  <a v-if="selectedBug.run_id" :href="'reports/runs/zhaiwan/' + selectedBug.run_id + '/report.html'"
+                  <code v-if="selectedBug.task_id"
+                    style="background: #0f172a; color: #94a3b8; padding: 4px 8px; border-radius: 4px; font-size: 12px; border: 1px solid #1e293b; font-family: monospace;">{{ selectedBug.task_id }}</code>
+
+                  <button type="button" class="btn btn-secondary"
+                    style="padding: 4px 10px; font-size: 12px; border-color: #00d2ff; color: #00d2ff;"
+                    @click="jumpToBugMonitor(selectedBug)">
+                    📈 前往监控大屏复盘
+                  </button>
+
+                  <a v-if="selectedBug.run_id" :href="'reports/runs/' + (selectedBug.app_name || 'zhaiwan') + '/' + selectedBug.run_id + '/report.html'"
                     target="_blank"
                     style="color: #60a5fa; font-size: 13px; text-decoration: underline; font-weight: 500;">
 
@@ -257,6 +286,245 @@
 
 
 
+          <!-- 禅道提单预览与微调弹窗 -->
+          <div class="modal-overlay" v-if="zentaoPreviewVisible" style="z-index: 1200;" @click.self="closeZentaoPreview">
+            <div class="modal-content" style="width: min(1240px, 96vw); max-width: 96vw; max-height: 92vh; display: flex; flex-direction: column; padding: 0; overflow: hidden;">
+              <div class="modal-header" style="padding: 16px 22px; border-bottom: 1px solid rgba(148, 163, 184, 0.16); margin-bottom: 0; flex-shrink: 0;">
+                <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                  <h3 style="margin: 0; display: flex; align-items: center; gap: 8px;">
+                    <span>📤 禅道提单预览与微调</span>
+                    <code style="background: rgba(56, 189, 248, 0.14); color: #38bdf8; padding: 2px 8px; border-radius: 4px; font-size: 13px;">{{ zentaoPreviewForm.bug_id }}</code>
+                  </h3>
+                  <span v-if="zentaoPreviewForm.app_name" class="badge" style="background: rgba(99, 102, 241, 0.18); color: #a5b4fc; border: 1px solid rgba(99, 102, 241, 0.35);">
+                    {{ zentaoPreviewForm.app_name }}
+                  </span>
+                  <span class="badge" style="background: rgba(16, 185, 129, 0.16); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35);">
+                    状态: {{ zentaoPreviewForm.status_label || '激活' }}
+                  </span>
+                  <span v-if="zentaoPreviewMetadataLoading" style="font-size: 12px; color: #38bdf8;">⏳ 正在同步禅道级联字典...</span>
+                </div>
+                <button class="modal-close" @click="closeZentaoPreview">&times;</button>
+              </div>
+
+              <div style="padding: 18px 22px; overflow-y: auto; overflow-x: hidden; flex: 1;">
+                <div v-if="zentaoPreviewLoading" style="padding: 60px 20px; text-align: center; color: #94a3b8;">
+                  <div style="font-size: 28px; margin-bottom: 10px;">⏳</div>
+                  <div>正在实时连接禅道拉取项目、执行、模块、最近构建版本及成员字典...</div>
+                </div>
+
+                <div v-else-if="zentaoPreviewError" style="padding: 20px; background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.35); border-radius: 8px; color: #fca5a5;">
+                  ⚠️ {{ zentaoPreviewError }}
+                </div>
+
+                <div v-else>
+                  <div v-if="zentaoPreviewMeta.warning" style="margin-bottom: 14px; padding: 8px 12px; background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 6px; color: #fcd34d; font-size: 12px;">
+                    ⚠️ {{ zentaoPreviewMeta.warning }}
+                  </div>
+
+                  <div class="zentao-preview-layout">
+                    <!-- 左侧：标题与重现步骤富文本预览 -->
+                    <div style="min-width: 0;">
+                      <div class="form-group">
+                        <label class="form-label">缺陷标题 <span style="color: #f87171;">*</span></label>
+                        <input type="text" class="form-control" style="width: 100%; box-sizing: border-box;" v-model="zentaoPreviewForm.title" placeholder="请输入提交至禅道的缺陷标题" />
+                      </div>
+
+                      <div class="form-group" style="margin-bottom: 0;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                          <label class="form-label" style="margin: 0;">重现步骤 &amp; 案发现场详单</label>
+                          <div style="display: flex; gap: 6px;">
+                            <button type="button" class="btn btn-secondary"
+                              :style="zentaoPreviewTab === 'preview' ? 'padding: 3px 10px; font-size: 12px; border-color: #38bdf8; color: #38bdf8; background: rgba(56, 189, 248, 0.12);' : 'padding: 3px 10px; font-size: 12px;'"
+                              @click="zentaoPreviewTab = 'preview'">
+                              👁️ 禅道效果预览
+                            </button>
+                            <button type="button" class="btn btn-secondary"
+                              :style="zentaoPreviewTab === 'html' ? 'padding: 3px 10px; font-size: 12px; border-color: #38bdf8; color: #38bdf8; background: rgba(56, 189, 248, 0.12);' : 'padding: 3px 10px; font-size: 12px;'"
+                              @click="zentaoPreviewTab = 'html'">
+                              📝 HTML 源码微调
+                            </button>
+                          </div>
+                        </div>
+
+                        <div v-if="zentaoPreviewTab === 'preview'"
+                          class="zentao-steps-preview"
+                          v-html="zentaoPreviewForm.steps_html">
+                        </div>
+
+                        <textarea v-else class="form-control" v-model="zentaoPreviewForm.steps_html" rows="18"
+                          style="width: 100%; box-sizing: border-box; font-family: monospace; font-size: 12px; line-height: 1.5; min-height: 420px;"></textarea>
+                      </div>
+                    </div>
+
+                    <!-- 右侧：禅道结构化属性 -->
+                    <div class="zentao-preview-sidebar">
+                      <div style="font-size: 13px; font-weight: 700; color: #e2e8f0; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid rgba(148, 163, 184, 0.14);">
+                        📋 基本信息 &amp; 项目/迭代归属
+                      </div>
+
+                      <div class="grid-2" style="gap: 10px;">
+                        <div class="form-group" style="margin-bottom: 10px; min-width: 0;">
+                          <label class="form-label">所属产品</label>
+                          <select class="form-control" v-model.number="zentaoPreviewForm.product_id" @change="onZentaoCascadedChange('product')">
+                            <option v-for="p in zentaoPreviewMeta.options.products" :key="p.id" :value="Number(p.id)">
+                              {{ p.name }} (#{{ p.id }})
+                            </option>
+                            <option v-if="!zentaoPreviewMeta.options.products.length" :value="zentaoPreviewForm.product_id">
+                              产品 #{{ zentaoPreviewForm.product_id }}
+                            </option>
+                          </select>
+                        </div>
+
+                        <div class="form-group" style="margin-bottom: 10px; min-width: 0;">
+                          <label class="form-label">所属模块</label>
+                          <select class="form-control" v-model.number="zentaoPreviewForm.module_id">
+                            <option v-for="m in zentaoPreviewMeta.options.modules" :key="m.id" :value="Number(m.id)">
+                              {{ m.name }}
+                            </option>
+                            <option v-if="!zentaoPreviewMeta.options.modules.length" :value="0">/</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div class="grid-2" style="gap: 10px;">
+                        <div class="form-group" style="margin-bottom: 10px; min-width: 0;">
+                          <label class="form-label">所属项目</label>
+                          <select class="form-control" v-model.number="zentaoPreviewForm.project_id" @change="onZentaoCascadedChange('project')">
+                            <option v-for="p in zentaoPreviewMeta.options.projects" :key="p.id" :value="Number(p.id)">
+                              {{ p.name }} (#{{ p.id }})
+                            </option>
+                            <option v-if="!zentaoPreviewMeta.options.projects.length" :value="zentaoPreviewForm.project_id">
+                              项目 #{{ zentaoPreviewForm.project_id }}
+                            </option>
+                          </select>
+                        </div>
+
+                        <div class="form-group" style="margin-bottom: 10px; min-width: 0;">
+                          <label class="form-label">所属执行</label>
+                          <select class="form-control" v-model.number="zentaoPreviewForm.execution_id">
+                            <option :value="0">不关联执行</option>
+                            <option v-for="e in zentaoPreviewMeta.options.executions" :key="e.id" :value="Number(e.id)">
+                              {{ e.name }} (#{{ e.id }})
+                            </option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div class="form-group" style="margin-bottom: 10px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 4px;">
+                          <label class="form-label" style="margin: 0; white-space: nowrap;">影响版本 <span style="color: #38bdf8; font-weight: 400; font-size: 11px;">(默认最近2条: UE+Web)</span></label>
+                          <span style="font-size: 11px; color: #94a3b8; white-space: nowrap;">已选 {{ zentaoPreviewForm.opened_build.length }} 项</span>
+                        </div>
+                        <div style="background: #0b1220; border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 6px; padding: 6px 8px; max-height: 138px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px;">
+                          <label v-for="b in zentaoPreviewMeta.options.builds" :key="b.id"
+                            style="display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 4px; cursor: pointer; font-size: 12px; min-width: 0;"
+                            :style="zentaoPreviewForm.opened_build.includes(String(b.id)) ? 'background: rgba(56, 189, 248, 0.14); color: #f8fafc;' : 'color: #cbd5e1;'">
+                            <input type="checkbox" :checked="zentaoPreviewForm.opened_build.includes(String(b.id))" @change="toggleZentaoBuild(b.id)" />
+                            <span v-if="b.tag === 'web'" style="background: rgba(59, 130, 246, 0.22); color: #60a5fa; padding: 1px 5px; border-radius: 3px; font-size: 10px; font-weight: 700; flex-shrink: 0;">WEB</span>
+                            <span v-else-if="b.tag === 'ue'" style="background: rgba(168, 85, 247, 0.22); color: #c084fc; padding: 1px 5px; border-radius: 3px; font-size: 10px; font-weight: 700; flex-shrink: 0;">UE</span>
+                            <span v-else-if="b.tag === 'trunk'" style="background: rgba(148, 163, 184, 0.2); color: #cbd5e1; padding: 1px 5px; border-radius: 3px; font-size: 10px; flex-shrink: 0;">主干</span>
+                            <span style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" :title="b.name">{{ b.name }}</span>
+                            <span v-if="b.date" style="font-size: 11px; color: #64748b; font-family: monospace; flex-shrink: 0;">{{ b.date }}</span>
+                          </label>
+                        </div>
+                      </div>
+
+                      <div class="grid-2" style="gap: 10px;">
+                        <div class="form-group" style="margin-bottom: 10px; min-width: 0;">
+                          <label class="form-label" style="white-space: nowrap;">Bug 类型</label>
+                          <select class="form-control" v-model="zentaoPreviewForm.type">
+                            <option v-for="t in zentaoPreviewMeta.options.bug_types" :key="t.id" :value="t.id">
+                              {{ t.name }}
+                            </option>
+                          </select>
+                        </div>
+
+                        <div class="form-group" style="margin-bottom: 10px; min-width: 0;">
+                          <label class="form-label" style="white-space: nowrap;">严重程度</label>
+                          <select class="form-control" v-model.number="zentaoPreviewForm.severity">
+                            <option :value="1">1 - 致命 (Fatal)</option>
+                            <option :value="2">2 - 严重 (Critical)</option>
+                            <option :value="3">3 - 一般 (Normal)</option>
+                            <option :value="4">4 - 轻微 (Minor)</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div class="grid-2" style="gap: 10px;">
+                        <div class="form-group" style="margin-bottom: 10px; min-width: 0;">
+                          <label class="form-label" style="white-space: nowrap;">优先级</label>
+                          <select class="form-control" v-model.number="zentaoPreviewForm.pri">
+                            <option :value="1">1 - 最高</option>
+                            <option :value="2">2 - 高</option>
+                            <option :value="3">3 - 中</option>
+                            <option :value="4">4 - 低</option>
+                          </select>
+                        </div>
+
+                        <div class="form-group" style="margin-bottom: 10px; min-width: 0;">
+                          <label class="form-label" style="white-space: nowrap;">截止日期 <span style="font-size: 11px; color: #94a3b8;">(+7天)</span></label>
+                          <input type="date" class="form-control" v-model="zentaoPreviewForm.deadline" />
+                        </div>
+                      </div>
+
+                      <div class="form-group" style="margin-bottom: 10px;">
+                        <label class="form-label">指派给</label>
+                        <el-select
+                          v-model="zentaoPreviewForm.assigned_to"
+                          filterable
+                          :teleported="false"
+                          placeholder="输入姓名或账号搜索..."
+                          style="width: 100%;"
+                        >
+                          <el-option-group label="常用分流责任人">
+                            <el-option
+                              v-for="u in zentaoPreviewMeta.options.users.filter(x => ['chenyixiong', 'meibenxia', 'liyuncong', 'jinzhengwu', 'tongjiabao'].includes(x.account))"
+                              :key="'core-' + u.account"
+                              :label="`${u.realname} (${u.account})`"
+                              :value="u.account"
+                            />
+                          </el-option-group>
+                          <el-option-group label="禅道全部成员">
+                            <el-option
+                              v-for="u in zentaoPreviewMeta.options.users.filter(x => !['chenyixiong', 'meibenxia', 'liyuncong', 'jinzhengwu', 'tongjiabao'].includes(x.account))"
+                              :key="'all-' + u.account"
+                              :label="`${u.realname} (${u.account})`"
+                              :value="u.account"
+                            />
+                          </el-option-group>
+                        </el-select>
+                        <div v-if="zentaoPreviewForm.assignee_reason" style="font-size: 11px; color: #38bdf8; margin-top: 4px;">
+                          🤖 AI 分流依据: {{ zentaoPreviewForm.assignee_reason }}
+                        </div>
+                      </div>
+
+                      <div class="grid-2" style="gap: 10px;">
+                        <div class="form-group" style="margin-bottom: 0; min-width: 0;">
+                          <label class="form-label">操作系统</label>
+                          <input type="text" class="form-control" v-model="zentaoPreviewForm.os" />
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0; min-width: 0;">
+                          <label class="form-label">浏览器</label>
+                          <input type="text" class="form-control" v-model="zentaoPreviewForm.browser" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div style="padding: 14px 22px; border-top: 1px solid rgba(148, 163, 184, 0.16); display: flex; justify-content: flex-end; gap: 10px; flex-shrink: 0; background: rgba(15, 23, 42, 0.45);">
+                <button class="btn btn-secondary" :disabled="zentaoPreviewSubmitting" @click="closeZentaoPreview">取消</button>
+                <button class="btn btn-primary"
+                  :disabled="zentaoPreviewSubmitting || zentaoPreviewLoading || !!zentaoPreviewError"
+                  @click="confirmSyncZenTao">
+                  {{ zentaoPreviewSubmitting ? '⏳ 正在提交至禅道...' : '🚀 确认提交至禅道' }}
+                </button>
+              </div>
+            </div>
+          </div>
+
+
           <!-- 缺陷在线编辑弹窗 -->
 
           <div class="modal-overlay" v-if="editingBug" @click.self="editingBug = null">
@@ -329,9 +597,34 @@
 
                 <div class="form-group">
 
-                  <label class="form-label">责任人 (前端/后端/数据接入分流)</label>
+                  <label class="form-label">责任人 (支持输入姓名/账号模糊搜索)</label>
 
-                  <input type="text" class="form-control" v-model="editForm.assignee" placeholder="如 陈贻雄 / 梅本霞 / 李云骢">
+                  <el-select
+                    v-model="editForm.assignee"
+                    filterable
+                    allow-create
+                    default-first-option
+                    :teleported="false"
+                    placeholder="输入姓名或账号搜索..."
+                    style="width: 100%;"
+                  >
+                    <el-option-group label="常用分流责任人">
+                      <el-option
+                        v-for="u in zentaoUsers.filter(x => ['chenyixiong', 'meibenxia', 'liyuncong', 'jinzhengwu', 'tongjiabao'].includes(x.account))"
+                        :key="'edit-core-' + u.account"
+                        :label="`${u.realname} (${u.account})`"
+                        :value="u.realname"
+                      />
+                    </el-option-group>
+                    <el-option-group label="禅道全部成员">
+                      <el-option
+                        v-for="u in zentaoUsers.filter(x => !['chenyixiong', 'meibenxia', 'liyuncong', 'jinzhengwu', 'tongjiabao'].includes(x.account))"
+                        :key="'edit-all-' + u.account"
+                        :label="`${u.realname} (${u.account})`"
+                        :value="u.realname"
+                      />
+                    </el-option-group>
+                  </el-select>
 
                 </div>
 
@@ -1241,3 +1534,59 @@ export default {
   }
 }
 </script>
+
+<style scoped>
+.zentao-preview-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(390px, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.zentao-preview-sidebar {
+  min-width: 0;
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+
+.zentao-preview-sidebar .form-control {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.zentao-steps-preview {
+  background: #ffffff;
+  color: #1e293b;
+  border-radius: 8px;
+  padding: 16px;
+  border: 1px solid #cbd5e1;
+  max-height: 54vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  font-size: 13px;
+  line-height: 1.6;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.zentao-steps-preview :deep(*) {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.zentao-steps-preview :deep(pre),
+.zentao-steps-preview :deep(code) {
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.zentao-steps-preview :deep(img) {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+</style>

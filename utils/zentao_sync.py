@@ -114,9 +114,49 @@ class ZenTaoClient:
         data = resp.json()
         return data.get("executions", [])
 
-    def upload_file(self, file_path: Path | str) -> Optional[Dict[str, Any]]:
+    def get_modules(self, product_id: int) -> List[Dict[str, Any]]:
+        """列出指定产品关联的 Bug 模块列表"""
+        token = self.get_token()
+        url = f"{self.url}/api.php/v1/modules?id={int(product_id)}&type=bug"
+        resp = self.session.get(url, headers={"Token": token}, timeout=15)
+        if resp.status_code != 200:
+            return []
+        data = resp.json()
+        return data.get("modules", [])
+
+    def get_builds(self, project_id: int) -> List[Dict[str, Any]]:
+        """列出指定项目关联的构建版本列表（按 ID 降序去重）"""
+        token = self.get_token()
+        url = f"{self.url}/api.php/v1/projects/{int(project_id)}/builds"
+        resp = self.session.get(url, headers={"Token": token}, timeout=15)
+        if resp.status_code != 200:
+            return []
+        data = resp.json()
+        raw_builds = data.get("builds", [])
+        seen = set()
+        unique_builds = []
+        for b in raw_builds:
+            bid = b.get("id")
+            if bid is None or bid in seen:
+                continue
+            seen.add(bid)
+            unique_builds.append(b)
+        unique_builds.sort(key=lambda x: int(x.get("id") or 0), reverse=True)
+        return unique_builds
+
+    def get_users(self, limit: int = 200) -> List[Dict[str, Any]]:
+        """列出禅道系统成员列表"""
+        token = self.get_token()
+        url = f"{self.url}/api.php/v1/users?limit={int(limit)}"
+        resp = self.session.get(url, headers={"Token": token}, timeout=15)
+        if resp.status_code != 200:
+            return []
+        data = resp.json()
+        return data.get("users", [])
+
+    def upload_file(self, file_path: Path | str, timeout: tuple[int, int] = (10, 90)) -> Optional[Dict[str, Any]]:
         """
-        向禅道服务器预上传附件/截图图片
+        向禅道服务器预上传附件/截图图片（支持大图轻量压缩与连接重置自动重试）
         返回: {"id": file_id, "url": "/index.php?m=file&f=read&..."} 或 None (失败时)
         """
         p = Path(file_path).resolve()
@@ -126,21 +166,51 @@ class ZenTaoClient:
 
         token = self.get_token()
         url = f"{self.url}/api.php/v1/files"
-        try:
-            mime = "image/png" if p.suffix.lower() == ".png" else "image/jpeg"
-            with open(p, "rb") as f:
-                file_bytes = f.read()
 
-            files = {"imgFile": (p.name, file_bytes, mime)}
-            resp = self.session.post(url, files=files, headers={"Token": token}, timeout=30)
-            if resp.status_code in (200, 201):
-                res_json = resp.json()
-                if "id" in res_json:
-                    logger.info(f"📤 案发现场截图成功预上传至禅道 (fileID: {res_json['id']}): {p.name}")
-                    return res_json
-            logger.warning(f"预上传附件到禅道失败 (HTTP {resp.status_code}): {resp.text}")
-        except Exception as e:
-            logger.warning(f"预上传附件到禅道异常: {e}")
+        upload_name = p.name
+        mime = "image/png" if p.suffix.lower() == ".png" else "image/jpeg"
+        file_bytes = p.read_bytes()
+
+        # 若截图超过 1.5MB，自动压缩为轻量 JPEG，避免触发禅道服务端上传体限制或连接重置
+        if len(file_bytes) > 1.5 * 1024 * 1024:
+            try:
+                from PIL import Image
+                import io
+
+                img = Image.open(io.BytesIO(file_bytes))
+                if img.mode in ("RGBA", "P"):
+                    img = img.convert("RGB")
+                if img.width > 1920:
+                    scale = 1920.0 / float(img.width)
+                    img = img.resize((1920, int(img.height * scale)), Image.Resampling.LANCZOS)
+                buf = io.BytesIO()
+                img.save(buf, format="JPEG", quality=85)
+                file_bytes = buf.getvalue()
+                upload_name = f"{p.stem}.jpg"
+                mime = "image/jpeg"
+                logger.info(f"🗜️ 截图体积较大，已自动轻量化压缩为 {len(file_bytes) / 1024:.0f}KB 后上传: {upload_name}")
+            except Exception as ce:
+                logger.debug(f"截图预压缩跳过: {ce}")
+
+        for attempt in range(2):
+            try:
+                files = {"imgFile": (upload_name, file_bytes, mime)}
+                headers = {"Token": token}
+                if attempt > 0:
+                    headers["Connection"] = "close"
+                resp = self.session.post(url, files=files, headers=headers, timeout=timeout)
+                if resp.status_code in (200, 201):
+                    res_json = resp.json()
+                    if "id" in res_json:
+                        logger.info(f"📤 案发现场截图成功预上传至禅道 (fileID: {res_json['id']}): {upload_name}")
+                        return res_json
+                logger.warning(f"预上传附件到禅道失败 (HTTP {resp.status_code}): {resp.text}")
+                return None
+            except Exception as e:
+                if attempt == 0:
+                    logger.warning(f"预上传附件到禅道连接异常，正在新建连接重试 ({e})")
+                    continue
+                logger.warning(f"预上传附件到禅道异常 (重试后仍失败): {e}")
         return None
 
     def submit_bug(
@@ -154,6 +224,11 @@ class ZenTaoClient:
         assigned_to: Optional[str] = None,
         project_id: Optional[int] = None,
         execution_id: Optional[int] = None,
+        module_id: int = 0,
+        deadline: Optional[str] = None,
+        opened_build: Optional[List[str]] = None,
+        os_name: str = "windows",
+        browser_name: str = "electron",
         files: Optional[List[int]] = None,
     ) -> Dict[str, Any]:
         """向禅道提交缺陷"""
@@ -165,9 +240,10 @@ class ZenTaoClient:
             "steps": steps_html,
             "severity": int(severity),
             "pri": int(pri),
-            "type": bug_type,
-            "os": "windows",
-            "browser": "electron",
+            "type": bug_type or "codeerror",
+            "module": int(module_id or 0),
+            "os": os_name or "windows",
+            "browser": browser_name or "electron",
         }
         if assigned_to:
             payload["assignedTo"] = assigned_to
@@ -175,10 +251,16 @@ class ZenTaoClient:
             payload["project"] = int(project_id)
         if execution_id:
             payload["execution"] = int(execution_id)
+        if deadline:
+            payload["deadline"] = deadline
+        if opened_build:
+            payload["openedBuild"] = [str(b) for b in opened_build if str(b).strip()]
+        else:
+            payload["openedBuild"] = ["trunk"]
         if files:
             payload["files"] = files
 
-        resp = self.session.post(url, json=payload, headers={"Token": token}, timeout=30)
+        resp = self.session.post(url, json=payload, headers={"Token": token}, timeout=(10, 60))
         if resp.status_code not in (200, 201):
             raise RuntimeError(f"提交禅道缺陷失败 (HTTP {resp.status_code}): {resp.text}")
         return resp.json()
@@ -218,6 +300,48 @@ class ZenTaoClient:
         if resp.status_code not in (200, 201):
             raise RuntimeError(f"更新禅道缺陷失败 (HTTP {resp.status_code}): {resp.text}")
         return resp.json()
+
+
+def pick_default_opened_builds(
+    builds: List[Dict[str, Any]],
+    product_id: Optional[int] = None,
+) -> List[str]:
+    """
+    智能挑选影响版本（openedBuild）：
+    1. 若指定了 product_id 且该产品下存在构建版本，优先在对应产品版本中筛选，否则在项目全部构建版本中筛选；
+    2. 优先各自挑选最近 1 条 `web` 版本和最近 1 条 `ue` 版本（合计 2 条）；
+    3. 若不足 2 条，则从其余最近构建版本中补足至 2 条；若完全无版本则回退 ["trunk"]。
+    """
+    if not builds:
+        return ["trunk"]
+
+    pool = builds
+    if product_id is not None:
+        prod_matched = [b for b in builds if str(b.get("product") or "") == str(product_id)]
+        if prod_matched:
+            pool = prod_matched
+
+    sorted_pool = sorted(pool, key=lambda x: int(x.get("id") or 0), reverse=True)
+    selected_ids: List[str] = []
+
+    latest_web = next((b for b in sorted_pool if "web" in str(b.get("name") or "").lower()), None)
+    latest_ue = next((b for b in sorted_pool if "ue" in str(b.get("name") or "").lower()), None)
+
+    for item in (latest_web, latest_ue):
+        if item and item.get("id") is not None:
+            bid = str(item["id"])
+            if bid not in selected_ids:
+                selected_ids.append(bid)
+
+    if len(selected_ids) < 2:
+        for b in sorted_pool:
+            bid = str(b.get("id") or "")
+            if bid and bid not in selected_ids:
+                selected_ids.append(bid)
+            if len(selected_ids) >= 2:
+                break
+
+    return selected_ids or ["trunk"]
 
 
 def resolve_bug_app_key(
@@ -614,6 +738,52 @@ def image_to_base64_data_uri(img_path: Optional[Path], max_width: int = 900, qua
             return None
 
 
+def format_zentao_bug_title(
+    raw_title: Optional[str],
+    ui_path: Optional[str] = None,
+    app_chinese: str = "寨湾矿山",
+) -> str:
+    """
+    格式化提交至禅道的缺陷标题：
+    保留【AI自动化·<矿山名称>】来源标识，剥离内部 [BUG-xxx] 与 [explore_/smoke_/yaml_xxx] 批次号，并将业务路径前置。
+    """
+    import re
+    title = str(raw_title or "自动化探索发现异常").strip()
+    title = re.sub(r"^【AI自动化(?:·[^】]*)?】\s*", "", title)
+    title = re.sub(r"^\[BUG-\d{8}-\d+\]\s*", "", title)
+    title = re.sub(r"^\[(?:explore|smoke|yaml)_\d{8}_\d+\]\s*", "", title)
+    title = title.strip() or "自动化探索发现异常"
+
+    clean_path = str(ui_path or "").strip()
+    if clean_path in ("", "未知", "未知路径", "首页/未知", "未指定", "None"):
+        clean_path = ""
+
+    ai_prefix = f"【AI自动化·{app_chinese}】"
+    if clean_path and not (title.startswith(f"【{clean_path}】") or title.startswith(f"[{clean_path}]")):
+        return f"{ai_prefix}【{clean_path}】{title}"
+    return f"{ai_prefix}{title}"
+
+
+def collect_reproducible_modules(bug: Dict[str, Any]) -> List[str]:
+    """汇总缺陷关联的所有去重可复现业务模块路径"""
+    invalid = {"", "无", "未知", "未知路径", "首页/未知", "未指定", "None"}
+    seen: List[str] = []
+
+    def _add(val: Any):
+        s = str(val or "").strip()
+        if s and s not in invalid and s not in seen:
+            seen.append(s)
+
+    for m in (bug.get("affected_modules") or []):
+        _add(m)
+    _add(bug.get("first_ui_path"))
+    _add(bug.get("ui_path"))
+    for h in (bug.get("recurrence_history") or []):
+        if isinstance(h, dict):
+            _add(h.get("ui_path"))
+    return seen
+
+
 def format_bug_details_html(
     bug: Dict[str, Any],
     app_key: str,
@@ -625,6 +795,7 @@ def format_bug_details_html(
 ) -> tuple[str, Optional[Path]]:
     """组织提交给禅道的结构化富文本内容（内嵌案发现场高精截图）"""
     app_chinese = APP_NAME_MAP.get(app_key, "寨湾矿山")
+    bug_id_str = html.escape(str(bug.get("id") or "未知"))
     ui_path = html.escape(str(bug.get("ui_path") or "首页/未知"))
     actual_error = html.escape(str(bug.get("actual") or bug.get("error_log") or "无报错日志"))
     occurrences = bug.get("occurrences", 1)
@@ -663,11 +834,16 @@ def format_bug_details_html(
                 f"</div>"
             )
 
+    repro_modules = collect_reproducible_modules(bug)
+    repro_modules_html = " 、 ".join(f"<code>{html.escape(m)}</code>" for m in repro_modules) if repro_modules else f"<code>{ui_path}</code>"
+
     html_parts = [
         f"<p><strong>【测试来源】</strong>Electron Vision AI 自动化多模态探索巡检系统</p>",
+        f"<p><strong>【缺陷编号】</strong><code>{bug_id_str}</code></p>",
         f"<p><strong>【所属矿山】</strong>{app_chinese} (App: {app_key})</p>",
-        f"<p><strong>【巡检批次】</strong><code>{run_id}</code> (首次发现: {date_str}，历史累计复现: {occurrences} 次)</p>",
+        f"<p><strong>【测试记录】</strong><code>{run_id}</code> (首次发现: {date_str}，历史累计复现: {occurrences} 次)</p>",
         f"<p><strong>【业务路径】</strong>📍 <code>{ui_path}</code></p>",
+        f"<p><strong>【可复现模块】</strong>🔁 {repro_modules_html}</p>",
         f"<p><strong>【责任指派】</strong>👤 <strong>{assignee_name}</strong> ({assignee_role})</p>",
         f"<hr/>",
         f"<p><strong>【案发现场异常 / 接口堆栈】</strong></p>",
@@ -857,9 +1033,9 @@ def main():
         target_project_id = args.project_id or app_cfg.get("zentao_project_id") or client.default_project_id or None
         target_execution_id = args.execution_id or app_cfg.get("zentao_execution_id") or client.default_execution_id or None
 
-        raw_title = bug.get("title") or "自动化探索发现异常"
-        clean_title = raw_title.replace("【AI自动化】", "").strip()
-        final_title = f"【AI自动化·{app_chinese}】[{bug_id}] {clean_title}"
+        final_title = format_zentao_bug_title(
+            bug.get("title"), ui_path=bug.get("ui_path"), app_chinese=app_chinese
+        )
 
         # 智能前置 AI 守卫：自动补齐分析
         ensure_bug_ai_analysis(bug, g_file, r_files)
@@ -930,9 +1106,9 @@ def main():
         target_project_id = args.project_id or app_cfg.get("zentao_project_id") or client.default_project_id or None
         target_execution_id = args.execution_id or app_cfg.get("zentao_execution_id") or client.default_execution_id or None
 
-        raw_title = bug.get("title") or "自动化探索发现异常"
-        clean_title = raw_title.replace("【AI自动化】", "").strip()
-        final_title = f"【AI自动化·{app_chinese}】[{bug_id}] {clean_title}"
+        final_title = format_zentao_bug_title(
+            bug.get("title"), ui_path=bug.get("ui_path"), app_chinese=app_chinese
+        )
 
         # 禅道严重度 mapping (High->2, Medium->3, Low->4, 1~4直通)
         from utils.bug_enricher import normalize_severity

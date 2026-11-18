@@ -1164,12 +1164,27 @@ class ElectronDriver(NetworkMonitorMixin, DomExtractorMixin, ScreenshotMixin, Ch
             breaches.append(f"全局 JS 事件监听器严重泄漏未解绑 (净增 +{listener_growth} 个 > 阈值 +{max_listener_growth}, 当前 {curr_listeners})")
 
         # 检查外部伴生引擎 (UE 等 C++ 进程) 与宿主机内存
+        # 规则：启动前 5 分钟冷加载波动（或未超过 12GB 绝对安全线且相对基线未净增 +2048MB）不判为泄漏
         curr_comp_mb = float(curr.get("companion_mem_mb", 0.0))
+        base_comp_mb = float(base.get("companion_mem_mb", 0.0))
+        comp_growth_mb = round(curr_comp_mb - base_comp_mb, 1)
+        elapsed_from_base_sec = max(0.0, float(curr.get("timestamp", 0.0)) - float(base.get("timestamp", 0.0)))
         comp_name = curr.get("companion_name") or "伴生引擎进程"
         host_load = int(curr.get("host_load_percent", 0))
 
-        if curr_comp_mb > max_companion_mb:
-            breaches.append(f"伴生引擎 [{comp_name}] 物理内存超限 ({curr_comp_mb:.1f}MB > 警戒线 {max_companion_mb:.1f}MB)")
+        comp_hard_ceiling_mb = max(12288.0, max_companion_mb * 2.0)
+        comp_growth_threshold_mb = 2048.0
+        comp_over_hard = curr_comp_mb > comp_hard_ceiling_mb
+        comp_sustained_leak = (
+            elapsed_from_base_sec >= 300.0
+            and curr_comp_mb > max_companion_mb
+            and (base_comp_mb <= 0.0 or comp_growth_mb > comp_growth_threshold_mb)
+        )
+        if comp_over_hard or comp_sustained_leak:
+            breaches.append(
+                f"伴生引擎 [{comp_name}] 物理内存超限 ({curr_comp_mb:.1f}MB > 警戒线 {max_companion_mb:.1f}MB, "
+                f"基线 {base_comp_mb:.1f}MB, Δ={comp_growth_mb:+.1f}MB)"
+            )
         if host_load > max_host_load_percent:
             breaches.append(f"宿主机物理内存严重告急 ({host_load}% > 警戒线 {max_host_load_percent:.0f}%, 剩余 {curr.get('host_avail_mb', 0)}MB)")
 

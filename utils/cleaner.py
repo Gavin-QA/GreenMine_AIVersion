@@ -26,14 +26,6 @@ import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
-# Windows GBK 终端 UTF-8 安全编码保护
-if sys.platform == "win32":
-    try:
-        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
-    except Exception:
-        pass
-
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
@@ -48,15 +40,27 @@ from utils.paths import (
 
 
 def get_dir_size_and_count(path: Path):
-    """计算目录的总字节数与文件数"""
-    total_size = 0
-    file_count = 0
+    """使用 os.scandir 高速计算目录的总字节数与文件数（Windows 下比 rglob+stat 快数倍）"""
     if not path.exists():
         return 0, 0
-    for p in path.rglob("*"):
-        if p.is_file():
-            total_size += p.stat().st_size
-            file_count += 1
+    total_size = 0
+    file_count = 0
+    stack = [str(path)]
+    while stack:
+        cur = stack.pop()
+        try:
+            with os.scandir(cur) as it:
+                for entry in it:
+                    try:
+                        if entry.is_file(follow_symlinks=False):
+                            total_size += entry.stat(follow_symlinks=False).st_size
+                            file_count += 1
+                        elif entry.is_dir(follow_symlinks=False):
+                            stack.append(entry.path)
+                    except OSError:
+                        pass
+        except OSError:
+            pass
     return total_size, file_count
 
 
@@ -70,29 +74,60 @@ def format_size(bytes_size: int) -> str:
 
 
 def get_disk_usage_summary() -> dict:
-    """获取工程产物结构化磁盘占用大盘数据（供 CLI 与平台 API 共用）"""
-    art_size, art_count = get_dir_size_and_count(ARTIFACTS_DIR)
-    gb_size, _ = get_dir_size_and_count(GLOBAL_BUGS_DIR)
-    top_size, _ = get_dir_size_and_count(TOPOLOGY_DIR)
+    """获取工程产物结构化磁盘占用大盘数据（单次高速 scandir 扫描，避免重复遍历）"""
+    gb_size, gb_count = get_dir_size_and_count(GLOBAL_BUGS_DIR)
+    top_size, top_count = get_dir_size_and_count(TOPOLOGY_DIR)
+    art_size = gb_size + top_size
+    art_count = gb_count + top_count
+    # 兼容 artifacts/ 下除 bugs、topology 外的其余目录（仅扫描顶层子项）
+    if ARTIFACTS_DIR.exists():
+        try:
+            with os.scandir(ARTIFACTS_DIR) as it:
+                for entry in it:
+                    if entry.path in (str(GLOBAL_BUGS_DIR), str(TOPOLOGY_DIR)):
+                        continue
+                    if entry.is_file(follow_symlinks=False):
+                        art_size += entry.stat(follow_symlinks=False).st_size
+                        art_count += 1
+                    elif entry.is_dir(follow_symlinks=False):
+                        sz, cnt = get_dir_size_and_count(Path(entry.path))
+                        art_size += sz
+                        art_count += cnt
+        except OSError:
+            pass
 
-    runs_size, runs_count = get_dir_size_and_count(RUNS_DIR)
     run_folders = get_all_run_folders()
-
+    runs_size = 0
     shots_size = 0
     shots_count = 0
     bugs_size = 0
     mem_size = 0
     log_size = 0
+
     for r in run_folders:
-        s_sz, s_cnt = get_dir_size_and_count(r / "screenshots")
-        b_sz, _ = get_dir_size_and_count(r / "bugs")
-        m_sz, _ = get_dir_size_and_count(r / "checkpoint")
-        shots_size += s_sz
-        shots_count += s_cnt
-        bugs_size += b_sz
-        mem_size += m_sz
-        for log_f in r.glob("*.log"):
-            log_size += log_f.stat().st_size
+        try:
+            with os.scandir(r) as it:
+                for entry in it:
+                    try:
+                        if entry.is_file(follow_symlinks=False):
+                            f_sz = entry.stat(follow_symlinks=False).st_size
+                            runs_size += f_sz
+                            if entry.name.endswith(".log"):
+                                log_size += f_sz
+                        elif entry.is_dir(follow_symlinks=False):
+                            sz, cnt = get_dir_size_and_count(Path(entry.path))
+                            runs_size += sz
+                            if entry.name == "screenshots":
+                                shots_size += sz
+                                shots_count += cnt
+                            elif entry.name == "bugs":
+                                bugs_size += sz
+                            elif entry.name == "checkpoint":
+                                mem_size += sz
+                    except OSError:
+                        pass
+        except OSError:
+            pass
 
     return {
         "artifacts_bytes": art_size,
@@ -197,6 +232,7 @@ def clean_temp_screenshots(
         print("🛡️ 激活 Bug 保护盾已开启：含未处理「激活」Bug 的报告将保留全部上下文过程截图。")
     if dry_run:
         print("🔍 当前为 [预演模式 (Dry-Run)]，不执行实际写删。")
+    sys.stdout.flush()
 
     if compress_webp and not dry_run:
         try:
@@ -208,6 +244,27 @@ def clean_temp_screenshots(
 
     img_exts = (".png", ".jpg", ".jpeg", ".webp")
     compress_targets = []
+    affected_runs_map = {}
+
+    def _record_file(run_id: str, shots_path: Path, filename: str, est_bytes: int):
+        entry = affected_runs_map.get(run_id)
+        if entry is None:
+            try:
+                rel_dir = str(shots_path.relative_to(PROJECT_ROOT)).replace("\\", "/")
+            except ValueError:
+                rel_dir = str(shots_path).replace("\\", "/")
+            entry = {
+                "run_id": run_id,
+                "dir": rel_dir,
+                "file_count": 0,
+                "freed_bytes": 0,
+                "files": [],
+            }
+            affected_runs_map[run_id] = entry
+        entry["file_count"] += 1
+        entry["freed_bytes"] += est_bytes
+        entry["files"].append(filename)
+
     for r in run_folders:
         shots_dir = r / "screenshots"
         if not shots_dir.exists():
@@ -232,43 +289,16 @@ def clean_temp_screenshots(
                 if file_sz <= 450 * 1024:
                     continue
                 if dry_run:
-                    # 估算 WebP 压缩节省 ~85%
-                    cleaned_bytes += int(file_sz * 0.85)
+                    est_saved = int(file_sz * 0.85)
+                    cleaned_bytes += est_saved
                     cleaned_files += 1
+                    _record_file(r.name, shots_dir, shot.name, est_saved)
                 else:
-                    try:
-                        with Image.open(shot) as img:
-                            if img.mode not in ("RGB", "L"):
-                                img = img.convert("RGB")
-                            img.save(shot, format="WEBP", quality=quality, method=4)
-                        new_sz = shot.stat().st_size
-                        if new_sz < file_sz:
-                            cleaned_bytes += (file_sz - new_sz)
-                        cleaned_files += 1
-                    except Exception as e:
-                        print(f"压缩失败: {shot} ({e})")
+                    compress_targets.append((r.name, shots_dir, shot, file_sz))
             else:
                 cleaned_bytes += file_sz
                 cleaned_files += 1
-                if not dry_run:
-                    try:
-                        shot.unlink()
-                    except Exception as e:
-                        print(f"删除失败: {shot} ({e})")
-
-            if compress_webp:
-                # 跳过已经很小（<= 450KB）的图，只处理膨胀 PNG 或超大图片
-                if file_sz <= 450 * 1024:
-                    continue
-                if dry_run:
-                    # 估算 WebP 压缩节省 ~85%
-                    cleaned_bytes += int(file_sz * 0.85)
-                    cleaned_files += 1
-                else:
-                    compress_targets.append((shot, file_sz))
-            else:
-                cleaned_bytes += file_sz
-                cleaned_files += 1
+                _record_file(r.name, shots_dir, shot.name, file_sz)
                 if not dry_run:
                     try:
                         shot.unlink()
@@ -277,34 +307,46 @@ def clean_temp_screenshots(
 
     if compress_webp and not dry_run and compress_targets:
         def _compress_one(item):
-            shot_path, orig_sz = item
+            run_id, shots_path, shot_path, orig_sz = item
             try:
                 with Image.open(shot_path) as img:
                     if img.mode not in ("RGB", "L"):
                         img = img.convert("RGB")
                     img.save(shot_path, format="WEBP", quality=quality, method=4)
                 new_sz = shot_path.stat().st_size
-                return max(0, orig_sz - new_sz), True
+                return run_id, shots_path, shot_path.name, max(0, orig_sz - new_sz), True
             except Exception as e:
                 print(f"压缩失败: {shot_path} ({e})")
-                return 0, False
+                return run_id, shots_path, shot_path.name, 0, False
 
         workers = min(8, os.cpu_count() or 4)
         with ThreadPoolExecutor(max_workers=workers) as pool:
-            for saved_b, ok in pool.map(_compress_one, compress_targets):
+            for run_id, shots_path, fname, saved_b, ok in pool.map(_compress_one, compress_targets):
                 if ok:
                     cleaned_bytes += saved_b
                     cleaned_files += 1
+                    _record_file(run_id, shots_path, fname, saved_b)
+
+    affected_runs = []
+    for entry in affected_runs_map.values():
+        entry["freed_human"] = format_size(entry["freed_bytes"])
+        affected_runs.append(entry)
 
     action_label = "预计释放" if dry_run else "成功释放"
     freed_human = format_size(cleaned_bytes)
     verb = "压缩" if compress_webp else "清理"
     print(f"\n✅ 瘦身完成！{action_label} 空间: {freed_human} ({verb}了 {cleaned_files} 张临时过程大图)")
+    if affected_runs:
+        print(f"📋 本次涉及 {len(affected_runs)} 个运行目录的文件明细：")
+        for ar in affected_runs:
+            preview = ", ".join(ar["files"][:5])
+            more = f" ... 等共 {ar['file_count']} 个文件" if ar["file_count"] > 5 else ""
+            print(f"   📁 {ar['dir']} ({ar['file_count']} 个, {ar['freed_human']}): {preview}{more}")
     if protected_runs:
         print(f"🛡️ 已保护 {len(protected_runs)} 个含「激活」Bug 的报告目录（完整保留上下文过程图）：")
         for pr in protected_runs:
             print(f"   ⏭️ {pr['run_id']} (关联激活缺陷: {', '.join(pr['bug_ids'])})")
-    print("🔒 安全保障已生效：所有 Bug 崩溃现场截图、检查点记忆(checkpoint)、数据 JSON 及日志均已 100% 完整保留！\n")
+    print("🔒 安全保障已生效：所有 Bug 崩溃现场截图、检查点记忆(checkpoint)、数据 JSON 及日志均已 100% 完整保留！\n", flush=True)
 
     return {
         "cleaned_files": cleaned_files,
@@ -315,6 +357,7 @@ def clean_temp_screenshots(
         "protect_active_bugs": protect_active_bugs,
         "protected_runs": protected_runs,
         "protected_count": len(protected_runs),
+        "affected_runs": affected_runs,
         "dry_run": dry_run,
     }
 
@@ -347,4 +390,10 @@ def main():
 
 
 if __name__ == "__main__":
+    if sys.platform == "win32":
+        try:
+            sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace", line_buffering=True)
+            sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace", line_buffering=True)
+        except Exception:
+            pass
     main()

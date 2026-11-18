@@ -101,28 +101,20 @@ def get_runtime_environment_context(app_key: Optional[str] = None) -> Dict[str, 
 
 
 def build_expert_analysis_prompt(bug: Dict[str, Any], env_ctx: Dict[str, Any]) -> Tuple[str, str]:
-    """构建研发级根因深度诊断的 System Prompt 与 User Prompt"""
+    """构建精简、精准、直击根因的研发级初诊 Prompt"""
     system_prompt = (
-        "你是一个拥有 10 年以上经验的 Electron 桌面客户端架构师、前端高级技术专家与自动化测试全栈诊断顾问。\n"
-        "当测试框架捕获到一个新的缺陷时，你的任务是输出一份具备【无可辩驳的技术证据链】与【拿来即用修复代码】的研发级深度初诊报告。\n"
-        "这份报告将直接推送到禅道 (ZenTao) 指派给研发工程师（前端：陈贻雄 / 后端：梅本霞）。\n"
-        "【严禁】输出空泛无用的套话（如仅回答'组件报错建议联系前端'）。\n"
-        "【严禁盲目主观臆造与套模版】\n"
-        "- 严禁机械化地将所有报错无脑归咎于某一个固定原因（如严禁将网络 404、接口不匹配、资源未加载等常见问题千篇一律地怪罪于 'crypto.randomUUID' 或 '非安全上下文'）！\n"
-        "- 严禁虚构违背计算机常识的言论（例如臆造 'undefined 会被 URL 编码为 e+04' 这种荒唐推论）！\n"
-        "- 必须实事求是：如果是 404，分析请求的 URL 路径结构、资源是否存在、流媒体服务路径规则或数据格式（如数字科学计数法 e+04 脏数据）；如果是 500/网络超时，分析后端接口契约；如果是 JS 语法/未捕获异常，分析真实堆栈代码！\n"
-        "你必须结合真实报错堆栈、HTTP 状态码、请求 URL、WebRTC 握手通信逻辑、"
-        "Vue 虚拟 DOM/生命周期、以及当前特定的软件版本与网络协议，给出具有高度说服力的严谨技术论证。\n\n"
-        "你必须且只能返回一个合法的 JSON 对象，包含以下字段：\n"
+        "你是一个资深客户端/全栈测试诊断专家，需要将自动化捕获的缺陷提炼为【极简精准】的研发排查结论，推送至禅道。\n"
+        "【核心原则】：开发只看干货！总字数严格控制在 200 字以内，严禁长篇大论、严禁教科书式原理解释、严禁写‘跨环境/多机差异分析’、严禁贴大段泛泛伪代码、严禁主观臆测。\n"
+        "【实事求是】：\n"
+        "- 404/500/业务错误：直接写出报错接口方法名、URL、HTTP/业务状态码及核心报错原因。\n"
+        "- 前端 JS 崩溃：直接写出报错属性/方法及空值/渲染时机问题。\n"
+        "- 视觉/数据不匹配：直接写出界面值与接口原始值的差异点。\n\n"
+        "你必须且只能返回一个合法的 JSON 对象，包含以下 4 个精简字段：\n"
         "{\n"
-        '  "category": "核心技术定性与分类（如：【前端】非安全HTTP上下文引发Web Crypto API受限 / 【启动器】WebRTC握手断流 / 【后端】500服务契约破损）",\n'
-        '  "summary": "一句话核心案发判定（直击问题最根本的技术冲突点）",\n'
-        '  "root_cause_analysis": "底层案发机理解析（结合规范、协议、调用链深入剖析为什么此处会报错，说明底层执行流程）",\n'
-        '  "environment_diff": "跨环境与多端差异破局（专门分析解答为什么部分电脑能跑/测试不复现，而在此电脑复现，如版本断代、HTTP与HTTPS策略差异、控制台静默忽略等）",\n'
-        '  "reproduction_impact": "业务影响与隐患评估（评估对三维孪生推流、大屏面板交互或数据渲染的破坏性）",\n'
-        '  "solution_patch": "代码级修复建议与兼容性补丁（提供可以直接复制粘贴的 JavaScript/TypeScript 或后端补丁代码片段，必须具有生产级防御性）",\n'
-        '  "recommended_assignee": "陈贻雄 (前端) 或 梅本霞 (后端)（附简要判定理由）",\n'
-        '  "formatted_markdown": "由上述内容精心编排的高颜值、具备清晰小标题与代码块的完整 Markdown 诊断报告"\n'
+        '  "category": "一句话技术定性（如：【后端】MySQL 排序规则冲突 / 【前端】未判空读取 offsetWidth）",\n'
+        '  "root_cause": "1~3条直接事实（用简短要点列出问题接口名/URL/报错堆栈/异常字段，每条不超过1行）",\n'
+        '  "fix_action": "1~2句具体可执行的修改建议（直接说改哪个接口/字段/判空逻辑）",\n'
+        '  "recommended_assignee": "陈贻雄 (前端) 或 梅本霞 (后端) 或 李云骢 (数据接入)"\n'
         "}\n"
         "不要输出除该 JSON 对象之外的任何外部文本。"
     )
@@ -192,32 +184,18 @@ def analyze_bug_expertly(
         model=model
     )
 
-    # 提取结构化数据
-    category = result.get("category", "技术定性待定")
-    summary = result.get("summary", "暂无简要概述")
-    root_cause = result.get("root_cause_analysis", result.get("root_cause", "暂无机理解析"))
-    env_diff = result.get("environment_diff", "暂无跨环境差异分析")
-    solution = result.get("solution_patch", result.get("troubleshooting", "暂无代码补丁"))
-    assignee = result.get("recommended_assignee", "陈贻雄 (前端)")
+    # 提取精简结构化字段并统一排版
+    category = str(result.get("category") or "技术定性待定").strip()
+    root_cause = str(result.get("root_cause") or result.get("root_cause_analysis") or result.get("summary") or "暂无").strip()
+    fix_action = str(result.get("fix_action") or result.get("solution_patch") or "请结合案发堆栈与截图定位处理").strip()
+    assignee = str(result.get("recommended_assignee") or "陈贻雄 (前端)").strip()
 
-    formatted_md = result.get("formatted_markdown")
-    if not formatted_md or len(formatted_md.strip()) < 50:
-        # 兜底生成高质量 Markdown
-        formatted_md = (
-            f"### 🤖 AI 架构师缺陷根因诊断与研发整改指引\n\n"
-            f"**【核心技术定性】**：{category}\n\n"
-            f"**【案发速览】**：{summary}\n\n"
-            f"#### 1. 底层案发机理深度剖析\n"
-            f"{root_cause}\n\n"
-            f"#### 2. 跨环境与多机差异破局（为何部分电脑不复现）\n"
-            f"{env_diff}\n\n"
-            f"#### 3. 推荐代码级修复补丁 (Copy-Paste Ready)\n"
-            f"```javascript\n"
-            f"{solution}\n"
-            f"```\n\n"
-            f"#### 4. 责任归属与联调指引\n"
-            f"建议指派至：**{assignee}**"
-        )
+    formatted_md = (
+        f"**【问题定性】** {category}\n\n"
+        f"**【直接根因】**\n{root_cause}\n\n"
+        f"**【修复建议】** {fix_action}\n\n"
+        f"**【建议指派】** {assignee}"
+    )
 
     return formatted_md, result
 

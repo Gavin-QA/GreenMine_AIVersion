@@ -94,6 +94,7 @@
                       <th>模式</th>
                       <th>状态</th>
                       <th>步数 / 覆盖率</th>
+                      <th>激活缺陷</th>
                       <th>发现缺陷</th>
                       <th>运行时长</th>
                       <th>操作</th>
@@ -101,7 +102,7 @@
                   </thead>
                   <tbody>
                     <tr v-if="!filteredTasks || filteredTasks.length === 0">
-                      <td colspan="10" style="text-align: center; padding: 28px; color: var(--text-muted);">
+                      <td colspan="11" style="text-align: center; padding: 28px; color: var(--text-muted);">
                         📁 暂无符合筛选条件的历史巡检任务记录
                       </td>
                     </tr>
@@ -131,6 +132,14 @@
                       </td>
 
                       <td>{{ t.total_steps }} 步 ({{ t.coverage_rate }}%)</td>
+
+                      <td>
+                        <span v-if="(t.active_bugs_count || 0) > 0" class="badge"
+                          style="background: rgba(255, 82, 82, 0.16); color: #ff6b6b; border: 1px solid rgba(255, 82, 82, 0.35); font-weight: 700; padding: 2px 8px; font-size: 12px;">
+                          {{ t.active_bugs_count }}
+                        </span>
+                        <span v-else style="color: var(--text-muted);">0</span>
+                      </td>
 
                       <td style="color: #ff5252; font-weight: 600;">{{ t.bugs_count }}</td>
 
@@ -265,7 +274,7 @@
                       <th style="width: 100px;">状态</th>
                       <th>下次预约执行时间</th>
                       <th style="width: 80px;">累计执行</th>
-                      <th style="width: 170px;">操作</th>
+                      <th style="white-space: nowrap;">操作</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -322,6 +331,7 @@
                       </td>
                       <td>
                         <span v-if="q.status === 'running'" class="badge badge-running">🚀 正在执行</span>
+                        <span v-else-if="q.status === 'pending'" class="badge" style="background: rgba(255, 179, 0, 0.15); color: #ffb300; border: 1px solid rgba(255, 179, 0, 0.3);">⏳ 排队等待</span>
                         <span v-else-if="q.is_active === 1 && q.status === 'active'" class="badge badge-success">🟢 启用中</span>
                         <span v-else-if="q.status === 'expired'" class="badge" style="background: rgba(160, 174, 192, 0.15); color: #a0aec0;">⌛ 已到期</span>
                         <span v-else-if="q.status === 'completed'" class="badge badge-completed">✅ 已完成</span>
@@ -333,36 +343,38 @@
                       <td style="font-size: 12px; color: #cbd5e1; text-align: center;">
                         {{ q.run_count || 0 }} 次
                       </td>
-                      <td>
-                        <div style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap;">
-                          <button v-if="q.status === 'running'" class="btn btn-secondary"
-                            style="padding: 2px 7px; font-size: 11px; border-color: #ff5252; color: #ff5252;"
-                            @click="stopTask(q.task_id)">
-                            终止
+                      <td style="text-align: left; white-space: nowrap;">
+                        <div style="display: inline-flex; align-items: center; gap: 6px; justify-content: flex-start; flex-wrap: nowrap;">
+                          <button v-if="q.status === 'running'" type="button" class="btn btn-secondary"
+                            style="padding: 4px 8px; font-size: 11px; border-color: #ff5252; color: #ff5252; white-space: nowrap;"
+                            @click="stopTask(q.task_id)" title="终止当前正在执行的任务">
+                            🛑 终止
                           </button>
-                          <button v-else class="btn btn-secondary"
-                            style="padding: 2px 7px; font-size: 11px; border-color: rgba(0, 210, 255, 0.4); color: #00d2ff;"
+                          <button v-else type="button" class="btn btn-primary"
+                            style="padding: 4px 10px; font-size: 11px; font-weight: 600; white-space: nowrap;"
                             @click="runScheduleNow(q)" title="立即下发执行一次该计划">
-                            ⚡ 执行
+                            ⚡ 立即执行
                           </button>
 
-                          <button class="btn btn-secondary"
-                            style="padding: 2px 7px; font-size: 11px;"
+                          <button v-if="q.status !== 'pending'" type="button" class="btn btn-secondary"
+                            style="padding: 4px 8px; font-size: 11px; white-space: nowrap;"
                             :style="q.is_active ? 'color: #ffb300; border-color: rgba(255, 179, 0, 0.4);' : 'color: #00e676; border-color: rgba(0, 230, 118, 0.4);'"
-                            @click="toggleScheduleActive(q)">
-                            {{ q.is_active ? '⏸️' : '▶️' }}
+                            @click="toggleScheduleActive(q)" :title="q.is_active ? '停用该调度计划' : '启用该调度计划'">
+                            {{ q.is_active ? '⏸️ 停用' : '▶️ 启用' }}
                           </button>
 
-                          <button class="btn btn-secondary"
-                            style="padding: 2px 7px; font-size: 11px; color: #a0aec0; border-color: #2d3748;"
+                          <button v-if="q.status !== 'pending'" type="button" class="btn btn-secondary"
+                            style="padding: 4px 8px; font-size: 11px; border-color: #64748b; color: #cbd5e1; white-space: nowrap;"
                             @click="openEditScheduleModal(q)" title="编辑调度计划">
-                            ✏️
+                            ✏️ 编辑
                           </button>
 
-                          <button class="btn btn-secondary"
-                            style="padding: 2px 7px; font-size: 11px; border-color: rgba(255, 82, 82, 0.3); color: #ff5252;"
-                            @click="deleteSchedule(q)" title="删除该调度计划">
-                            🗑️
+                          <button type="button"
+                            style="background: transparent; border: 1px solid rgba(255,82,82,0.25); border-radius: 4px; color: #ff5252; cursor: pointer; padding: 4px 8px; font-size: 11px; transition: all 0.2s; white-space: nowrap; display: inline-flex; align-items: center; gap: 4px;"
+                            onmouseover="this.style.background='rgba(255,82,82,0.2)'; this.style.borderColor='#ff5252';"
+                            onmouseout="this.style.background='transparent'; this.style.borderColor='rgba(255,82,82,0.25)';"
+                            @click="deleteSchedule(q)" title="彻底删除此记录">
+                            🗑️ 删除
                           </button>
                         </div>
                       </td>

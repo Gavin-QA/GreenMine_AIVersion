@@ -137,6 +137,7 @@ class TaskResponse(BaseModel):
     total_steps: int = Field(default=0, description="最终实际执行的总步数")
     planner_phases: int = Field(default=0, description="Planner 宏观规划轮次数")
     coverage_rate: float = Field(default=0.0, description="大屏菜单与业务视图全景覆盖率 (百分比 0.0 ~ 100.0)")
+    active_bugs_count: int = Field(default=0, description="本轮任务关联且当前仍处于「激活」状态的缺陷数")
     bugs_count: int = Field(default=0, description="本轮任务捕获到的有效缺陷总数")
     apis_count: int = Field(default=0, description="本轮底层网络包静默拦截解析的接口总数")
     yaml_steps_count: int = Field(default=0, description="本轮自动逆向生成的确定性 YAML 步骤总数")

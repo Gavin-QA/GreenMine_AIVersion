@@ -7,7 +7,7 @@
 
               <span style="font-size: 13px; color: var(--text-muted);">当前查看维度:</span>
 
-              <select class="form-control" style="width: 380px; font-weight: 600;" v-model="activeTaskId"
+              <select class="form-control" style="width: 520px; max-width: 60vw; font-weight: 600;" v-model="activeTaskId"
                 @change="onMonitorTargetChange">
 
                 <option value="__live__" style="color: #00e676; font-weight: 700;">⚡ [实时模式] 本机物理环境实时心电图 (无需启动测试)
@@ -17,7 +17,7 @@
 
                 <option v-for="t in tasks" :key="t.id" :value="t.id">
 
-                  [{{ t.status }}] {{ t.name }} ({{ t.id }})
+                  [{{ t.status }}] {{ t.name }} ({{ formatDateTime(t.start_time) }}{{ t.run_dir ? ' · ' + t.run_dir.split('/').pop() : ' · ' + t.id }})
 
                 </option>
 
