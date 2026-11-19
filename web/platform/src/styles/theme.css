@@ -1,4 +1,5 @@
 :root {
+  color-scheme: dark;
   /* 对齐 AI 测试报告平台 (hub.html) 的深空靛紫毛玻璃视觉体系 */
   --bg-primary: #07090e;
   --bg-sidebar: rgba(15, 20, 34, 0.88);
@@ -581,6 +582,13 @@ body {
 
 select.form-control {
   cursor: pointer;
+  background-color: #0f172a;
+}
+
+select.form-control option,
+select.form-control optgroup {
+  background-color: #111827;
+  color: #f8fafc;
 }
 
 textarea.form-control {

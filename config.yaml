@@ -21,7 +21,7 @@ apps:
     no_proxy: "127.0.0.1,localhost,192.168.1.97,221.234.48.197,::1" # 代理白名单
     viewport:
       width: 2560
-      height: 1440先
+      height: 1440
       device_pixel_ratio: 1.5
     # 禅道缺陷归属映射 (自动打入对应项目与迭代)
     zentao_product_id: 11        # 禅道产品: 数字孪生系统

@@ -98,12 +98,15 @@ def get_test_cases():
 
                 parts = p.parts
                 app_name = "zhaiwan"
-                run_id = ""
+                # p 固定位于 <run_dir>/generated_cases/<file>.yaml，因此 p.parent.parent.name 恒为真实 run_id
+                run_id = p.parent.parent.name
                 try:
+                    from utils.paths import is_month_folder
                     idx = parts.index("runs")
-                    if len(parts) > idx + 2:
-                        app_name = parts[idx + 1]
-                        run_id = parts[idx + 2]
+                    if len(parts) > idx + 1:
+                        cand_app = parts[idx + 1]
+                        if cand_app != run_id and not is_month_folder(cand_app):
+                            app_name = cand_app
                 except Exception:
                     pass
 

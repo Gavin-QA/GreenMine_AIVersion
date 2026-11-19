@@ -13,9 +13,9 @@
                 <option value="__live__" style="color: #00e676; font-weight: 700;">⚡ [实时模式] 本机物理环境实时心电图 (无需启动测试)
                 </option>
 
-                <option disabled style="color: #64748b;">──────── 历史任务性能复盘 ────────</option>
+                <option disabled style="color: #64748b;">──────── 最近 10 条历史任务性能复盘 ────────</option>
 
-                <option v-for="t in tasks" :key="t.id" :value="t.id">
+                <option v-for="t in recentMonitorTasks" :key="t.id" :value="t.id">
 
                   [{{ t.status }}] {{ t.name }} ({{ formatDateTime(t.start_time) }}{{ t.run_dir ? ' · ' + t.run_dir.split('/').pop() : ' · ' + t.id }})
 
@@ -254,10 +254,23 @@
 </template>
 
 <script>
-import { inject } from 'vue'
+import { inject, computed } from 'vue'
 export default {
   setup() {
-    return inject('platformStore')
+    const store = inject('platformStore')
+    const recentMonitorTasks = computed(() => {
+      const list = (store.tasks.value || []).slice(0, 10)
+      const curId = store.activeTaskId.value
+      if (curId && curId !== '__live__' && !list.some((t) => t.id === curId)) {
+        const cur = (store.tasks.value || []).find((t) => t.id === curId)
+        if (cur) list.push(cur)
+      }
+      return list
+    })
+    return {
+      ...store,
+      recentMonitorTasks,
+    }
   }
 }
 </script>
