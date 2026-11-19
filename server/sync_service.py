@@ -380,7 +380,7 @@ def sync_all_bugs(db: Session) -> int:
                         before_cands = list((rd / "bugs").glob(f"{b_id}*_before.*")) if (rd / "bugs").exists() else []
                         if before_cands:
                             before_screenshot_val = str(before_cands[0]).replace("\\", "/")
-                        elif rb.get("global_step"):
+                        elif rb.get("global_step") and str(rb.get("action_type") or "").upper() not in ("MEMORY_LEAK_CHECK", "FREEZE_CHECK"):
                             import re as _re
                             m_st = _re.search(r"\d+", str(rb["global_step"]))
                             if m_st:
@@ -466,9 +466,11 @@ def sync_all_bugs(db: Session) -> int:
                     exist.screenshot_path = screenshot_val
                     changed = True
 
-                if before_screenshot_val and exist.before_screenshot_path != before_screenshot_val:
-                    exist.before_screenshot_path = before_screenshot_val
-                    changed = True
+                # 成套同步：若主截图或运行批次已更新，则同步更新操作前截图（含置空为 None，防止跨运行残留旧图）
+                if exist.before_screenshot_path != before_screenshot_val:
+                    if before_screenshot_val is not None or screenshot_val:
+                        exist.before_screenshot_path = before_screenshot_val
+                        changed = True
 
                 if rb.get("status") and exist.status != rb.get("status"):
                     exist.status = rb.get("status")

@@ -1,17 +1,20 @@
 :root {
-  --bg-primary: #0b0f19;
-  --bg-card: #131b2e;
-  --bg-card-hover: #1a253c;
-  --border-color: #233354;
-  --text-main: #f0f4fc;
-  --text-muted: #8b9bb4;
-  --accent-cyan: #00d2ff;
-  --accent-blue: #3a7bd5;
-  --accent-green: #00e676;
-  --accent-warning: #ffb300;
-  --accent-danger: #ff5252;
-  --accent-purple: #9d4edd;
-  --sidebar-width: 240px;
+  /* Vercel Geist Design System (Dark) 核心色板 */
+  --bg-primary: #000000;
+  --bg-card: #0a0a0a;
+  --bg-card-hover: #141414;
+  --bg-elevated: #111111;
+  --border-color: rgba(255, 255, 255, 0.11);
+  --border-strong: rgba(255, 255, 255, 0.2);
+  --text-main: #ededed;
+  --text-muted: #888888;
+  --accent-cyan: #3291ff;
+  --accent-blue: #0070f3;
+  --accent-green: #46a758;
+  --accent-warning: #f5a623;
+  --accent-danger: #e5484d;
+  --accent-purple: #8e4ec6;
+  --sidebar-width: 224px;
 }
 
 * {
@@ -21,12 +24,13 @@
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
   background-color: var(--bg-primary);
   color: var(--text-main);
   min-height: 100vh;
   display: flex;
   overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
 }
 
 /* 布局结构与防闪烁处理 */
@@ -42,9 +46,10 @@ body {
   overflow: hidden;
 }
 
+/* ==================== 侧边栏 (Geist Sidebar) ==================== */
 .sidebar {
   width: var(--sidebar-width);
-  background: #0d1424;
+  background: #000000;
   border-right: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
@@ -52,24 +57,25 @@ body {
 }
 
 .brand {
-  padding: 20px 16px;
+  height: 60px;
+  padding: 0 16px;
   border-bottom: 1px solid var(--border-color);
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
+  flex-shrink: 0;
 }
 
 .brand-icon {
-  font-size: 26px;
-  background: linear-gradient(135deg, #00d2ff, #3a7bd5);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
+  font-size: 20px;
+  color: #ededed;
 }
 
 .brand-title {
-  font-size: 16px;
-  font-weight: 700;
-  letter-spacing: 0.5px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: #ededed;
 }
 
 .brand-sub {
@@ -79,32 +85,33 @@ body {
 
 .nav-menu {
   list-style: none;
-  padding: 16px 8px;
+  padding: 12px 10px;
   flex: 1;
+  overflow-y: auto;
 }
 
 .nav-item {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  margin-bottom: 6px;
-  border-radius: 8px;
-  color: var(--text-muted);
+  gap: 10px;
+  padding: 8px 10px;
+  margin-bottom: 2px;
+  border-radius: 6px;
+  color: #888888;
   cursor: pointer;
-  transition: all 0.2s ease;
-  font-size: 14px;
+  transition: background-color 0.15s ease, color 0.15s ease;
+  font-size: 13px;
+  font-weight: 500;
 }
 
 .nav-item:hover {
-  background: var(--bg-card-hover);
-  color: var(--text-main);
+  background: #141414;
+  color: #ededed;
 }
 
 .nav-item.active {
-  background: linear-gradient(90deg, rgba(0, 210, 255, 0.15), rgba(58, 123, 213, 0.15));
-  color: var(--accent-cyan);
-  border-left: 3px solid var(--accent-cyan);
+  background: #1a1a1a;
+  color: #ffffff;
   font-weight: 600;
 }
 
@@ -117,36 +124,36 @@ body {
 .sub-nav-item {
   display: flex;
   align-items: center;
-  padding: 8px 12px;
-  margin-bottom: 4px;
+  padding: 7px 10px;
+  margin-bottom: 2px;
   border-radius: 6px;
-  color: var(--text-muted);
+  color: #888888;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: background-color 0.15s ease, color 0.15s ease;
   font-size: 13px;
 }
 
 .sub-nav-item:hover {
-  background: var(--bg-card-hover);
-  color: var(--text-main);
+  background: #141414;
+  color: #ededed;
 }
 
 .sub-nav-item.active {
-  background: rgba(0, 210, 255, 0.12);
-  color: var(--accent-cyan);
+  background: #1a1a1a;
+  color: #ffffff;
   font-weight: 600;
-  border-left: 2px solid var(--accent-cyan);
 }
 
 .nav-icon {
-  font-size: 18px;
+  font-size: 15px;
 }
 
 .sidebar-status {
-  padding: 16px;
+  padding: 14px 16px;
   border-top: 1px solid var(--border-color);
   font-size: 12px;
   color: var(--text-muted);
+  flex-shrink: 0;
 }
 
 .status-badge {
@@ -154,9 +161,10 @@ body {
   align-items: center;
   gap: 6px;
   padding: 4px 8px;
-  background: rgba(0, 230, 118, 0.1);
-  color: var(--accent-green);
-  border-radius: 4px;
+  background: rgba(70, 167, 88, 0.12);
+  color: #63c174;
+  border: 1px solid rgba(70, 167, 88, 0.25);
+  border-radius: 999px;
   font-size: 11px;
   margin-top: 6px;
 }
@@ -166,44 +174,54 @@ body {
   height: 6px;
   border-radius: 50%;
   background: var(--accent-green);
-  box-shadow: 0 0 8px var(--accent-green);
 }
 
-/* 主内容区 */
+/* ==================== 主内容区 & 固定 60px 顶栏 ==================== */
 .main-content {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   overflow-y: auto;
-  background: #090d16;
+  background: #000000;
 }
 
 .top-bar {
-  height: 64px;
+  height: 60px;
+  min-height: 60px;
+  flex-shrink: 0;
   border-bottom: 1px solid var(--border-color);
   padding: 0 24px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: rgba(13, 20, 36, 0.7);
-  backdrop-filter: blur(10px);
+  gap: 16px;
+  background: rgba(0, 0, 0, 0.78);
+  backdrop-filter: blur(12px);
   position: sticky;
   top: 0;
   z-index: 100;
 }
 
 .page-title {
-  font-size: 18px;
+  font-size: 15px;
   font-weight: 600;
+  letter-spacing: -0.01em;
+  color: #ededed;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .top-actions {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .content-body {
@@ -211,73 +229,80 @@ body {
   flex: 1;
 }
 
-/* 按钮通用 */
+/* ==================== Geist 按钮体系 (白底黑字主按钮) ==================== */
 .btn {
-  padding: 8px 16px;
+  height: 32px;
+  padding: 0 12px;
   border-radius: 6px;
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  border: none;
+  border: 1px solid transparent;
   outline: none;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
+  text-decoration: none;
+  white-space: nowrap;
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, #00d2ff, #0077ff);
-  color: #fff;
-  box-shadow: 0 2px 10px rgba(0, 180, 255, 0.3);
+  background: #ededed;
+  color: #0a0a0a;
+  border-color: #ededed;
+  font-weight: 600;
 }
 
 .btn-primary:hover {
-  background: linear-gradient(135deg, #1ad7ff, #1a85ff);
-  box-shadow: 0 4px 14px rgba(0, 180, 255, 0.45);
+  background: #ffffff;
+  border-color: #ffffff;
 }
 
 .btn-danger {
-  background: rgba(255, 82, 82, 0.15);
-  color: var(--accent-danger);
-  border: 1px solid rgba(255, 82, 82, 0.3);
+  background: rgba(229, 72, 77, 0.14);
+  color: #ff6166;
+  border: 1px solid rgba(229, 72, 77, 0.32);
 }
 
 .btn-danger:hover {
-  background: rgba(255, 82, 82, 0.25);
+  background: rgba(229, 72, 77, 0.24);
+  border-color: rgba(229, 72, 77, 0.5);
 }
 
 .btn-secondary {
-  background: var(--bg-card);
-  color: var(--text-main);
+  background: #0a0a0a;
+  color: #ededed;
   border: 1px solid var(--border-color);
 }
 
 .btn-secondary:hover {
-  background: var(--bg-card-hover);
-  border-color: #38507c;
+  background: #1a1a1a;
+  border-color: var(--border-strong);
 }
 
-/* 卡片容器 */
+/* ==================== 卡片容器 (Geist 1px 锐利细边框) ==================== */
 .card {
-  background: var(--bg-card);
+  background: #0a0a0a;
   border: 1px solid var(--border-color);
-  border-radius: 12px;
+  border-radius: 8px;
   padding: 20px;
-  margin-bottom: 20px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+  margin-bottom: 16px;
 }
 
 .card-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 18px;
+  margin-bottom: 16px;
 }
 
 .card-title {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
+  letter-spacing: -0.01em;
+  color: #ededed;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -287,7 +312,7 @@ body {
 .grid-2 {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 20px;
+  gap: 16px;
 }
 
 .grid-3 {
@@ -304,12 +329,17 @@ body {
 
 /* KPI 卡片 */
 .kpi-card {
-  background: #111827;
+  background: #0a0a0a;
   border: 1px solid var(--border-color);
-  border-radius: 10px;
-  padding: 16px;
+  border-radius: 8px;
+  padding: 16px 18px;
   position: relative;
   overflow: hidden;
+  transition: border-color 0.15s ease;
+}
+
+.kpi-card:hover {
+  border-color: var(--border-strong);
 }
 
 .kpi-card::before {
@@ -317,9 +347,9 @@ body {
   position: absolute;
   top: 0;
   left: 0;
-  width: 4px;
+  width: 2px;
   height: 100%;
-  background: var(--accent-cyan);
+  background: #ededed;
 }
 
 .kpi-card.green::before { background: var(--accent-green); }
@@ -335,7 +365,9 @@ body {
 
 .kpi-val {
   font-size: 24px;
-  font-weight: 700;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
   font-family: "JetBrains Mono", Consolas, monospace;
 }
 
@@ -345,7 +377,7 @@ body {
   margin-top: 6px;
 }
 
-/* 表单组件 */
+/* ==================== 表单组件 (Geist Input/Select) ==================== */
 .form-group {
   margin-bottom: 16px;
 }
@@ -353,26 +385,26 @@ body {
 .form-label {
   display: block;
   font-size: 13px;
-  color: var(--text-muted);
+  color: #a1a1a1;
   margin-bottom: 6px;
   font-weight: 500;
 }
 
 .form-control {
   width: 100%;
-  padding: 10px 14px;
-  background: #0b0f19;
+  padding: 8px 12px;
+  background: #0a0a0a;
   border: 1px solid var(--border-color);
-  border-radius: 8px;
-  color: var(--text-main);
+  border-radius: 6px;
+  color: #ededed;
   font-size: 13px;
   outline: none;
-  transition: border-color 0.2s ease;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .form-control:focus {
-  border-color: var(--accent-cyan);
-  box-shadow: 0 0 0 2px rgba(0, 210, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.45);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.08);
 }
 
 select.form-control {
@@ -392,30 +424,32 @@ textarea.form-control {
 }
 
 .pill-item {
-  padding: 8px 14px;
-  background: #0b0f19;
+  padding: 6px 12px;
+  background: #0a0a0a;
   border: 1px solid var(--border-color);
-  border-radius: 20px;
+  border-radius: 999px;
   font-size: 12px;
+  color: #a1a1a1;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
 }
 
 .pill-item:hover {
-  border-color: #3a7bd5;
+  border-color: var(--border-strong);
+  color: #ededed;
 }
 
 .pill-item.active {
-  background: rgba(0, 210, 255, 0.15);
-  border-color: var(--accent-cyan);
-  color: var(--accent-cyan);
+  background: #ededed;
+  border-color: #ededed;
+  color: #0a0a0a;
   font-weight: 600;
 }
 
 /* 控制台日志流样式 */
 .terminal-window {
-  background: #05070d;
-  border: 1px solid #1a253c;
+  background: #050505;
+  border: 1px solid var(--border-color);
   border-radius: 8px;
   padding: 14px;
   font-family: "JetBrains Mono", Consolas, "Courier New", monospace;
@@ -423,7 +457,7 @@ textarea.form-control {
   line-height: 1.6;
   height: 480px;
   overflow-y: auto;
-  color: #c9d1d9;
+  color: #d4d4d8;
 }
 
 .log-line {
@@ -431,10 +465,10 @@ textarea.form-control {
   word-break: break-all;
 }
 
-.log-line.error { color: #ff6b6b; font-weight: 600; }
-.log-line.warn { color: #feca57; }
-.log-line.info { color: #54a0ff; }
-.log-line.success { color: #1dd1a1; }
+.log-line.error { color: #ff6166; font-weight: 600; }
+.log-line.warn { color: #f5a623; }
+.log-line.info { color: #52a8ff; }
+.log-line.success { color: #63c174; }
 
 /* 图表容器 */
 .chart-box {
@@ -442,7 +476,7 @@ textarea.form-control {
   height: 280px;
 }
 
-/* 表格通用样式 */
+/* ==================== 表格通用样式 (Geist Table) ==================== */
 .table-responsive {
   width: 100%;
   overflow-x: auto;
@@ -453,52 +487,56 @@ textarea.form-control {
   border-collapse: collapse;
   font-size: 13px;
   text-align: left;
+  font-variant-numeric: tabular-nums;
 }
 
 .data-table th {
-  padding: 12px 14px;
-  background: #0d1424;
-  color: var(--text-muted);
+  padding: 10px 14px;
+  background: #0f0f0f;
+  color: #888888;
   font-weight: 500;
+  font-size: 12px;
   border-bottom: 1px solid var(--border-color);
+  white-space: nowrap;
 }
 
 .data-table td {
-  padding: 12px 14px;
-  border-bottom: 1px solid rgba(35, 51, 84, 0.5);
-  color: var(--text-main);
+  padding: 11px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  color: #ededed;
 }
 
 .data-table tr:hover td {
-  background: rgba(26, 37, 60, 0.4);
+  background: rgba(255, 255, 255, 0.03);
 }
 
+/* ==================== Geist 药丸徽章 (Pill Badges) ==================== */
 .badge {
   display: inline-block;
-  padding: 3px 8px;
-  border-radius: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
   font-size: 11px;
   font-weight: 500;
 }
 
-.badge-high { background: rgba(255, 82, 82, 0.15); color: var(--accent-danger); border: 1px solid rgba(255, 82, 82, 0.3); }
-.badge-medium { background: rgba(255, 179, 0, 0.15); color: var(--accent-warning); border: 1px solid rgba(255, 179, 0, 0.3); }
-.badge-low { background: rgba(58, 123, 213, 0.15); color: var(--accent-blue); border: 1px solid rgba(58, 123, 213, 0.3); }
+.badge-high { background: rgba(229, 72, 77, 0.14); color: #ff6166; border: 1px solid rgba(229, 72, 77, 0.3); }
+.badge-medium { background: rgba(245, 166, 35, 0.14); color: #ffb224; border: 1px solid rgba(245, 166, 35, 0.3); }
+.badge-low { background: rgba(0, 112, 243, 0.14); color: #52a8ff; border: 1px solid rgba(0, 112, 243, 0.3); }
 
-.badge-running { background: rgba(0, 210, 255, 0.15); color: var(--accent-cyan); border: 1px solid rgba(0, 210, 255, 0.3); }
-.badge-completed { background: rgba(0, 230, 118, 0.15); color: var(--accent-green); border: 1px solid rgba(0, 230, 118, 0.3); }
-.badge-failed { background: rgba(255, 82, 82, 0.15); color: var(--accent-danger); border: 1px solid rgba(255, 82, 82, 0.3); }
-.badge-stopped { background: rgba(139, 155, 180, 0.15); color: var(--text-muted); border: 1px solid rgba(139, 155, 180, 0.3); }
+.badge-running { background: rgba(0, 112, 243, 0.14); color: #52a8ff; border: 1px solid rgba(0, 112, 243, 0.3); }
+.badge-completed { background: rgba(70, 167, 88, 0.14); color: #63c174; border: 1px solid rgba(70, 167, 88, 0.3); }
+.badge-failed { background: rgba(229, 72, 77, 0.14); color: #ff6166; border: 1px solid rgba(229, 72, 77, 0.3); }
+.badge-stopped { background: rgba(255, 255, 255, 0.06); color: #888888; border: 1px solid var(--border-color); }
 
-/* 模态弹窗 */
+/* ==================== 模态弹窗 (Geist Dialog) ==================== */
 .modal-overlay {
   position: fixed;
   top: 0;
   left: 0;
   width: 100vw;
   height: 100vh;
-  background: rgba(0, 0, 0, 0.75);
-  backdrop-filter: blur(4px);
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(6px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -506,22 +544,22 @@ textarea.form-control {
 }
 
 .modal-content {
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
+  background: #0a0a0a;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
   width: 1080px;
   max-width: 95vw;
   max-height: 90vh;
   overflow-y: auto;
   padding: 24px;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.8);
 }
 
 .modal-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 20px;
+  margin-bottom: 18px;
 }
 
 .modal-close {
@@ -533,22 +571,21 @@ textarea.form-control {
 }
 
 .modal-close:hover {
-  color: var(--text-main);
+  color: #ffffff;
 }
 
-
 /* ==========================================================================
-   全局优雅 Toast 通知卡片
+   全局 Toast 通知卡片 (Geist Toast)
    ========================================================================== */
 .toast-container {
   position: fixed;
-  top: 24px;
+  top: 20px;
   right: 24px;
   z-index: 999999;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  max-width: 440px;
+  gap: 10px;
+  max-width: 420px;
   pointer-events: none;
 }
 
@@ -557,175 +594,120 @@ textarea.form-control {
   display: flex;
   align-items: flex-start;
   gap: 12px;
-  padding: 14px 18px;
-  background: rgba(15, 23, 42, 0.96);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  padding: 14px 16px;
+  background: #0f0f0f;
+  border: 1px solid var(--border-strong);
   border-radius: 8px;
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5), 0 4px 10px rgba(0, 0, 0, 0.3);
-  color: #f8fafc;
-  font-size: 14px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.75);
+  color: #ededed;
+  font-size: 13px;
   line-height: 1.5;
-  animation: toastSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-  transition: all 0.3s ease;
+  animation: toastSlideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.25s ease;
 }
 
-.toast-item.toast-success {
-  border-left: 5px solid #10b981;
-}
-
-.toast-item.toast-error {
-  border-left: 5px solid #ef4444;
-}
-
-.toast-item.toast-info {
-  border-left: 5px solid #3b82f6;
-}
+.toast-item.toast-success { border-left: 3px solid #46a758; }
+.toast-item.toast-error { border-left: 3px solid #e5484d; }
+.toast-item.toast-info { border-left: 3px solid #0070f3; }
 
 .toast-icon {
-  font-size: 20px;
+  font-size: 18px;
   flex-shrink: 0;
   margin-top: 1px;
 }
 
-.toast-body {
-  flex: 1;
-}
-
-.toast-title {
-  font-weight: 700;
-  margin-bottom: 3px;
-  color: #ffffff;
-  font-size: 14px;
-}
-
-.toast-msg {
-  color: #cbd5e1;
-  font-size: 13px;
-}
-
-.toast-msg a {
-  color: #38bdf8;
-  text-decoration: underline;
-  font-weight: 600;
-}
-
-.toast-msg a:hover {
-  color: #7dd3fc;
-}
+.toast-body { flex: 1; }
+.toast-title { font-weight: 600; margin-bottom: 2px; color: #ffffff; font-size: 13px; }
+.toast-msg { color: #a1a1a1; font-size: 12px; }
+.toast-msg a { color: #52a8ff; text-decoration: underline; font-weight: 500; }
+.toast-msg a:hover { color: #80bdff; }
 
 .toast-close {
   background: transparent;
   border: none;
-  color: #94a3b8;
-  font-size: 20px;
+  color: var(--text-muted);
+  font-size: 18px;
   cursor: pointer;
   padding: 0 4px;
   line-height: 1;
-  transition: color 0.2s;
+  transition: color 0.15s;
   margin-left: 6px;
 }
 
-.toast-close:hover {
-  color: #ffffff;
-}
+.toast-close:hover { color: #ffffff; }
 
 @keyframes toastSlideIn {
-  from {
-    transform: translateX(100%);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
 }
 
-
 /* ==========================================================================
-   分页控制栏 (Pagination)
+   分页控制栏 (Geist Pagination)
    ========================================================================== */
 .pagination-container {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 18px;
-  background: rgba(13, 20, 36, 0.95);
+  padding: 12px 16px;
+  background: #0a0a0a;
   border-top: 1px solid var(--border-color);
   border-bottom-left-radius: 8px;
   border-bottom-right-radius: 8px;
   flex-wrap: wrap;
   gap: 12px;
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text-muted);
 }
 
-.pagination-left {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.pagination-right {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
+.pagination-left { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.pagination-right { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 
 .pagination-select {
-  background: #111a2e;
+  background: #111111;
   border: 1px solid var(--border-color);
-  color: var(--text-main);
-  padding: 5px 8px;
-  border-radius: 4px;
+  color: #ededed;
+  padding: 4px 8px;
+  border-radius: 6px;
   font-size: 12px;
   cursor: pointer;
   outline: none;
-  transition: border-color 0.2s;
 }
 
-.pagination-select:focus {
-  border-color: #00d2ff;
-}
+.pagination-select:focus { border-color: var(--border-strong); }
 
 .page-btn {
   min-width: 30px;
   height: 30px;
   padding: 0 8px;
-  border-radius: 4px;
+  border-radius: 6px;
   border: 1px solid var(--border-color);
-  background: #111a2e;
-  color: var(--text-main);
+  background: #0a0a0a;
+  color: #ededed;
   font-size: 12px;
   font-weight: 500;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
   user-select: none;
 }
 
 .page-btn:hover:not(:disabled):not(.active):not(.ellipsis) {
-  border-color: #00d2ff;
-  color: #00d2ff;
-  background: rgba(0, 210, 255, 0.08);
+  border-color: var(--border-strong);
+  background: #1a1a1a;
 }
 
 .page-btn.active {
-  background: #00d2ff;
-  color: #050b14;
-  font-weight: 700;
-  border-color: #00d2ff;
-  box-shadow: 0 0 10px rgba(0, 210, 255, 0.35);
+  background: #ededed;
+  color: #0a0a0a;
+  font-weight: 600;
+  border-color: #ededed;
 }
 
 .page-btn:disabled {
   opacity: 0.35;
   cursor: not-allowed;
-  border-color: rgba(255, 255, 255, 0.08);
 }
 
 .page-btn.ellipsis {
@@ -740,21 +722,19 @@ textarea.form-control {
   width: 50px;
   height: 28px;
   text-align: center;
-  background: #111a2e;
+  background: #111111;
   border: 1px solid var(--border-color);
-  color: #00d2ff;
+  color: #ededed;
   font-weight: 600;
-  border-radius: 4px;
+  border-radius: 6px;
   font-size: 12px;
   outline: none;
   margin: 0 4px;
 }
 
-.page-jump-input:focus {
-  border-color: #00d2ff;
-}
+.page-jump-input:focus { border-color: var(--border-strong); }
 
-/* 动态旋转菊花加载图标 (Loading Spinner) */
+/* 动态旋转加载图标 */
 @keyframes spin-rotate {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
@@ -764,44 +744,43 @@ textarea.form-control {
   display: inline-block;
   width: 12px;
   height: 12px;
-  border: 2px solid rgba(255, 82, 82, 0.25);
-  border-top-color: #ff5252;
+  border: 2px solid rgba(229, 72, 77, 0.25);
+  border-top-color: #e5484d;
   border-radius: 50%;
   animation: spin-rotate 0.75s linear infinite;
   vertical-align: middle;
   margin-right: 4px;
 }
 
-
-/* ================= Element Plus 工业暗黑主题深度定制 ================= */
+/* ================= Element Plus 暗黑主题同步至 Geist 黑白灰 ================= */
 html.dark {
-  --el-bg-color: #0d1424;
-  --el-bg-color-overlay: #131b2e;
-  --el-fill-color-blank: #0b1120;
-  --el-border-color: #233354;
-  --el-border-color-light: #1e2d4a;
-  --el-text-color-primary: #f0f4fc;
-  --el-text-color-regular: #cbd5e1;
-  --el-text-color-secondary: #8b9bb4;
-  --el-color-primary: #00d2ff;
-  --el-color-primary-light-3: #38bdf8;
-  --el-color-primary-light-5: #0284c7;
-  --el-color-primary-light-9: rgba(0, 210, 255, 0.14);
+  --el-bg-color: #0a0a0a;
+  --el-bg-color-overlay: #111111;
+  --el-fill-color-blank: #0a0a0a;
+  --el-border-color: rgba(255, 255, 255, 0.14);
+  --el-border-color-light: rgba(255, 255, 255, 0.08);
+  --el-text-color-primary: #ededed;
+  --el-text-color-regular: #a1a1a1;
+  --el-text-color-secondary: #888888;
+  --el-color-primary: #ededed;
+  --el-color-primary-light-3: #ffffff;
+  --el-color-primary-light-5: #a1a1a1;
+  --el-color-primary-light-9: rgba(255, 255, 255, 0.08);
 }
 
 .el-date-editor.el-input__wrapper {
-  background-color: #0b1120 !important;
-  box-shadow: 0 0 0 1px #233354 inset !important;
+  background-color: #0a0a0a !important;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.14) inset !important;
 }
 
 .el-date-editor.el-input__wrapper:hover,
 .el-date-editor.el-input__wrapper.is-focus {
-  box-shadow: 0 0 0 1px #00d2ff inset !important;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.4) inset !important;
 }
 
 .el-popper.is-light,
 .el-picker-panel {
-  background-color: #131b2e !important;
-  border-color: #233354 !important;
-  color: #f0f4fc !important;
+  background-color: #0f0f0f !important;
+  border-color: rgba(255, 255, 255, 0.16) !important;
+  color: #ededed !important;
 }

@@ -360,9 +360,9 @@ export default {
 }
 
 .cfg-banner {
-  background: linear-gradient(135deg, rgba(0, 210, 255, 0.08), rgba(58, 123, 213, 0.08));
+  background: var(--bg-card);
   border: 1px solid var(--border-color);
-  border-radius: 10px;
+  border-radius: 6px;
   padding: 16px 20px;
   display: flex;
   justify-content: space-between;
@@ -405,7 +405,7 @@ export default {
 .cfg-card {
   background: var(--bg-card);
   border: 1px solid var(--border-color);
-  border-radius: 10px;
+  border-radius: 6px;
   padding: 18px 20px;
 }
 
@@ -447,14 +447,14 @@ export default {
 }
 
 .storage-stat {
-  background: rgba(11, 15, 25, 0.65);
+  background: var(--bg-elevated);
   border: 1px solid var(--border-color);
-  border-radius: 8px;
+  border-radius: 6px;
   padding: 12px 14px;
 }
 
 .storage-stat.highlight {
-  border-color: rgba(0, 210, 255, 0.45);
+  border-color: rgba(64, 128, 255, 0.45);
 }
 
 .stat-label {
@@ -481,7 +481,7 @@ export default {
   flex-wrap: wrap;
   gap: 12px;
   padding: 12px 14px;
-  background: rgba(11, 15, 25, 0.55);
+  background: var(--bg-elevated);
   border: 1px solid var(--border-color);
   border-radius: 8px;
 }
@@ -552,7 +552,7 @@ export default {
 }
 
 .affected-run-box {
-  background: rgba(11, 15, 25, 0.65);
+  background: var(--bg-elevated);
   border: 1px solid var(--border-color);
   border-radius: 6px;
   margin-bottom: 6px;
@@ -600,7 +600,7 @@ export default {
 }
 
 .app-cfg-box {
-  background: rgba(11, 15, 25, 0.6);
+  background: var(--bg-elevated);
   border: 1px solid var(--border-color);
   border-radius: 8px;
   padding: 14px;
@@ -705,7 +705,7 @@ export default {
 }
 
 .mode-chip {
-  background: rgba(11, 15, 25, 0.6);
+  background: var(--bg-elevated);
   border: 1px solid var(--border-color);
   border-radius: 8px;
   padding: 10px 12px;
@@ -729,7 +729,7 @@ export default {
 }
 
 .tpl-item {
-  background: rgba(11, 15, 25, 0.6);
+  background: var(--bg-elevated);
   border: 1px solid var(--border-color);
   border-radius: 8px;
   padding: 12px;

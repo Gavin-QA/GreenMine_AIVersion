@@ -1220,6 +1220,12 @@
                 <div class="form-group">
                   <label class="form-label">YAML 用例脚本选择</label>
                   <select class="form-control" v-model="taskForm.case_path">
+                    <option
+                      v-if="taskForm.case_path && !(options.yaml_cases || []).some(item => item.path === taskForm.case_path)"
+                      :value="taskForm.case_path"
+                    >
+                      📄 {{ taskForm.case_path }}
+                    </option>
                     <option v-for="c in options.yaml_cases" :key="c.path" :value="c.path">
                       {{ c.name }} {{ c.path ? '(' + c.path + ')' : '' }}
                     </option>

@@ -2660,18 +2660,21 @@ export function usePlatformStore() {
     }
 
     function runCaseInDashboard(c) {
+      taskForm.preset_id = null;
+      taskForm.preset_title = '';
       taskForm.mode = 'case';
-      taskForm.case_path = c.path;
+      taskForm.case_path = c.path || '';
       taskForm.name = `【确定性回归】${c.name || c.filename}`;
       if (c.app_name) {
         changeLiveApp(c.app_name);
       }
       currentTab.value = 'dashboard';
       previewingCase.value = null;
+      taskModalVisible.value = true;
       showToast({
         type: 'info',
-        title: '用例已载入控制台',
-        message: `已将 [${c.name || c.filename}] 载入，核验参数后点击“立即创建并启动巡检”即可执行！`
+        title: '用例已载入配置窗口',
+        message: `已将 [${c.name || c.filename}] 载入，核验参数后点击“立即创建并启动巡检”或“存为预设”即可！`
       });
     }
 

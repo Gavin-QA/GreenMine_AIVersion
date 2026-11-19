@@ -153,14 +153,14 @@
         <div class="top-actions">
 
           <div
-            style="display: flex; align-items: center; gap: 8px; background: rgba(13, 20, 36, 0.9); padding: 5px 12px; border-radius: 6px; border: 1px solid #00d2ff;">
+            style="display: flex; align-items: center; gap: 8px; height: 32px; background: var(--bg-elevated); padding: 0 12px; border-radius: 4px; border: 1px solid var(--border-strong);">
 
-            <span style="font-size: 12px; color: #fff; font-weight: 600;">🎯 目标矿山:</span>
+            <span style="font-size: 12px; color: var(--text-muted); font-weight: 500;">目标矿山:</span>
 
             <select v-model="taskForm.app_name" @change="changeLiveApp(taskForm.app_name)"
-              style="background: #111a2e; color: #00d2ff; border: none; font-weight: 700; font-size: 13px; cursor: pointer; outline: none;">
+              style="background: transparent; color: var(--text-main); border: none; font-weight: 600; font-size: 13px; cursor: pointer; outline: none;">
 
-              <option v-for="app in options.apps" :key="app.key" :value="app.key">
+              <option v-for="app in options.apps" :key="app.key" :value="app.key" style="background: #0a0a0a; color: #ededed;">
 
                 {{ app.name }}
 
@@ -171,18 +171,17 @@
           </div>
 
           <button class="btn btn-secondary" @click="triggerHotSync" :disabled="isSyncing"
-            style="border-color: #10b981; color: #34d399;" title="重新扫描磁盘上的最新测试运行批次与全局缺陷">
+            title="重新扫描磁盘上的最新测试运行批次与全局缺陷">
 
             <span>{{ isSyncing ? '⏳ 同步中...' : '⚡ 立即同步磁盘数据' }}</span>
 
           </button>
 
-          <button class="btn btn-secondary" @click="currentTab = 'dashboard'">+ 新建任务</button>
+          <button class="btn btn-primary" @click="currentTab = 'dashboard'">+ 新建任务</button>
 
-          <a :href="options.report_hub_url || '/report-hub'" target="_blank" class="btn btn-secondary"
-            style="border-color: #00d2ff; color: #00d2ff;">
+          <a :href="options.report_hub_url || '/report-hub'" target="_blank" class="btn btn-secondary">
 
-            🌐 产物总门户 (Report Hub)
+            🌐 产物总门户
 
           </a>
 

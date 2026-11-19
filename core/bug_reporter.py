@@ -191,6 +191,9 @@ class BugReporter:
             except Exception as e:
                 logger.warning(f"复制操作前现场截图失败: {e}")
                 new_before_img_path = None
+        elif bug_record and new_img_path:
+            # 本次复现仅提供了 1 张出错现场图：成套替换，清空上一次遗留的旧操作前截图
+            bug_record["before_screenshot"] = None
 
         # 提取与智能推导元数据字段 (action_type, target_element, ui_path, tags, global_step, severity)
 
@@ -292,7 +295,10 @@ class BugReporter:
                     bug_record["global_step"] = global_step
                 if new_img_path:
                     bug_record["screenshot"] = str(new_img_path).replace('\\', '/')
-                if new_before_img_path:
+                    bug_record["before_screenshot"] = (
+                        str(new_before_img_path).replace('\\', '/') if new_before_img_path else None
+                    )
+                elif new_before_img_path:
                     bug_record["before_screenshot"] = str(new_before_img_path).replace('\\', '/')
 
             else:

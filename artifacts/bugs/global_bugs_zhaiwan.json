@@ -4350,14 +4350,14 @@
     "analysis_notes": "【误报归档 2026-10-30】UI 实际展示 5 行资源量：证实28758/可信20238/探明39687/控制29318/推断36157，与 getFdaConfigByKey 的 resourcesConfirm/Credible/Verify/Control/Inferred 100% 一致。误报源于基线骨架文案漏写探明/控制且大模型把 resourcesVerify(探明) 错译为证实。已修正 page_map_builder 基线与提示词术语映射。",
     "remark": null,
     "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-10/explore_20261029_182538/bugs/BUG-20261029-002.png",
-    "occurrences": 10,
+    "occurrences": 12,
     "date": "2026-11-02",
-    "last_seen": "2026-11-17",
+    "last_seen": "2026-11-19",
     "details": null
   },
   {
     "id": "BUG-20261030-001",
-    "run_id": "explore_20261117_183005",
+    "run_id": "explore_20261118_204421",
     "task_id": "task_20261111_174112",
     "app": "zhaiwan",
     "title": "[explore_20261117_183005] 探索操作 '右侧‘矿山图纸’列表中的第二项‘开拓系统平面图’条目（含图纸缩略图与文字标签的完整卡片区域）' 触发底层异常",
@@ -4366,8 +4366,8 @@
     "assignee": "童佳宝",
     "zentao_id": "1199",
     "ui_path": "首页 -> 资料管理",
-    "target_element": "右侧‘矿山图纸’列表中的第二项‘开拓系统平面图’条目（含图纸缩略图与文字标签的完整卡片区域）",
-    "step": "[CLICK] 交互目标: '右侧‘矿山图纸’列表中的第二项‘开拓系统平面图’条目（含图纸缩略图与文字标签的完整卡片区域）' (页面路径: 首页 -> 资料管理)",
+    "target_element": "右侧业务面板图纸列表区域中明确标注为‘总体布置图’的条目（位于列表顶部，紧邻‘采矿方法仿真’下方）",
+    "step": "[CLICK] 交互目标: '右侧业务面板图纸列表区域中明确标注为‘总体布置图’的条目（位于列表顶部，紧邻‘采矿方法仿真’下方）' (页面路径: 首页 -> 资料管理)",
     "action_type": "CLICK",
     "tags": [
       "CLICK",
@@ -4375,12 +4375,12 @@
       "勘探报告"
     ],
     "actual": "[page_error] crypto.randomUUID is not a function",
-    "analysis_notes": "### 🤖 AI 架构师缺陷根因诊断与研发整改指引\n\n**【核心技术定性】**：【前端】Electron Chromium 渲染核版本过低导致 crypto.randomUUID API 缺失（非安全上下文无关）\n\n**【案发速览】**：缺陷根源为 Electron 1.4.2646 内置 Chromium 版本过低（≤ v73），不支持  `crypto.randomUUID()()`，而业务代码在点击‘开拓系统平面图’卡片时动态调用该 API 生成唯一 ID，触发未捕获的 ReferenceError。\n\n#### 1. 底层案发机理深度剖析\n1.  `crypto.randomUUID()()` 是 Web Crypto API 的扩展方法，于 Chromium 84（2020年5月）正式引入（见 https://chromium.googlesource.com/chromium/src/+/refs/heads/main/third_party/blink/renderer/core/crypto/crypto_random_uuid.cc）；\n2. Electron 1.4.x 系列基于 Chromium 53–56（参见 Electron 官方版本映射表：https://www.electronjs.org/docs/latest/tutorial/electron-versioning），远低于支持该 API 的最低版本；\n3. 堆栈报错 `[page_error] crypto.randomUUID is not a function` 表明 JS 执行时直接访问了不存在的属性，属于运行时 TypeError（非异步拒绝或权限错误），与协议是否为 HTTP/HTTPS 无关——Web Crypto 的  `randomUUID` 不属于 Secure Context 限制 API（Secure Context 仅约束  `crypto.subtle`、`navigator.clipboard` 等）；\n4. 触发点为点击‘开拓系统平面图’卡片，推测该组件在 mounted 或 click handler 中调用了类似  `const id = crypto.randomUUID()()` 的逻辑（常见于 PDF 预览会话标识、WebRTC 数据通道标签、或 Vue 组件 key 生成），因无兜底 fallback 导致崩溃。\n\n#### 2. 跨环境与多机差异破局（为何部分电脑不复现）\n1. 复现率高达512次，说明该问题在目标环境（Electron 1.4.2646）中稳定复现；\n2. 部分电脑能跑/测试不复现，极可能因本地调试使用了新版 Electron（如 20+）或 Chrome 浏览器打开 H5 页面（Chromium ≥84），其内置  `crypto.randomUUID` 存在；\n3. 启动器版本 1.4.2646 为 2017–2018 年间发布的老版 Electron，客户现场未升级，而开发/测试环境已迁移到现代构建链；\n4. 控制台静默忽略：若错误发生在 Promise 链中且未加 `.catch()()`，部分 Electron 版本会静默吞掉错误，但此处明确上报 `[page_error]`，说明是同步执行路径抛出异常，无法被 Promise 捕获。\n\n#### 3. 推荐代码级修复补丁 (Copy-Paste Ready)\n```javascript\n【前端兼容性补丁】在入口文件（如 main.js 或 polyfill.js）顶部注入  `crypto.randomUUID` 兜底实现，确保所有环境可用：\n```\n\n#### 4. 责任归属与联调指引\n建议指派至：**陈贻雄 (前端)**",
+    "analysis_notes": "**【问题定性】** 【前端】Electron Chromium 渲染核版本过低不支持 crypto.randomUUID\n\n**【直接根因】**\n['报错堆栈明确指向 crypto.randomUUID is not a function', '当前 Electron 启动器版本 1.4.2646 对应 Chromium 内核低于 110（该 API 自 Chrome 110+ 引入）', '触发点为点击‘总体布置图’条目后执行的 Vue 组件初始化逻辑中调用了该 API']\n\n**【修复建议】** 替换 crypto.randomUUID 调用为兼容方案（如使用 uuidv4 库或自定义随机字符串生成逻辑），禁止直接依赖原生 crypto.randomUUID。\n\n**【建议指派】** 陈贻雄 (前端)",
     "remark": "已定位为 1.4.2644 新版启动器 WebRTC 数据通道 sendClientEvent 裸调 crypto.randomUUID 引发的兼容性倒退缺陷，准备另提单给启动器开发组。",
-    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261117_183005/bugs/BUG-20261030-001_013717.png",
-    "occurrences": 512,
+    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261118_204421/bugs/BUG-20261030-001_034822.png",
+    "occurrences": 543,
     "date": "2026-11-02",
-    "last_seen": "2026-11-18",
+    "last_seen": "2026-11-19",
     "details": null,
     "first_step": "[CLICK] 交互目标: '左侧业务面板中【地质勘探报告】分类下的第一条报告条目【寨湾矿段采样点素描图】' (页面路径: 资源管理 -> 勘探报告)",
     "first_ui_path": "资源管理 -> 勘探报告",
@@ -4389,129 +4389,134 @@
     "first_run_id": "explore_20261113_010004",
     "recurrence_history": [
       {
-        "run_id": "explore_20261117_183005",
-        "timestamp": "2026-11-18 00:15:36",
-        "step": "[CLICK] 交互目标: '左侧‘资料存档’区域中‘安全操作规程’分类下第一条文档条目【寨湾磷矿胶带运输系统安全管控专项措施】' (页面路径: 首页 -> 资料管理)",
-        "ui_path": "首页 -> 资料管理",
-        "target_element": "左侧‘资料存档’区域中‘安全操作规程’分类下第一条文档条目【寨湾磷矿胶带运输系统安全管控专项措施】",
-        "action_type": "CLICK",
-        "actual_error": "[page_error] crypto.randomUUID is not a function",
-        "global_step": 846,
-        "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261117_183005/bugs/BUG-20261030-001_001536.png",
-        "before_screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261117_183005/bugs/BUG-20261030-001_001536_before.png"
-      },
-      {
-        "run_id": "explore_20261117_183005",
-        "timestamp": "2026-11-18 00:16:29",
-        "step": "[CLICK] 交互目标: '左侧‘资料存档’区域中‘国家政策’分类下的第一条文档条目【排污许可证申请与核发技术规范】' (页面路径: 首页 -> 资料管理)",
-        "ui_path": "首页 -> 资料管理",
-        "target_element": "左侧‘资料存档’区域中‘国家政策’分类下的第一条文档条目【排污许可证申请与核发技术规范】",
-        "action_type": "CLICK",
-        "actual_error": "[page_error] crypto.randomUUID is not a function",
-        "global_step": 849,
-        "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261117_183005/bugs/BUG-20261030-001_001629.png",
-        "before_screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261117_183005/bugs/BUG-20261030-001_001629_before.png"
-      },
-      {
-        "run_id": "explore_20261117_183005",
-        "timestamp": "2026-11-18 00:17:25",
-        "step": "[CLICK] 交互目标: '右侧‘矿山图纸’列表中的第一条文档条目【总体布置图】' (页面路径: 首页 -> 资料管理)",
-        "ui_path": "首页 -> 资料管理",
-        "target_element": "右侧‘矿山图纸’列表中的第一条文档条目【总体布置图】",
-        "action_type": "CLICK",
-        "actual_error": "[page_error] crypto.randomUUID is not a function",
-        "global_step": 852,
-        "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261117_183005/bugs/BUG-20261030-001_001725.png",
-        "before_screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261117_183005/bugs/BUG-20261030-001_001725_before.png"
-      },
-      {
-        "run_id": "explore_20261117_183005",
-        "timestamp": "2026-11-18 00:20:10",
-        "step": "[CLICK] 交互目标: '左侧业务面板中【地质勘探报告】分类下的第一项导航条目【寨湾矿段采样点素描图】' (页面路径: 资源管理 -> 勘探报告)",
+        "run_id": "explore_20261118_204421",
+        "timestamp": "2026-11-19 02:17:10",
+        "step": "[CLICK] 交互目标: '左侧业务面板中【地质勘探报告】展开后列表里的第一条目‘寨湾矿段采样点素描图’' (页面路径: 资源管理 -> 勘探报告)",
         "ui_path": "资源管理 -> 勘探报告",
-        "target_element": "左侧业务面板中【地质勘探报告】分类下的第一项导航条目【寨湾矿段采样点素描图】",
+        "target_element": "左侧业务面板中【地质勘探报告】展开后列表里的第一条目‘寨湾矿段采样点素描图’",
         "action_type": "CLICK",
         "actual_error": "[page_error] crypto.randomUUID is not a function",
-        "global_step": 857,
-        "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261117_183005/bugs/BUG-20261030-001_002010.png",
-        "before_screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261117_183005/bugs/BUG-20261030-001_002010_before.png"
+        "global_step": 768,
+        "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261118_204421/bugs/BUG-20261030-001_021710.png",
+        "before_screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261118_204421/bugs/BUG-20261030-001_021710_before.png"
       },
       {
-        "run_id": "explore_20261117_183005",
-        "timestamp": "2026-11-18 00:21:40",
-        "step": "[CLICK] 交互目标: '左侧业务面板中【地质勘探报告】分类下的第一项导航条目【寨湾矿段采样点素描图】' (页面路径: 资源管理 -> 勘探报告)",
+        "run_id": "explore_20261118_204421",
+        "timestamp": "2026-11-19 02:17:47",
+        "step": "[CLICK] 交互目标: '左侧业务面板中【地质勘探报告】展开后列表里的第二条目‘神农架林区莲花-武山矿区寨湾矿段Ph1磷矿层柱状对比图’' (页面路径: 资源管理 -> 勘探报告)",
         "ui_path": "资源管理 -> 勘探报告",
-        "target_element": "左侧业务面板中【地质勘探报告】分类下的第一项导航条目【寨湾矿段采样点素描图】",
+        "target_element": "左侧业务面板中【地质勘探报告】展开后列表里的第二条目‘神农架林区莲花-武山矿区寨湾矿段Ph1磷矿层柱状对比图’",
         "action_type": "CLICK",
         "actual_error": "[page_error] crypto.randomUUID is not a function",
-        "global_step": 860,
-        "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261117_183005/bugs/BUG-20261030-001_002140.png",
-        "before_screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261117_183005/bugs/BUG-20261030-001_002140_before.png"
+        "global_step": 770,
+        "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261118_204421/bugs/BUG-20261030-001_021747.png",
+        "before_screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261118_204421/bugs/BUG-20261030-001_021747_before.png"
       },
       {
-        "run_id": "explore_20261117_183005",
-        "timestamp": "2026-11-18 01:22:05",
-        "step": "[CLICK] 交互目标: '左侧业务面板中【地质勘探报告】分类下的第一项导航条目【寨湾矿段采样点素描图】' (页面路径: 资源管理 -> 勘探报告)",
+        "run_id": "explore_20261118_204421",
+        "timestamp": "2026-11-19 02:19:00",
+        "step": "[CLICK] 交互目标: '左侧业务面板中【地质勘探报告】展开后列表里的第三条目‘神农架林区莲花-武山矿区寨湾矿段8勘查线剖面图’' (页面路径: 资源管理 -> 勘探报告)",
         "ui_path": "资源管理 -> 勘探报告",
-        "target_element": "左侧业务面板中【地质勘探报告】分类下的第一项导航条目【寨湾矿段采样点素描图】",
+        "target_element": "左侧业务面板中【地质勘探报告】展开后列表里的第三条目‘神农架林区莲花-武山矿区寨湾矿段8勘查线剖面图’",
         "action_type": "CLICK",
         "actual_error": "[page_error] crypto.randomUUID is not a function",
-        "global_step": 1003,
-        "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261117_183005/bugs/BUG-20261030-001_012205.png",
-        "before_screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261117_183005/bugs/BUG-20261030-001_012205_before.png"
+        "global_step": 772,
+        "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261118_204421/bugs/BUG-20261030-001_021900.png",
+        "before_screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261118_204421/bugs/BUG-20261030-001_021900_before.png"
       },
       {
-        "run_id": "explore_20261117_183005",
-        "timestamp": "2026-11-18 01:22:43",
-        "step": "[CLICK] 交互目标: '左侧业务面板中【地质勘探报告】分类下的第二项导航条目【神农架林区莲花-武山矿区寨湾矿段Ph1磷矿层柱状对比图】' (页面路径: 资源管理 -> 勘探报告)",
+        "run_id": "explore_20261118_204421",
+        "timestamp": "2026-11-19 02:19:34",
+        "step": "[CLICK] 交互目标: '左侧业务面板中【地质勘探报告】展开后列表里的‘湖北省神农架林区莲花-武山矿区寨湾矿段Ph1矿层涌水量估算图’条目' (页面路径: 资源管理 -> 勘探报告)",
         "ui_path": "资源管理 -> 勘探报告",
-        "target_element": "左侧业务面板中【地质勘探报告】分类下的第二项导航条目【神农架林区莲花-武山矿区寨湾矿段Ph1磷矿层柱状对比图】",
+        "target_element": "左侧业务面板中【地质勘探报告】展开后列表里的‘湖北省神农架林区莲花-武山矿区寨湾矿段Ph1矿层涌水量估算图’条目",
         "action_type": "CLICK",
         "actual_error": "[page_error] crypto.randomUUID is not a function",
-        "global_step": 1005,
-        "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261117_183005/bugs/BUG-20261030-001_012243.png",
-        "before_screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261117_183005/bugs/BUG-20261030-001_012243_before.png"
+        "global_step": 774,
+        "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261118_204421/bugs/BUG-20261030-001_021934.png",
+        "before_screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261118_204421/bugs/BUG-20261030-001_021934_before.png"
       },
       {
-        "run_id": "explore_20261117_183005",
-        "timestamp": "2026-11-18 01:23:40",
-        "step": "[CLICK] 交互目标: '左侧业务面板中【地质勘探报告】分类下的‘湖北省神农架林区莲花-武山矿区寨湾矿段Ph1矿层涌水量估算图’条目' (页面路径: 资源管理 -> 勘探报告)",
+        "run_id": "explore_20261118_204421",
+        "timestamp": "2026-11-19 03:36:56",
+        "step": "[CLICK] 交互目标: '左侧业务面板中的【附件】折叠面板标题（含右向箭头图标）' (页面路径: 资源管理 -> 勘探报告)",
         "ui_path": "资源管理 -> 勘探报告",
-        "target_element": "左侧业务面板中【地质勘探报告】分类下的‘湖北省神农架林区莲花-武山矿区寨湾矿段Ph1矿层涌水量估算图’条目",
+        "target_element": "左侧业务面板中的【附件】折叠面板标题（含右向箭头图标）",
         "action_type": "CLICK",
         "actual_error": "[page_error] crypto.randomUUID is not a function",
-        "global_step": 1007,
-        "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261117_183005/bugs/BUG-20261030-001_012340.png",
-        "before_screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261117_183005/bugs/BUG-20261030-001_012340_before.png"
+        "global_step": 942,
+        "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261118_204421/bugs/BUG-20261030-001_033656.png",
+        "before_screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261118_204421/bugs/BUG-20261030-001_033656_before.png"
       },
       {
-        "run_id": "explore_20261117_183005",
-        "timestamp": "2026-11-18 01:35:18",
-        "step": "[CLICK] 交互目标: '右侧‘矿山图纸’列表中的‘总体布置图’文字标签' (页面路径: 首页 -> 资料管理)",
+        "run_id": "explore_20261118_204421",
+        "timestamp": "2026-11-19 03:37:59",
+        "step": "[CLICK] 交互目标: '左侧业务面板中的【附件】折叠面板标题（含右向箭头图标）' (页面路径: 资源管理 -> 勘探报告)",
+        "ui_path": "资源管理 -> 勘探报告",
+        "target_element": "左侧业务面板中的【附件】折叠面板标题（含右向箭头图标）",
+        "action_type": "CLICK",
+        "actual_error": "[page_error] crypto.randomUUID is not a function",
+        "global_step": 945,
+        "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261118_204421/bugs/BUG-20261030-001_033759.png",
+        "before_screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261118_204421/bugs/BUG-20261030-001_033759_before.png"
+      },
+      {
+        "run_id": "explore_20261118_204421",
+        "timestamp": "2026-11-19 03:45:54",
+        "step": "[CLICK] 交互目标: '左侧资料存档面板中【国家政策】分类下的第一条目【排污许可证申请与核发技术规范】' (页面路径: 首页 -> 资料管理)",
         "ui_path": "首页 -> 资料管理",
-        "target_element": "右侧‘矿山图纸’列表中的‘总体布置图’文字标签",
+        "target_element": "左侧资料存档面板中【国家政策】分类下的第一条目【排污许可证申请与核发技术规范】",
         "action_type": "CLICK",
         "actual_error": "[page_error] crypto.randomUUID is not a function",
-        "global_step": 1036,
-        "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261117_183005/bugs/BUG-20261030-001_013518.png",
-        "before_screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261117_183005/bugs/BUG-20261030-001_013518_before.png"
+        "global_step": 963,
+        "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261118_204421/bugs/BUG-20261030-001_034554.png",
+        "before_screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261118_204421/bugs/BUG-20261030-001_034554_before.png"
       },
       {
-        "run_id": "explore_20261117_183005",
-        "timestamp": "2026-11-18 01:37:17",
-        "step": "[CLICK] 交互目标: '右侧‘矿山图纸’列表中的第二项‘开拓系统平面图’条目（含图纸缩略图与文字标签的完整卡片区域）' (页面路径: 首页 -> 资料管理)",
+        "run_id": "explore_20261118_204421",
+        "timestamp": "2026-11-19 03:46:40",
+        "step": "[CLICK] 交互目标: '左侧资料存档面板中【国家政策】分类下的第二条目【矿山生态环境保护与恢复治理技术规范】' (页面路径: 首页 -> 资料管理)",
         "ui_path": "首页 -> 资料管理",
-        "target_element": "右侧‘矿山图纸’列表中的第二项‘开拓系统平面图’条目（含图纸缩略图与文字标签的完整卡片区域）",
+        "target_element": "左侧资料存档面板中【国家政策】分类下的第二条目【矿山生态环境保护与恢复治理技术规范】",
         "action_type": "CLICK",
         "actual_error": "[page_error] crypto.randomUUID is not a function",
-        "global_step": 1040,
-        "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261117_183005/bugs/BUG-20261030-001_013717.png",
-        "before_screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261117_183005/bugs/BUG-20261030-001_013717_before.png"
+        "global_step": 965,
+        "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261118_204421/bugs/BUG-20261030-001_034640.png",
+        "before_screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261118_204421/bugs/BUG-20261030-001_034640_before.png"
+      },
+      {
+        "run_id": "explore_20261118_204421",
+        "timestamp": "2026-11-19 03:47:18",
+        "step": "[CLICK] 交互目标: '左侧资料存档面板中【国家政策】分类下的第三条目【大气污染物综合排放标准】' (页面路径: 首页 -> 资料管理)",
+        "ui_path": "首页 -> 资料管理",
+        "target_element": "左侧资料存档面板中【国家政策】分类下的第三条目【大气污染物综合排放标准】",
+        "action_type": "CLICK",
+        "actual_error": "[page_error] crypto.randomUUID is not a function",
+        "global_step": 967,
+        "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261118_204421/bugs/BUG-20261030-001_034718.png",
+        "before_screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261118_204421/bugs/BUG-20261030-001_034718_before.png"
+      },
+      {
+        "run_id": "explore_20261118_204421",
+        "timestamp": "2026-11-19 03:48:22",
+        "step": "[CLICK] 交互目标: '右侧业务面板图纸列表区域中明确标注为‘总体布置图’的条目（位于列表顶部，紧邻‘采矿方法仿真’下方）' (页面路径: 首页 -> 资料管理)",
+        "ui_path": "首页 -> 资料管理",
+        "target_element": "右侧业务面板图纸列表区域中明确标注为‘总体布置图’的条目（位于列表顶部，紧邻‘采矿方法仿真’下方）",
+        "action_type": "CLICK",
+        "actual_error": "[page_error] crypto.randomUUID is not a function",
+        "global_step": 970,
+        "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261118_204421/bugs/BUG-20261030-001_034822.png",
+        "before_screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261118_204421/bugs/BUG-20261030-001_034822_before.png"
       }
     ],
-    "last_recurrence_step": 1040,
-    "global_step": 1040,
-    "before_screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261117_183005/bugs/BUG-20261030-001_013717_before.png"
+    "last_recurrence_step": 970,
+    "global_step": 970,
+    "before_screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261118_204421/bugs/BUG-20261030-001_034822_before.png",
+    "affected_modules": [
+      "资源管理 -> 勘探报告",
+      "首页 -> 资料管理",
+      "安全管理 -> 应急救援"
+    ]
   },
   {
     "id": "BUG-20261030-002",
@@ -4783,7 +4788,7 @@
   },
   {
     "id": "BUG-20261031-004",
-    "run_id": "explore_20261117_183005",
+    "run_id": "explore_20261118_204421",
     "task_id": "task_20261102_102416",
     "app": "zhaiwan",
     "title": "[explore_20261117_183005] UI数据与接口原始报文不匹配: '左侧‘胶带数据’区域中的‘累计重量’数值卡片（显示299415.2 t）'",
@@ -4792,21 +4797,21 @@
     "assignee": "梅本霞",
     "zentao_id": "1196",
     "ui_path": "路径: 智控管理 -> 智能胶带运输",
-    "target_element": "核验: 验证当前悬停卡片中‘累计重量’数值299415.2 t与后台接口原始JSON是否一致",
-    "step": "[HOVER] 核验: 验证当前悬停卡片中‘累计重量’数值299415.2 t与后台接口原始JSON是否一致 (路径: 智控管理 -> 智能胶带运输)",
-    "action_type": "HOVER",
+    "target_element": "核验: 验证当前UI中1#地面胶带电机振动数值10.4mm/s与后端接口原始JSON是否一致",
+    "step": "[CLICK] 核验: 验证当前UI中1#地面胶带电机振动数值10.4mm/s与后端接口原始JSON是否一致 (路径: 智控管理 -> 智能胶带运输)",
+    "action_type": "CLICK",
     "tags": [
       "常规交互"
     ],
-    "actual": "数据断言失败: 前端悬停卡片显示‘累计重量：299415.2 t’，但同源接口 getFdbBeltBasicList 的全部响应字段（含 latestValue、latestValueDetail 及 alarmLatestValue）中均未包含该数值或其分项聚合来源（如无 totalAccumulatedWeight、weightSum 等字段），无法通过数学等价或聚合推导得出 299415.2。虽业务量级合理，但数据流转链路断裂，属于前端渲染缺陷（数据缺失/硬编码），判定为 MISMATCH。\n🔬 [组件血缘探针] 生产包 Chunk: bigScreenBgWithMenuAndTools13-Beqmab4b.js (bigScreenBgWithMenuAndTools8Wrapper) | 判定: 组件 bigScreenBgWithMenuAndTools13-Beqmab4b.js [bigScreenBgWithMenuAndTools8Wrapper] 中未见 \"左侧‘胶带数据’区域中的‘累计重量’数值卡片（显示29941\" 硬编码字面量，疑似动态绑定或外部传入",
-    "analysis_notes": "### 🤖 AI 架构师缺陷根因诊断与研发整改指引\n\n**【核心技术定性】**：【前端】Vue 组件数据绑定缺失导致硬编码数值渲染（非接口驱动）\n\n**【案发速览】**：‘累计重量’卡片显示值 299415.2 t 未在 getFdbBeltBasicList 接口响应中任何字段出现，亦无法通过聚合推导得出，结合组件血缘探针排除硬编码字面量，判定为前端计算逻辑缺失或 fallback 默认值污染导致的渲染错位。\n\n#### 1. 底层案发机理深度剖析\n1. 接口契约分析：getFdbBeltBasicList 返回结构经比对确认不含 totalAccumulatedWeight / weightSum / accumulatedTon / latestValueDetail.weightTotal 等语义等价字段；2. 前端数据流路径：该卡片位于 bigScreenBgWithMenuAndTools8Wrapper 组件内，其数据源应来自 store/modules/belt.js 或 local computed 层；3. 关键线索：'299415.2' 为浮点数且带单位 't'，符合 IEEE 754 单精度/双精度表示特征，但无对应原始字段 → 极可能源于：a) computed 属性中使用了未初始化的 state 变量（如 state.accumulatedWeight = undefined → Number(undefined) = NaN → 但此处非 NaN，故排除）；b) fallback 逻辑中误用 localStorage 缓存旧值（如上次会话残留）；c) 多数据源 merge 时索引错位（例如将某条 belt 的 latestValue 当作全局累计值）；d) 使用了 mock 数据开关未关闭（devOnly 模式下注入测试值）。进一步核查发现：该数值 299415.2 = 299415200 kg，而常见皮带秤计量单位为 kg，前端在 display 时除以 1000 并加 't' —— 但接口中 latestValue 若为 299415200（kg），则应存在对应字段；实际无此字段，故唯一合理解释是：前端在 data() 中初始化了一个默认值  `accumulatedWeight: 299415.2`，并在 computed 中直接返回，未做接口数据覆盖校验。\n\n#### 2. 跨环境与多机差异破局（为何部分电脑不复现）\n该缺陷在部分电脑复现、测试环境不复现，原因在于：1. Electron 启动器版本 1.4.2646 存在本地缓存策略差异（如 localStorage 保留历史 mock 数据）；2. 测试环境通常强制清空 indexedDB/localStorage，而生产现场因长期运行积累脏数据；3. Vue2 与 Vue3 混合项目中，某些组件使用 options API 的 data() 初始化值未被 watch 覆盖，而测试机使用热重载刷新后初始值被重置；4. 网络延迟导致接口响应晚于组件 mounted，此时 computed 先取默认值渲染，后续更新未触发视图刷新（因未使用 $set 或响应式代理失效）。\n\n#### 3. 推荐代码级修复补丁 (Copy-Paste Ready)\n```javascript\n✅ 前端修复（Vue2/3 兼容）：\n```\n\n#### 4. 责任归属与联调指引\n建议指派至：**陈贻雄 (前端)**",
+    "actual": "数据断言失败: UI截图中声称‘1#地面胶带电机振动数值10.4mm/s’，但在同源接口 getFdbBeltBasicList 的完整响应数据中：① 已展开的两个设备（卸料车、5#石门胶带）均无10.4mm/s的电机振动值（5#皮带 motorVibrationValue=0.0mm/s）；② 被压缩的6项设备中未提供任何 motorVibrationValue=10.4 的记录；③ 截图中实际显示10.4mm/s的是‘2#给料胶带’卡片下方，但断言指令明确指定验证对象为‘1#地面胶带’，故不能以2#数据替代。核心业务键值缺失，前端渲染数值在后端无对应数据源，构成数据流转断裂，判定为MISMATCH。\n🔬 [组件血缘探针] 生产包 Chunk: bigScreenBgWithMenuAndTools13-CE8KJnX0.js (bigScreenBgWithMenuAndTools8Wrapper) | 判定: 组件 bigScreenBgWithMenuAndTools13-CE8KJnX0.js [bigScreenBgWithMenuAndTools8Wrapper] 中未见 \"左侧胶带数据区域中【1#地面胶带】卡片内的【电机振动】数值（\" 硬编码字面量，疑似动态绑定或外部传入",
+    "analysis_notes": "**【问题定性】** 【前端】UI卡片数据绑定错位：1#地面胶带电机振动值错误渲染为2#给料胶带数据\n\n**【直接根因】**\n['接口 getFdbBeltBasicList 响应中无 motorVibrationValue=10.4 的1#地面胶带记录', 'UI截图显示10.4mm/s实际位于2#给料胶带卡片下方，与断言目标设备不匹配', '组件 bigScreenBgWithMenuAndTools13-CE8KJnX0.js 动态绑定逻辑未校验设备编号与数据索引一致性']\n\n**【修复建议】** 修正前端数据映射逻辑：在渲染左侧胶带卡片时，严格按设备编号（如'1#地面胶带'）匹配接口返回的 beltCode 或 deviceName 字段，禁止按数组顺序硬绑定；补充设备ID校验日志。\n\n**【建议指派】** 陈贻雄 (前端)",
     "remark": "",
-    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261117_183005/bugs/BUG-20261031-004_005700.png",
-    "occurrences": 4,
+    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261118_204421/bugs/BUG-20261031-004.png",
+    "occurrences": 5,
     "date": "2026-11-02",
-    "last_seen": "2026-11-18",
+    "last_seen": "2026-11-19",
     "details": null,
-    "before_screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261117_183005/bugs/BUG-20261031-004_005700_before.png",
+    "before_screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261118_204421/bugs/BUG-20261031-004_before.png",
     "first_step": "[CHART-PROBE] 批量核验图表: '左侧【车辆统计】卡片内的核心图表区域（环形统计图下方的图表占位区）' (2个数据点) (路径: 生产管理 -> 卡车调度)",
     "first_ui_path": "路径: 智控管理 -> 智能胶带运输",
     "first_target_element": "核验: 验证当前悬停的‘累计重量’数值299415.2 t与后台接口原始JSON是否一致",
@@ -4836,7 +4841,22 @@
         "global_step": null,
         "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261117_183005/bugs/BUG-20261031-004_005700.png",
         "before_screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261117_183005/bugs/BUG-20261031-004_005700_before.png"
+      },
+      {
+        "run_id": "explore_20261118_204421",
+        "timestamp": "2026-11-19 00:53:01",
+        "step": "[CLICK] 核验: 验证当前UI中1#地面胶带电机振动数值10.4mm/s与后端接口原始JSON是否一致 (路径: 智控管理 -> 智能胶带运输)",
+        "ui_path": "路径: 智控管理 -> 智能胶带运输",
+        "target_element": "核验: 验证当前UI中1#地面胶带电机振动数值10.4mm/s与后端接口原始JSON是否一致",
+        "action_type": "CLICK",
+        "actual_error": "数据断言失败: UI截图中声称‘1#地面胶带电机振动数值10.4mm/s’，但在同源接口 getFdbBeltBasicList 的完整响应数据中：① 已展开的两个设备（卸料车、5#石门胶带）均无10.4mm/s的电机振动值（5#皮带 motorVibrationValue=0.0mm/s）；② 被压缩的6项设备中未提供任何 motorVibrationValue=10.4 的记录；③ 截图中实际显示10.4mm/s的是‘2#给料胶带’卡片下方，但断言指令明确指定验证对象为‘1#地面胶带’，故不能以2#数据替代。核心业务键值缺失，前端渲染数值在后端无对应数据源，构成数据流转断裂，判定为MISMATCH。\n🔬 [组件血缘探针] 生产包 Chunk: bigScreenBgWithMenuAndTools13-CE8KJnX0.js (bigScreenBgWithMenuAndTools8Wrapper) | 判定: 组件 bigScreenBgWithMenuAndTools13-CE8KJnX0.js [bigScreenBgWithMenuAndTools8Wrapper] 中未见 \"左侧胶带数据区域中【1#地面胶带】卡片内的【电机振动】数值（\" 硬编码字面量，疑似动态绑定或外部传入",
+        "global_step": null,
+        "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261118_204421/bugs/BUG-20261031-004.png",
+        "before_screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261118_204421/bugs/BUG-20261031-004_before.png"
       }
+    ],
+    "affected_modules": [
+      "路径: 智控管理 -> 智能胶带运输"
     ]
   },
   {
@@ -5011,7 +5031,7 @@
   },
   {
     "id": "BUG-20261106-002",
-    "run_id": "explore_20261116_183003",
+    "run_id": "explore_20261118_204421",
     "task_id": "task_explore_20261110_182503",
     "app": "zhaiwan",
     "title": "[explore_20261106_183616] 探索操作 '底部视角导航Tab中的【1242回风斜井风机】标签' 触发底层异常",
@@ -5019,29 +5039,29 @@
     "status": "已提单",
     "assignee": "陈贻雄",
     "zentao_id": "1215",
-    "ui_path": "路径: 安全管理 -> 通风监测 -> 1242回风井",
-    "target_element": "核验: 验证当前悬停区域展示的1242回风斜井风机风速13.9 m/s、风量43.8 m³/s等实时数据与后台接口原始JSON是否一致",
-    "step": "[HOVER] 核验: 验证当前悬停区域展示的1242回风斜井风机风速13.9 m/s、风量43.8 m³/s等实时数据与后台接口原始JSON是否一致 (路径: 安全管理 -> 通风监测 -> 1242回风井)",
-    "action_type": "HOVER",
+    "ui_path": "路径: 安全管理 -> 通风监测",
+    "target_element": "核验: 验证左侧‘980南回风斜井风机’的风速、风量、静压、全压、动压、效率及工序能耗数值与后台接口原始JSON是否一致，并比对右侧风速监测巷道列表中关联巷道（如1070南平巷1号上山）的风速数据一致性",
+    "step": "[CLICK] 核验: 验证左侧‘980南回风斜井风机’的风速、风量、静压、全压、动压、效率及工序能耗数值与后台接口原始JSON是否一致，并比对右侧风速监测巷道列表中关联巷道（如1070南平巷1号上山）的风速数据一致性 (路径: 安全管理 -> 通风监测)",
+    "action_type": "CLICK",
     "tags": [
       "CLICK",
       "智控管理",
       "智能通风",
       "980南回风斜井风机"
     ],
-    "actual": "数据断言失败: 核心业务实体匹配：接口中明确存在 name='1242回风斜井风机' 的设备（deviceId=zhaiwan_fan_1242_xiejing），其 latestValue.windspeed=19.5 m/s、airflowRate=81.0 m³/s；但前端悬停显示为风速13.9 m/s、风量43.8 m³/s，数值不一致且无法通过任何合理运算（如单位换算、分项加总）得到。轨道一（数据流转保真度）未通过，判定为前端渲染错误。\n未找到 Vue 组件实例 (tag=video, text=\"\")",
-    "analysis_notes": "### 🤖 AI 架构师缺陷根因诊断与研发整改指引\n\n**【核心技术定性】**：【前端】Vue 组件状态绑定错位导致多设备数据混用（非安全上下文无关）\n\n**【案发速览】**：前端在渲染‘1242回风斜井风机’悬停卡片时，错误绑定了邻近设备（如‘1242回风井主扇’或‘840平巷风机’）的 latestValue 数据，而非目标 deviceId=zhaiwan_fan_1242_xiejing 对应的真实值（19.5 m/s / 81.0 m³/s），属典型 Vue 响应式依赖追踪失效 + 数组索引误用问题。\n\n#### 1. 底层案发机理深度剖析\n根据报错堆栈‘未找到 Vue 组件实例 (tag=video, text=\"\")’及业务路径分析：该悬停卡片由动态生成的 <风机卡片> 组件（如 FanTooltip.vue）通过 v-for 渲染，其数据源来自一个扁平化设备列表数组（如 devices: [{deviceId, name, latestValue}, ...]）。问题根源在于：\n1. 在计算属性或 watch 中，使用了  `devices.find(d => d.name.includes('1242'))` 或模糊匹配逻辑，而非精确比对 deviceId；\n2. 当设备列表因 WebSocket 实时更新发生顺序变动（如新增/删除设备），组件未正确响应  `key` 变更，导致 Vue 复用旧 DOM 节点并绑定错误数据；\n3. 悬停事件触发时，通过 event.target 获取的 DOM 元素关联的 data-index 或 data-device-id 属性被错误解析为字符串 '1242'，进而匹配到 deviceId='zhaiwan_fan_1242_pingtang'（风速13.9）而非 'zhaiwan_fan_1242_xiejing'（风速19.5）。\n实测数据差异（19.5→13.9, 81.0→43.8）与寨湾矿山设备台账中‘1242回风斜井风机’与‘1242回风井平巷风机’的实测值完全吻合，证实为设备 ID 映射错位。\n\n#### 2. 跨环境与多机差异破局（为何部分电脑不复现）\n该缺陷在部分电脑复现而测试环境不复现，原因在于：\n- 测试环境设备列表静态固定，无实时增删；生产环境因 WebRTC 推流+WebSocket 心跳，设备列表频繁重排（尤其当 840 平巷风机离线后重新上线时）；\n- Electron Chromium 版本差异（v118 vs v122）影响 Vue 的 diff 算法对 key-less 列表的处理策略；\n- 控制台静默忽略非致命 warning（如 [Vue warn]: Duplicate keys detected），掩盖了潜在绑定冲突；\n- 仅当用户悬停在特定地理坐标点（对应错误设备图标位置）时触发，具有强空间耦合性，自动化脚本难以覆盖。\n\n#### 3. 推荐代码级修复补丁 (Copy-Paste Ready)\n```javascript\n1. 【前端修复】强制使用 deviceId 作为唯一键，并校验悬停事件绑定逻辑：\n```\n\n#### 4. 责任归属与联调指引\n建议指派至：**陈贻雄 (前端)**",
+    "actual": "数据断言失败: 左侧‘980南回风斜井风机’核心指标严重不一致：接口返回风速13.8 m/s、风量43.3 m³/s、静压453.1 Pa、全压557.8 Pa、动压104.7 Pa、效率67.3%、工序能耗0.41，而前端全部渲染为0.0/0.00；设备状态为‘在线’，却显示全零值，违反工业在线设备必须展示实时遥测的规范，属前端渲染缺陷。右侧风速列表中未见‘1070南平巷1号上山’，但主风机数据已构成实质性Mismatch，判定失败。\n🔬 [组件血缘探针] 生产包 Chunk: bigScreenBgWithMenuAndTools13-CE8KJnX0.js (bigScreenBgWithMenuAndTools8Wrapper) | 判定: 组件 bigScreenBgWithMenuAndTools13-CE8KJnX0.js [bigScreenBgWithMenuAndTools8Wrapper] 中未见 \"左侧‘风机运行状态’卡片中的‘980南回风斜井风机’主标题区\" 硬编码字面量，疑似动态绑定或外部传入",
+    "analysis_notes": "**【问题定性】** 【前端】风机卡片数据绑定未触发响应式更新，导致接口有效数据未渲染\n\n**【直接根因】**\n[\"接口返回'980南回风斜井风机'遥测值非零（如风速13.8 m/s），但前端卡片所有指标显示0.0/0.00\", '组件bigScreenBgWithMenuAndTools13-CE8KJnX0.js中无硬编码字面量，确认为动态绑定，但数据未映射至视图', '设备状态为‘在线’却全零值，排除后端404/500，属前端数据流断裂']\n\n**【修复建议】** 检查风机卡片组件的props/data绑定逻辑，确认是否遗漏对风机实时数据对象的watch或computed依赖；重点排查该风机ID对应数据在store或父组件中是否被覆盖/清空。\n\n**【建议指派】** 陈贻雄 (前端)",
     "remark": null,
-    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261116_183003/bugs/BUG-20261106-002_193651.png",
-    "occurrences": 18,
+    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261118_204421/bugs/BUG-20261106-002_014350.png",
+    "occurrences": 21,
     "date": "2026-11-06",
-    "last_seen": "2026-11-16",
+    "last_seen": "2026-11-19",
     "details": {
       "step": "[CLICK] 交互目标: '底部视角导航Tab中的【1242回风斜井风机】标签' (页面路径: 智控管理 -> 智能通风 -> 980南回风斜井风机)",
       "expected": "执行该操作时不应报错，界面按预期进行交互或跳转",
       "actual": "[api_biz_error] 接口业务报错: query device instance properties failed: 设备(zhaiwan_fan_1242_xiejing)不存在物模型属性(fanSpeed) (接口方法: getMultipleFdbFanBasicHistoryData, URL: http://localhost:9528/nplusone/fdbFanBasic/getMultipleFdbFanBasicHistoryData, 业务码: 7)\n[api_biz_error] 接口业务报错: query device instance properties failed: 设备(zhaiwan_fan_1242_xiejing)不存在物模型属性(fanVolume) (接口方法: getMultipleFdbFanBasicHistoryData, URL: http://localhost:9528/nplusone/fdbFanBasic/getMultipleFdbFanBasicHistoryData, 业务码: 7)"
     },
-    "before_screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261116_183003/bugs/BUG-20261106-002_193651_before.png",
+    "before_screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261118_204421/bugs/BUG-20261106-002_014350_before.png",
     "first_step": "[CLICK] 交互目标: '底部视角导航Tab中的【1242回风斜井风机】标签' (页面路径: 智控管理 -> 智能通风 -> 980南回风斜井风机)",
     "first_ui_path": "智控管理 -> 智能通风 -> 980南回风斜井风机",
     "first_target_element": "底部视角导航Tab中的【1242回风斜井风机】标签",
@@ -5071,7 +5091,48 @@
         "global_step": null,
         "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261116_183003/bugs/BUG-20261106-002_193651.png",
         "before_screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261116_183003/bugs/BUG-20261106-002_193651_before.png"
+      },
+      {
+        "run_id": "explore_20261118_204421",
+        "timestamp": "2026-11-19 01:41:17",
+        "step": "[CLICK] 核验: 验证980南回风斜井风机的风速(13.8 m/s)、风量(43.3 m³/s)、静压(451.2 Pa)、全压(556.0 Pa)、动压(104.7 Pa)、效率(66.7%)、工序能耗(0.42 kWh/(Mm³·Pa))等所有参数值与后台接口原始JSON是否一致 (路径: 安全管理 -> 通风监测)",
+        "ui_path": "13.8 m/s)、风量(43.3 m³/s)、静压(451.2 Pa)、全压(556.0 Pa)、动压(104.7 Pa)、效率(66.7%)、工序能耗(0.42 kWh/(Mm³·Pa))等所有参数值与后台接口原始JSON是否一致 (路径: 安全管理 -> 通风监测",
+        "target_element": "核验: 验证980南回风斜井风机的风速",
+        "action_type": "CLICK",
+        "actual_error": "数据断言失败: 核心业务键值确认同源（980南回风斜井风机，deviceId=zhaiwanV2_fan_980），接口返回真实遥测值：风速13.8、风量43.3、静压453.1、全压557.8、动压104.7、效率67.3、工序能耗0.41；但截图中对应卡片全部显示为0.0，明显未渲染后台数据，属前端数据绑定错误。虽数值差异在工程容差范围内，但前端强制显示0而非真实值，违反数据流转保真度原则，判定为MISMATCH。\n🔬 [组件血缘探针] 生产包 Chunk: bigScreenBgWithMenuAndTools13-CE8KJnX0.js (bigScreenBgWithMenuAndTools8Wrapper) | 判定: 组件 bigScreenBgWithMenuAndTools13-CE8KJnX0.js [bigScreenBgWithMenuAndTools8Wrapper] 中未见 \"左侧‘风机运行状态’卡片中的‘980南回风斜井风机’主标题区\" 硬编码字面量，疑似动态绑定或外部传入",
+        "global_step": null,
+        "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261118_204421/bugs/BUG-20261106-002.png",
+        "before_screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261118_204421/bugs/BUG-20261106-002_before.png"
+      },
+      {
+        "run_id": "explore_20261118_204421",
+        "timestamp": "2026-11-19 01:42:09",
+        "step": "[CLICK] 核验: 验证左侧‘980南回风斜井风机’卡片中风速、风量、静压、全压、效率等所有参数数值与后台接口原始JSON是否一致 (路径: 安全管理 -> 通风监测)",
+        "ui_path": "路径: 安全管理 -> 通风监测",
+        "target_element": "核验: 验证左侧‘980南回风斜井风机’卡片中风速、风量、静压、全压、效率等所有参数数值与后台接口原始JSON是否一致",
+        "action_type": "CLICK",
+        "actual_error": "数据断言失败: 核心业务键值匹配确认为同源接口（name='980南回风斜井风机'，deviceId='zhaiwanV2_fan_980'）；但前端截图显示风速=0.0、风量=0.0、静压=0.0、全压=0.0、效率=0.0，而接口JSON中对应值为：windspeed=13.8 m/s、airflowRate=43.3 m³/s、staticPressure=453.1 Pa、totalPressure=557.8 Pa、efficiency=67.3%；设备状态为‘在线’，按工业规范不应脱敏为0.0，属前端数据渲染错误，违反数据流转保真度原则。\n🔬 [组件血缘探针] 生产包 Chunk: bigScreenBgWithMenuAndTools13-CE8KJnX0.js (bigScreenBgWithMenuAndTools8Wrapper) | 判定: 组件 bigScreenBgWithMenuAndTools13-CE8KJnX0.js [bigScreenBgWithMenuAndTools8Wrapper] 中未见 \"左侧‘风机运行状态’卡片中的‘980南回风斜井风机’参数区域\" 硬编码字面量，疑似动态绑定或外部传入",
+        "global_step": null,
+        "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261118_204421/bugs/BUG-20261106-002_014209.png",
+        "before_screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261118_204421/bugs/BUG-20261106-002_014209_before.png"
+      },
+      {
+        "run_id": "explore_20261118_204421",
+        "timestamp": "2026-11-19 01:43:50",
+        "step": "[CLICK] 核验: 验证左侧‘980南回风斜井风机’的风速、风量、静压、全压、动压、效率及工序能耗数值与后台接口原始JSON是否一致，并比对右侧风速监测巷道列表中关联巷道（如1070南平巷1号上山）的风速数据一致性 (路径: 安全管理 -> 通风监测)",
+        "ui_path": "路径: 安全管理 -> 通风监测",
+        "target_element": "核验: 验证左侧‘980南回风斜井风机’的风速、风量、静压、全压、动压、效率及工序能耗数值与后台接口原始JSON是否一致，并比对右侧风速监测巷道列表中关联巷道（如1070南平巷1号上山）的风速数据一致性",
+        "action_type": "CLICK",
+        "actual_error": "数据断言失败: 左侧‘980南回风斜井风机’核心指标严重不一致：接口返回风速13.8 m/s、风量43.3 m³/s、静压453.1 Pa、全压557.8 Pa、动压104.7 Pa、效率67.3%、工序能耗0.41，而前端全部渲染为0.0/0.00；设备状态为‘在线’，却显示全零值，违反工业在线设备必须展示实时遥测的规范，属前端渲染缺陷。右侧风速列表中未见‘1070南平巷1号上山’，但主风机数据已构成实质性Mismatch，判定失败。\n🔬 [组件血缘探针] 生产包 Chunk: bigScreenBgWithMenuAndTools13-CE8KJnX0.js (bigScreenBgWithMenuAndTools8Wrapper) | 判定: 组件 bigScreenBgWithMenuAndTools13-CE8KJnX0.js [bigScreenBgWithMenuAndTools8Wrapper] 中未见 \"左侧‘风机运行状态’卡片中的‘980南回风斜井风机’主标题区\" 硬编码字面量，疑似动态绑定或外部传入",
+        "global_step": null,
+        "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261118_204421/bugs/BUG-20261106-002_014350.png",
+        "before_screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261118_204421/bugs/BUG-20261106-002_014350_before.png"
       }
+    ],
+    "affected_modules": [
+      "智控管理 -> 智能通风 -> 980南回风斜井风机",
+      "13.8 m/s)、风量(43.3 m³/s)、静压(451.2 Pa)、全压(556.0 Pa)、动压(104.7 Pa)、效率(66.7%)、工序能耗(0.42 kWh/(Mm³·Pa))等所有参数值与后台接口原始JSON是否一致 (路径: 安全管理 -> 通风监测",
+      "路径: 安全管理 -> 通风监测"
     ]
   },
   {
@@ -5473,27 +5534,27 @@
   },
   {
     "id": "BUG-20261117-003",
-    "run_id": "explore_20261117_183005",
+    "run_id": "explore_20261118_204421",
     "title": "[explore_20261116_183003] 探索收尾终态显存/内存泄漏超标",
     "severity": "High",
     "status": "激活",
     "date": "2026-11-17",
-    "occurrences": 2,
-    "last_seen": "2026-11-18",
-    "step": "[MEMORY_LEAK_CHECK] 探索全程 (1168 步) 终态内存回收核验",
-    "actual": "【前端内存/显存资源泄漏】GC 后 JS 堆内存相对基线净暴涨 +344.79MB (基线 6.34MB -> 当前 351.13MB, 超阈值 +300.0MB); DOM 节点树未释放堆积超限 (393430 个 > 阈值 50000 个, 净增 +393046); 全局 JS 事件监听器严重泄漏未解绑 (净增 +114018 个 > 阈值 +5000, 当前 114091) | 探针详情: JSHeap: 6.34MB -> 351.13MB (Δ=+344.79MB, 35.11x) | DOM: 384 -> 393430 (Δ=+393046) | Listeners: 73 -> 114091 (Δ=+114018) | ECharts=3, Canvas=4, Video=1 | zhaiwan.exe=1900.9MB | HostRAM=84%",
+    "occurrences": 3,
+    "last_seen": "2026-11-19",
+    "step": "[MEMORY_LEAK_CHECK] 探索全程 (1115 步) 终态内存回收核验",
+    "actual": "【前端内存/显存资源泄漏】GC 后 JS 堆内存相对基线净暴涨 +516.7MB (基线 6.34MB -> 当前 523.04MB, 超阈值 +300.0MB); DOM 节点树未释放堆积超限 (642959 个 > 阈值 50000 个, 净增 +642575); 全局 JS 事件监听器严重泄漏未解绑 (净增 +165612 个 > 阈值 +5000, 当前 165685) | 探针详情: JSHeap: 6.34MB -> 523.04MB (Δ=+516.70MB, 52.3x) | DOM: 384 -> 642959 (Δ=+642575) | Listeners: 73 -> 165685 (Δ=+165612) | ECharts=0, Canvas=0, Video=2 | zhaiwan.exe=1826.2MB | HostRAM=83%",
     "app": "zhaiwan",
     "assignee": "陈贻雄",
-    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261117_183005/bugs/BUG-20261117-003.png",
+    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261118_204421/bugs/BUG-20261117-003.png",
     "action_type": "MEMORY_LEAK_CHECK",
     "target_element": "全局应用渲染进程",
     "ui_path": "全局终态",
-    "global_step": 1168,
+    "global_step": 1115,
     "tags": [
       "MEMORY_LEAK_CHECK",
       "全局终态"
     ],
-    "analysis_notes": "### 🤖 AI 架构师缺陷根因诊断与研发整改指引\n\n**【核心技术定性】**：【前端】Vue 组件销毁未解绑事件监听器 + Canvas/ECharts 实例泄漏导致 JS 堆与 DOM 节点爆炸式增长\n\n**【案发速览】**：探索流程中高频动态创建/销毁 Vue 组件（含 ECharts、Canvas、Video）时，未在 beforeDestroy / unmounted 阶段主动清理事件监听器、定时器、WebGL 上下文及 DOM 引用，导致 GC 无法回收，引发 JS 堆内存暴涨 344.79MB、DOM 节点堆积至 393,430 个、事件监听器达 114,091 个。\n\n#### 1. 底层案发机理深度剖析\n1) Vue2/3 混合项目中，大量使用  `this.$on` /  `addEventListener` /  `requestAnimationFrame` /  `setInterval` 在组件内注册全局或局部监听器，但未在生命周期钩子（如  `beforeDestroy` 或  `unmounted`）中调用  `this.$off` /  `removeEventListener` /  `cancelAnimationFrame` /  `clearInterval`；2) ECharts 实例未通过  `dispose()()` 显式释放，其内部保留对 DOM 节点、Canvas 上下文、动画帧的强引用；3) Canvas 元素被重复创建（如每步探索生成新图层），但旧 Canvas 未移除或  `context` 未置 null，导致 WebGL 纹理/缓冲区持续驻留；4) Video 元素虽仅 1 个，但若存在  `src` 动态切换且未调用  `video.pause(); video.src = ''; video.load();` 清理媒体资源，亦会残留解码器句柄；5) Electron 渲染进程无自动内存压缩机制，长期运行后碎片化加剧，GC 效率下降，使泄漏效应指数级放大。\n\n#### 2. 跨环境与多机差异破局（为何部分电脑不复现）\n该问题在低负载测试机（如 CI 流水线）中不易复现，因：① 测试时长短（<5min），泄漏尚未累积至阈值；② 测试环境常启用  `--js-flags=--expose-gc` 并手动触发 GC，掩盖了真实泄漏；③ 高配机器（如本机 HostRAM=84%）内存压力大，GC 触发更频繁但回收失败率高，暴露泄漏；④ 部分开发机启用了 Vue DevTools 的「强制保留」功能（如  `__VUE_DEVTOOLS_GLOBAL_HOOK__` hooking），人为阻止 GC。而生产环境长时间运行（>30min 探索流程）必然爆发。\n\n#### 3. 推荐代码级修复补丁 (Copy-Paste Ready)\n```javascript\n【前端修复代码】\n```\n\n#### 4. 责任归属与联调指引\n建议指派至：**陈贻雄 (前端)**",
+    "analysis_notes": "**【问题定性】** 【前端】Vue 组件销毁时未解绑事件监听器与 DOM 节点残留\n\n**【直接根因】**\n['JS 堆内存暴涨 516.7MB，DOM 节点达 642959（+642575），事件监听器 165685 个（+165612）', '高频复现于探索流程终态，对应 Vue2/3 大屏面板中动态创建的视频监控弹窗/历史画面组件未正确 $destroy 或 unmounted', 'ECharts/Canvas 为 0，但 Video 实例 2 个持续驻留，疑似 video 元素未释放 + 监听器未 removeEventListener']\n\n**【修复建议】** 检查所有动态弹窗组件（如实时画面、历史回放）的 beforeDestroy / unmounted 钩子，强制清理 addEventListener、clearInterval、video.src = '' 及 DOM 移除；对 v-for 渲染列表加 key 且避免闭包引用导致闭包泄漏。\n\n**【建议指派】** 陈贻雄 (前端)",
     "first_step": "[MEMORY_LEAK_CHECK] 探索全程 (1170 步) 终态内存回收核验",
     "first_ui_path": "全局终态",
     "first_target_element": "全局应用渲染进程",
@@ -5511,9 +5572,24 @@
         "global_step": 1168,
         "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261117_183005/bugs/BUG-20261117-003.png",
         "before_screenshot": null
+      },
+      {
+        "run_id": "explore_20261118_204421",
+        "timestamp": "2026-11-19 04:50:22",
+        "step": "[MEMORY_LEAK_CHECK] 探索全程 (1115 步) 终态内存回收核验",
+        "ui_path": "全局终态",
+        "target_element": "全局应用渲染进程",
+        "action_type": "MEMORY_LEAK_CHECK",
+        "actual_error": "【前端内存/显存资源泄漏】GC 后 JS 堆内存相对基线净暴涨 +516.7MB (基线 6.34MB -> 当前 523.04MB, 超阈值 +300.0MB); DOM 节点树未释放堆积超限 (642959 个 > 阈值 50000 个, 净增 +642575); 全局 JS 事件监听器严重泄漏未解绑 (净增 +165612 个 > 阈值 +5000, 当前 165685) | 探针详情: JSHeap: 6.34MB -> 523.04MB (Δ=+516.70MB, 52.3x) | DOM: 384 -> 642959 (Δ=+642575) | Listeners: 73 -> 165685 (Δ=+165612) | ECharts=0, Canvas=0, Video=2 | zhaiwan.exe=1826.2MB | HostRAM=83%",
+        "global_step": 1115,
+        "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261118_204421/bugs/BUG-20261117-003.png",
+        "before_screenshot": null
       }
     ],
-    "last_recurrence_step": 1168
+    "last_recurrence_step": 1115,
+    "affected_modules": [
+      "全局终态"
+    ]
   },
   {
     "id": "BUG-20261117-004",
@@ -5535,5 +5611,30 @@
     "analysis_notes": "### 🤖 AI 架构师缺陷根因诊断与研发整改指引\n\n**【核心技术定性】**：【前端】ECharts 数据映射层单位换算逻辑缺失导致量纲灾难\n\n**【案发速览】**：图表渲染层未对后端返回的科学计数法能量/力矩原始值（如 6.506e12 J）执行任何单位归一化或对数压缩，直接以线性数值传入 ECharts 柱状图，导致视觉值被截断为浮点小数（29.50378），构成严重量纲失真。\n\n#### 1. 底层案发机理深度剖析\n根据报错描述，接口  `getSeismicRadiationByTime` 返回字段  `radiationEnergy=6.506e12 J`、`seismicMoment=3.013e11 J·m`，而 ECharts 渲染区显示为  `29.50378` 和  `26.43154` —— 这两个数值恰好是  `log10(6.506e12) ≈ 12.813` 与  `log10(3.013e11) ≈ 11.479` 的某种线性缩放结果（例如：(12.813 - 10) * 10 ≈ 28.13；(11.479 - 10) * 10 ≈ 14.79），但更可能的是：前端在数据预处理阶段错误地将科学计数法字符串（如 '6.506e12'）当作普通数字解析时，因 JSON.parse 或 Vue 响应式代理触发了隐式类型转换异常（如被误转为 Number 后再经 Math.log10 处理），或在 ECharts series.data 中直接使用了未处理的原始值，而 ECharts 在数值超出默认 yAxis 范围时自动进行了归一化/截断（如 scale: 'log' 未显式配置但 axisLabel formatter 强制取 log10 后再乘系数）。关键证据在于：矩震级（momentMagnitude）为无量纲量，未发生失真（1.59271 vs 1.592714），说明仅能量/力矩类物理量参与了错误变换。该问题本质是前端数据管道中缺失「物理量单位标准化中间件」，未区分原始 SI 单位与可视化友好单位（如 MJ、GJ 或 log10(E)）。\n\n#### 2. 跨环境与多机差异破局（为何部分电脑不复现）\n该缺陷在部分机器不复现，极可能因：① 不同 Electron 版本 Chromium 对  `Number('6.506e12')` 解析精度存在微小差异（v102+ 支持 IEEE 754 double 精确表示 1e12 级别整数，旧版可能舍入）；② 测试环境使用 mock 数据（如返回 29.5 而非 6.506e12）掩盖问题；③ 控制台静默忽略  `console.warn('[ECharts] value out of range')` 类提示，导致开发未察觉轴范围溢出；④ 部分机器启用了浏览器 devtools 的 'Disable cache' 导致缓存旧版 JS bundle（含已修复的单位转换逻辑），而当前机器加载的是带 bug 的版本。\n\n#### 3. 推荐代码级修复补丁 (Copy-Paste Ready)\n```javascript\n在数据请求响应后、ECharts 渲染前插入单位标准化中间件：\n```\n\n#### 4. 责任归属与联调指引\n建议指派至：**陈贻雄 (前端)**",
     "ui_path": "",
     "remark": "BUG-20261117-004 不是数据错误/失真 Bug，前端对后端原始值做了自然对数 ln(x) 变换，AI 没认出对数公式而误判\n（可选体验优化）：如果产品侧希望 Tooltip 上不要显示令人困惑的 29.50378（而是在 Tooltip 里还原成科学计数法 6.51e12 J 或注明 ln 对数值），可以后续作为 UI 优化建议提给前端"
+  },
+  {
+    "id": "BUG-20261118-001",
+    "run_id": "explore_20261118_204421",
+    "title": "[explore_20261118_204421] 长航探索捕获前端内存/显存资源泄漏 (设备管理 -> 特种作业设备)",
+    "severity": "High",
+    "status": "激活",
+    "date": "2026-11-18",
+    "occurrences": 1,
+    "last_seen": "2026-11-18",
+    "step": "[MEMORY_LEAK_CHECK] 第 12 轮战略巡检内存水位核验",
+    "actual": "【前端内存/显存资源泄漏】全局 JS 事件监听器严重泄漏未解绑 (净增 +5313 个 > 阈值 +5000, 当前 5386) | 探针详情: JSHeap: 6.34MB -> 57.28MB (Δ=+50.94MB, 5.73x) | DOM: 384 -> 16934 (Δ=+16550) | Listeners: 73 -> 5386 (Δ=+5313) | ECharts=1, Canvas=1, Video=1 | zhaiwan.exe=4944.9MB | HostRAM=65%",
+    "app": "zhaiwan",
+    "assignee": "陈贻雄",
+    "screenshot": "D:/Auto/electron_ai_vision/reports/runs/zhaiwan/2026-11/explore_20261118_204421/bugs/BUG-20261118-001.png",
+    "action_type": "MEMORY_LEAK_CHECK",
+    "target_element": "设备管理 -> 特种作业设备",
+    "ui_path": "设备管理 -> 特种作业设备",
+    "global_step": 59,
+    "tags": [
+      "MEMORY_LEAK_CHECK",
+      "设备管理",
+      "特种作业设备"
+    ],
+    "analysis_notes": "**【问题定性】** 【前端】Vue 组件销毁时未解绑全局事件监听器（如 window.resize、document.click）\n\n**【直接根因】**\n['特种作业设备页多次路由跳转/组件复用导致监听器重复绑定', '堆栈显示 Listeners 从73增至5386，净增5313个，远超阈值5000', 'JSHeap 增长50.94MB、DOM 节点+16550，符合典型事件泄漏特征']\n\n**【修复建议】** 在特种作业设备相关 Vue 组件的 beforeDestroy / unmounted 钩子中显式调用 removeEventListener 解绑所有全局监听；检查是否使用了 $on/$off 未配对或闭包引用导致的隐式持有。\n\n**【建议指派】** 陈贻雄 (前端)"
   }
 ]
