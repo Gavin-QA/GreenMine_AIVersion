@@ -101,7 +101,7 @@
                     style="background: #0f172a; color: #94a3b8; padding: 4px 8px; border-radius: 4px; font-size: 12px; border: 1px solid #1e293b; font-family: monospace;">{{ selectedBug.task_id }}</code>
 
                   <button type="button" class="btn btn-secondary"
-                    style="padding: 4px 10px; font-size: 12px; border-color: #00d2ff; color: #00d2ff;"
+                    style="padding: 4px 10px; font-size: 12px; border-color: #22c7d8; color: #22c7d8;"
                     @click="jumpToBugMonitor(selectedBug)">
                     📈 前往监控大屏复盘
                   </button>
@@ -237,9 +237,9 @@
                   <span>🕒 历史复现轨迹时间轴 (近 {{ selectedBug.recurrence_history.length }} 次)</span>
                   <span style="font-size: 11px; color: var(--text-muted);">累计复现 {{ selectedBug.occurrences }} 次</span>
                 </label>
-                <div style="background: #0b1120; border: 1px solid var(--border-color); border-radius: 6px; padding: 12px; max-height: 240px; overflow-y: auto;">
+                <div style="background: #121a24; border: 1px solid var(--border-color); border-radius: 6px; padding: 12px; max-height: 240px; overflow-y: auto;">
                   <div v-for="(h, idx) in selectedBug.recurrence_history.slice().reverse()" :key="idx" 
-                       style="border-left: 2px solid #00d2ff; padding-left: 10px; margin-bottom: 12px; position: relative;">
+                       style="border-left: 2px solid #22c7d8; padding-left: 10px; margin-bottom: 12px; position: relative;">
                     <div style="font-size: 12px; color: #94a3b8; display: flex; justify-content: space-between;">
                       <span style="color: #38bdf8; font-weight: bold;">批次: {{ h.run_id }}</span>
                       <span>{{ h.timestamp }}</span>
@@ -266,7 +266,7 @@
 
                 <button class="btn btn-secondary" @click="selectedBug = null">关闭</button>
 
-                <button class="btn btn-secondary" style="border-color: #00d2ff; color: #00d2ff;"
+                <button class="btn btn-secondary" style="border-color: #22c7d8; color: #22c7d8;"
                   @click="openEditBugModal(selectedBug)">
 
                   ✏️ 编辑缺陷属性
@@ -701,7 +701,7 @@
               <button class="modal-close" @click="selectedEnvInfo = null">&times;</button>
             </div>
 
-            <div v-if="envInfoLoading" style="text-align: center; padding: 40px; color: #00d2ff;">
+            <div v-if="envInfoLoading" style="text-align: center; padding: 40px; color: #22c7d8;">
               ⚡ 正在读取该批次的环境基线快照...
             </div>
 
@@ -718,7 +718,7 @@
             <div v-else>
               <!-- 顶部视图切换工具栏 -->
               <div
-                style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid #1a253c; padding-bottom: 10px;">
+                style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid #263442; padding-bottom: 10px;">
                 <div style="display: flex; gap: 8px;">
                   <button class="btn" :class="envInfoViewMode === 'card' ? 'btn-primary' : 'btn-secondary'"
                     style="padding: 4px 12px; font-size: 12px;" @click="envInfoViewMode = 'card'">
@@ -741,10 +741,10 @@
               <div v-if="envInfoViewMode === 'card'">
                 <div class="grid-2" style="margin-bottom: 12px;">
                   <div class="form-group"
-                    style="background: rgba(13, 20, 36, 0.6); padding: 12px; border-radius: 6px; border: 1px solid #1a253c; margin-bottom: 0;">
-                    <label class="form-label" style="color: #00d2ff; display: flex; justify-content: space-between; align-items: center;">
+                    style="background: rgba(13, 20, 36, 0.6); padding: 12px; border-radius: 6px; border: 1px solid #263442; margin-bottom: 0;">
+                    <label class="form-label" style="color: #22c7d8; display: flex; justify-content: space-between; align-items: center;">
                       <span>🏢 目标系统与启动器</span>
-                      <span v-if="selectedEnvInfo.env_info.launcher_version" class="badge" style="background: rgba(0, 210, 255, 0.15); color: #00d2ff; font-weight: bold; font-size: 11px;">
+                      <span v-if="selectedEnvInfo.env_info.launcher_version" class="badge" style="background: rgba(34, 199, 216, 0.15); color: #22c7d8; font-weight: bold; font-size: 11px;">
                         版本: {{ selectedEnvInfo.env_info.launcher_version }}
                       </span>
                     </label>
@@ -756,7 +756,7 @@
                     </div>
                   </div>
                   <div class="form-group"
-                    style="background: rgba(13, 20, 36, 0.6); padding: 12px; border-radius: 6px; border: 1px solid #1a253c; margin-bottom: 0;">
+                    style="background: rgba(13, 20, 36, 0.6); padding: 12px; border-radius: 6px; border: 1px solid #263442; margin-bottom: 0;">
                     <label class="form-label" style="color: #00e676;">🌍 部署环境代号</label>
                     <div style="font-weight: 600; font-size: 14px;">{{ selectedEnvInfo.env_info.env_name ||
                       selectedEnvInfo.env_info.env_key || '-' }}</div>
@@ -765,7 +765,7 @@
 
                 <!-- 🎙️ 语音播报模块 (TTS) 与 NATS 告警消息流 -->
                 <div class="form-group"
-                  style="background: rgba(13, 20, 36, 0.6); padding: 12px; border-radius: 6px; border: 1px solid #1a253c; margin-bottom: 12px;">
+                  style="background: rgba(13, 20, 36, 0.6); padding: 12px; border-radius: 6px; border: 1px solid #263442; margin-bottom: 12px;">
                   <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                     <label class="form-label" style="color: #a78bfa; margin-bottom: 0; display: flex; align-items: center; gap: 6px;">
                       <span>🎙️ 语音播报模块 (TTS) 与 NATS 告警网关</span>
@@ -802,7 +802,7 @@
                 </div>
 
                 <div class="form-group"
-                  style="background: rgba(13, 20, 36, 0.6); padding: 12px; border-radius: 6px; border: 1px solid #1a253c; margin-bottom: 12px;">
+                  style="background: rgba(13, 20, 36, 0.6); padding: 12px; border-radius: 6px; border: 1px solid #263442; margin-bottom: 12px;">
                   <label class="form-label" style="color: #ffb300;">🌐 2D 前端发布包版本路径 (big_screen_dist)</label>
                   <div
                     style="font-family: monospace; font-size: 12px; word-break: break-all; color: #cbd5e1; background: #05070d; padding: 6px 10px; border-radius: 4px;">
@@ -811,7 +811,7 @@
                 </div>
 
                 <div class="form-group"
-                  style="background: rgba(13, 20, 36, 0.6); padding: 12px; border-radius: 6px; border: 1px solid #1a253c; margin-bottom: 12px;">
+                  style="background: rgba(13, 20, 36, 0.6); padding: 12px; border-radius: 6px; border: 1px solid #263442; margin-bottom: 12px;">
                   <label class="form-label" style="color: #ff9100;">🎮 3D UE 孪生工程包版本路径 (ue_dist)</label>
                   <div
                     style="font-family: monospace; font-size: 12px; word-break: break-all; color: #cbd5e1; background: #05070d; padding: 6px 10px; border-radius: 4px;">
@@ -821,14 +821,14 @@
 
                 <div class="grid-2" style="margin-bottom: 12px;">
                   <div class="form-group"
-                    style="background: rgba(13, 20, 36, 0.6); padding: 12px; border-radius: 6px; border: 1px solid #1a253c; margin-bottom: 0;">
-                    <label class="form-label" style="color: #00d2ff;">🔗 N+1 业务后端接口基地址</label>
+                    style="background: rgba(13, 20, 36, 0.6); padding: 12px; border-radius: 6px; border: 1px solid #263442; margin-bottom: 0;">
+                    <label class="form-label" style="color: #22c7d8;">🔗 N+1 业务后端接口基地址</label>
                     <div style="font-family: monospace; font-size: 12px; word-break: break-all; color: #cbd5e1;">
                       {{ selectedEnvInfo.env_info.nplusone_url || '-' }}
                     </div>
                   </div>
                   <div class="form-group"
-                    style="background: rgba(13, 20, 36, 0.6); padding: 12px; border-radius: 6px; border: 1px solid #1a253c; margin-bottom: 0;">
+                    style="background: rgba(13, 20, 36, 0.6); padding: 12px; border-radius: 6px; border: 1px solid #263442; margin-bottom: 0;">
                     <label class="form-label" style="color: #00e676;">📺 像素流送端口</label>
                     <div style="font-family: monospace; font-size: 13px; font-weight: 600; color: #00e676;">
                       {{ selectedEnvInfo.env_info.start_port || '9527' }}
@@ -837,7 +837,7 @@
                 </div>
 
                 <div class="form-group"
-                  style="background: rgba(13, 20, 36, 0.6); padding: 12px; border-radius: 6px; border: 1px solid #1a253c; margin-bottom: 0;">
+                  style="background: rgba(13, 20, 36, 0.6); padding: 12px; border-radius: 6px; border: 1px solid #263442; margin-bottom: 0;">
                   <label class="form-label" style="color: var(--text-muted);">⚙️ 启动器配置文件路径</label>
                   <div style="font-family: monospace; font-size: 11px; word-break: break-all; color: #8b9bb4;">
                     {{ selectedEnvInfo.env_info.config_file || '-' }}
@@ -848,7 +848,7 @@
               <!-- 原始 JSON 视图 -->
               <div v-else>
                 <pre
-                  style="background: #05070d; border: 1px solid #1a253c; border-radius: 6px; padding: 14px; font-family: monospace; font-size: 12px; color: #00e676; max-height: 400px; overflow-y: auto;">{{ selectedEnvInfo.raw_json }}</pre>
+                  style="background: #05070d; border: 1px solid #263442; border-radius: 6px; padding: 14px; font-family: monospace; font-size: 12px; color: #00e676; max-height: 400px; overflow-y: auto;">{{ selectedEnvInfo.raw_json }}</pre>
               </div>
             </div>
           </div>
@@ -871,15 +871,15 @@
             </div>
 
             <div style="flex: 1; overflow-y: auto; margin: 12px 0;">
-              <div v-if="previewCaseLoading" style="text-align: center; padding: 40px; color: #00d2ff;">
+              <div v-if="previewCaseLoading" style="text-align: center; padding: 40px; color: #22c7d8;">
                 ⚡ 正在读取 YAML 源码...
               </div>
               <pre v-else
-                style="background: #05070d; border: 1px solid #1a253c; border-radius: 6px; padding: 16px; font-family: monospace; font-size: 12px; line-height: 1.6; color: #cbd5e1; margin: 0; white-space: pre-wrap; word-break: break-all;">{{ previewCaseContent }}</pre>
+                style="background: #05070d; border: 1px solid #263442; border-radius: 6px; padding: 16px; font-family: monospace; font-size: 12px; line-height: 1.6; color: #cbd5e1; margin: 0; white-space: pre-wrap; word-break: break-all;">{{ previewCaseContent }}</pre>
             </div>
 
             <div
-              style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #1a253c; padding-top: 12px;">
+              style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #263442; padding-top: 12px;">
               <div>
                 <button class="btn btn-secondary" style="padding: 6px 14px; font-size: 12px;" @click="copyCaseYaml">
                   📋 复制 YAML 全文
@@ -898,13 +898,13 @@
         <!-- 调度入队预约弹窗 (新建调度执行计划) -->
         <div class="modal-overlay" v-if="showEnqueueModal" @click.self="showEnqueueModal = false">
           <div class="modal-content" style="max-width: 600px; padding: 24px;">
-            <div class="modal-header" style="border-bottom: 1px solid #1a253c; padding-bottom: 12px; margin-bottom: 16px;">
+            <div class="modal-header" style="border-bottom: 1px solid #263442; padding-bottom: 12px; margin-bottom: 16px;">
               <div style="display: flex; gap: 24px; align-items: center;">
                 <span style="font-size: 15px; font-weight: 700; cursor: pointer; padding-bottom: 8px; transition: all 0.2s;"
-                  :style="scheduleModalTab === 'basic' ? 'color: #00d2ff; border-bottom: 2px solid #00d2ff;' : 'color: #718096;'"
+                  :style="scheduleModalTab === 'basic' ? 'color: #22c7d8; border-bottom: 2px solid #22c7d8;' : 'color: #718096;'"
                   @click="scheduleModalTab = 'basic'">基本配置</span>
                 <span style="font-size: 15px; font-weight: 700; cursor: pointer; padding-bottom: 8px; transition: all 0.2s;"
-                  :style="scheduleModalTab === 'advanced' ? 'color: #00d2ff; border-bottom: 2px solid #00d2ff;' : 'color: #718096;'"
+                  :style="scheduleModalTab === 'advanced' ? 'color: #22c7d8; border-bottom: 2px solid #22c7d8;' : 'color: #718096;'"
                   @click="scheduleModalTab = 'advanced'">高级配置</span>
               </div>
               <button class="modal-close" @click="showEnqueueModal = false">&times;</button>
@@ -1002,7 +1002,7 @@
                   </div>
 
                   <!-- 右侧详细规则配置卡片 -->
-                  <div style="flex: 1; background: rgba(0, 210, 255, 0.03); border: 1px solid #1a253c; border-radius: 6px; padding: 14px; min-height: 120px; display: flex; align-items: center;">
+                  <div style="flex: 1; background: rgba(34, 199, 216, 0.03); border: 1px solid #263442; border-radius: 6px; padding: 14px; min-height: 120px; display: flex; align-items: center;">
                     <!-- 分钟模式 -->
                     <div v-if="scheduleForm.cron_mode === 'minute'" style="display: flex; align-items: center; gap: 8px; font-size: 13px;">
                       <span>每</span>
@@ -1033,7 +1033,7 @@
                       <div style="display: flex; gap: 6px; flex-wrap: wrap;">
                         <label v-for="d in [1,2,3,4,5,6,7]" :key="d"
                           style="cursor: pointer; display: flex; align-items: center; gap: 4px; font-size: 12px; padding: 4px 8px; border-radius: 4px; transition: all 0.2s;"
-                          :style="scheduleForm.weeklyDays.includes(d) ? 'background: rgba(0,210,255,0.18); border: 1px solid #00d2ff; color: #00d2ff;' : 'background: rgba(255,255,255,0.03); border: 1px solid #233354; color: #a0aec0;'">
+                          :style="scheduleForm.weeklyDays.includes(d) ? 'background: rgba(34, 199, 216,0.18); border: 1px solid #22c7d8; color: #22c7d8;' : 'background: rgba(255,255,255,0.03); border: 1px solid #263442; color: #a0aec0;'">
                           <input type="checkbox" :value="d" v-model="scheduleForm.weeklyDays" style="display: none;">
                           <span>周{{ ['一','二','三','四','五','六','日'][d-1] }}</span>
                         </label>
@@ -1060,8 +1060,8 @@
             <!-- TAB 2: 高级配置 -->
             <div v-show="scheduleModalTab === 'advanced'" style="min-height: 260px; padding: 6px 0;">
               <!-- 队列阻塞冲突策略 -->
-              <div class="form-group" style="background: rgba(13, 20, 36, 0.6); padding: 14px; border-radius: 6px; border: 1px solid #1a253c; margin-bottom: 14px;">
-                <label class="form-label" style="color: #00d2ff; font-weight: 600; margin-bottom: 8px;">⏳ 队列阻塞冲突策略</label>
+              <div class="form-group" style="background: rgba(13, 20, 36, 0.6); padding: 14px; border-radius: 6px; border: 1px solid #263442; margin-bottom: 14px;">
+                <label class="form-label" style="color: #22c7d8; font-weight: 600; margin-bottom: 8px;">⏳ 队列阻塞冲突策略</label>
                 <div style="display: flex; flex-direction: column; gap: 8px; font-size: 13px;">
                   <label style="cursor: pointer; display: flex; align-items: center; gap: 8px;">
                     <input type="radio" value="wait" v-model="scheduleForm.conflict_policy">
@@ -1075,7 +1075,7 @@
               </div>
 
               <!-- 失败自动重试策略 -->
-              <div class="form-group" style="background: rgba(13, 20, 36, 0.6); padding: 14px; border-radius: 6px; border: 1px solid #1a253c; margin-bottom: 14px;">
+              <div class="form-group" style="background: rgba(13, 20, 36, 0.6); padding: 14px; border-radius: 6px; border: 1px solid #263442; margin-bottom: 14px;">
                 <label class="form-label" style="color: #ffb300; font-weight: 600; margin-bottom: 8px;">🔁 异常失败重试策略</label>
                 <div style="display: flex; gap: 20px; font-size: 13px;">
                   <label style="cursor: pointer; display: flex; align-items: center; gap: 8px;">
@@ -1090,7 +1090,7 @@
               </div>
 
               <!-- 运行环境前置准入校验 -->
-              <div class="form-group" style="background: rgba(13, 20, 36, 0.6); padding: 14px; border-radius: 6px; border: 1px solid #1a253c; margin-bottom: 14px;">
+              <div class="form-group" style="background: rgba(13, 20, 36, 0.6); padding: 14px; border-radius: 6px; border: 1px solid #263442; margin-bottom: 14px;">
                 <label class="form-label" style="color: #00e676; font-weight: 600; margin-bottom: 8px;">🛡️ 运行环境前置准入校验</label>
                 <div style="display: flex; gap: 20px; font-size: 13px;">
                   <label style="cursor: pointer; display: flex; align-items: center; gap: 8px;">
@@ -1106,7 +1106,7 @@
             </div>
 
             <!-- 底部操作栏: 启用勾选 + 保存 / 取消 -->
-            <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #1a253c; padding-top: 16px; margin-top: 10px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #263442; padding-top: 16px; margin-top: 10px;">
               <label style="cursor: pointer; display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: #fff;">
                 <input type="checkbox" v-model="scheduleForm.is_active" :true-value="1" :false-value="0" style="width: 16px; height: 16px; cursor: pointer;">
                 <span>启用该计划</span>
@@ -1115,7 +1115,7 @@
               <div style="display: flex; gap: 10px;">
                 <button class="btn btn-secondary" @click="showEnqueueModal = false" style="padding: 6px 16px;">取消</button>
                 <button class="btn btn-primary" :disabled="isSubmittingEnqueue" @click="confirmCreateSchedulePlan"
-                  style="padding: 6px 20px; background: linear-gradient(135deg, #00d2ff, #0072ff); font-weight: 600;">
+                  style="padding: 6px 20px; background: linear-gradient(135deg, #22c7d8, #0072ff); font-weight: 600;">
                   {{ isSubmittingEnqueue ? '保存中...' : '保存' }}
                 </button>
               </div>
@@ -1125,12 +1125,12 @@
 
     <!-- 📝 自定义巡检任务配置 / 微调弹窗 -->
     <div class="modal-overlay" v-if="taskModalVisible" style="z-index: 9999;" @click.self="taskModalVisible = false">
-      <div class="modal-content" style="max-width: 960px; width: 95%; max-height: 90vh; display: flex; flex-direction: column; padding: 0; overflow: hidden; border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,0.8); border: 1px solid #1a253c; background: #0b1120;">
+      <div class="modal-content" style="max-width: 960px; width: 95%; max-height: 90vh; display: flex; flex-direction: column; padding: 0; overflow: hidden; border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,0.8); border: 1px solid #263442; background: #121a24;">
         <!-- 弹窗头部 -->
-        <div class="modal-header" style="padding: 16px 24px; border-bottom: 1px solid #1a253c; display: flex; align-items: center; justify-content: space-between; background: #0d1424;">
+        <div class="modal-header" style="padding: 16px 24px; border-bottom: 1px solid #263442; display: flex; align-items: center; justify-content: space-between; background: #111821;">
           <h3 style="font-size: 16px; margin: 0; color: #fff; font-weight: 700; display: flex; align-items: center; gap: 8px;">
             <span>{{ taskForm.preset_id ? '✏️ 微调预设任务' : '📝 新建自定义巡检任务' }}</span>
-            <span v-if="taskForm.preset_id" class="badge" style="background: rgba(0, 210, 255, 0.15); color: #00d2ff; font-weight: normal; font-size: 11px;">#{{ taskForm.preset_id }}</span>
+            <span v-if="taskForm.preset_id" class="badge" style="background: rgba(34, 199, 216, 0.15); color: #22c7d8; font-weight: normal; font-size: 11px;">#{{ taskForm.preset_id }}</span>
           </h3>
           <button type="button" style="background: transparent; border: none; color: #64748b; font-size: 22px; cursor: pointer; line-height: 1;" @click="taskModalVisible = false" title="关闭">&times;</button>
         </div>
@@ -1139,8 +1139,8 @@
         <div style="flex: 1; overflow-y: auto; padding: 20px 24px;">
           <!-- 当前编辑预设状态提示条 -->
           <div v-if="taskForm.preset_id"
-            style="margin-bottom: 16px; background: rgba(0, 210, 255, 0.08); border: 1px solid #00d2ff; padding: 10px 16px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center;">
-            <span style="font-size: 13px; color: #00d2ff;">
+            style="margin-bottom: 16px; background: rgba(34, 199, 216, 0.08); border: 1px solid #22c7d8; padding: 10px 16px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 13px; color: #22c7d8;">
               📌 正在微调载入的预设: <strong style="color: #fff;">【{{ taskForm.preset_title || taskForm.name }}】</strong>
               <span style="font-size: 11px; color: var(--text-muted); margin-left: 8px;">(ID: {{ taskForm.preset_id }})</span>
             </span>
@@ -1260,16 +1260,16 @@
 
               <!-- 全量冒烟巡检模式 (smoke) 专属右栏: 说明卡片 -->
               <div v-else-if="taskForm.mode === 'smoke'">
-                <div style="background: rgba(13, 20, 36, 0.7); border: 1px solid #1a253c; border-radius: 8px; padding: 18px 20px;">
-                  <div style="font-weight: 700; color: #00d2ff; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; font-size: 14px;">
+                <div style="background: rgba(13, 20, 36, 0.7); border: 1px solid #263442; border-radius: 8px; padding: 18px 20px;">
+                  <div style="font-weight: 700; color: #22c7d8; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; font-size: 14px;">
                     <span>🚀 全量二级业务菜单极速冒烟巡检 (Smoke Tour)</span>
-                    <span style="font-size: 11px; background: rgba(0, 210, 255, 0.15); color: #00d2ff; padding: 2px 8px; border-radius: 10px; border: 1px solid rgba(0, 210, 255, 0.3);">零配置 · 全自动</span>
+                    <span style="font-size: 11px; background: rgba(34, 199, 216, 0.15); color: #22c7d8; padding: 2px 8px; border-radius: 10px; border: 1px solid rgba(34, 199, 216, 0.3);">零配置 · 全自动</span>
                   </div>
                   <p style="font-size: 13px; color: var(--text-muted); line-height: 1.6; margin-bottom: 12px;">
                     系统将跳过大模型自由规划路径，按权威菜单骨架<strong>100% 顺序遍历当前系统的全部二级业务菜单</strong>，确保零遗漏。
                   </p>
-                  <div style="background: rgba(0, 210, 255, 0.04); border: 1px solid rgba(0, 210, 255, 0.15); border-radius: 6px; padding: 10px 14px; margin-bottom: 12px; font-size: 12px; line-height: 1.7; color: #8b9bb4;">
-                    <div style="font-weight: 600; color: #00d2ff; margin-bottom: 4px;">🛡️ 每一站严格执行三阶健康度体检门禁：</div>
+                  <div style="background: rgba(34, 199, 216, 0.04); border: 1px solid rgba(34, 199, 216, 0.15); border-radius: 6px; padding: 10px 14px; margin-bottom: 12px; font-size: 12px; line-height: 1.7; color: #8b9bb4;">
+                    <div style="font-weight: 600; color: #22c7d8; margin-bottom: 4px;">🛡️ 每一站严格执行三阶健康度体检门禁：</div>
                     <div>1. <strong>无声崩溃嗅探</strong>：监听控制台 TypeError / Vue 渲染期崩溃 / WebGL 上下文丢失；</div>
                     <div>2. <strong>接口通信校验</strong>：校验滑动窗口网络通信，拦截 5xx 服务端错误、404 与超时；</div>
                     <div>3. <strong>视觉与物理感知</strong>：多模态视觉核验页面白屏、骨架屏假死与遮罩残留。</div>
@@ -1279,8 +1279,8 @@
 
               <!-- 确定性用例模式 (case) 专属右栏: 说明卡片 -->
               <div v-else-if="taskForm.mode === 'case'">
-                <div style="background: rgba(13, 20, 36, 0.7); border: 1px solid #1a253c; border-radius: 8px; padding: 20px;">
-                  <div style="font-weight: 700; color: #00d2ff; margin-bottom: 8px;">📋 YAML 确定性业务回归模式说明</div>
+                <div style="background: rgba(13, 20, 36, 0.7); border: 1px solid #263442; border-radius: 8px; padding: 20px;">
+                  <div style="font-weight: 700; color: #22c7d8; margin-bottom: 8px;">📋 YAML 确定性业务回归模式说明</div>
                   <p style="font-size: 13px; color: var(--text-muted); line-height: 1.6; margin-bottom: 12px;">
                     系统将由 <strong>ActionRunner</strong> 机械臂精确执行所选自然语言 YAML 脚本，执行确定性点击、输入、物理拖拽以及与底层网络 API 的双向交叉校验。
                   </p>
@@ -1290,22 +1290,22 @@
           </div>
 
           <!-- ⚙️ 高级运行与韧性参数配置 (折叠面板) -->
-          <div style="margin-top: 20px; border-top: 1px dashed #1a253c; padding-top: 14px;">
+          <div style="margin-top: 20px; border-top: 1px dashed #263442; padding-top: 14px;">
             <div
               style="cursor: pointer; display: flex; align-items: center; justify-content: space-between; user-select: none;"
               @click="taskForm.show_advanced = !taskForm.show_advanced">
               <span
-                style="font-size: 13px; font-weight: 600; color: #00d2ff; display: flex; align-items: center; gap: 6px;">
+                style="font-size: 13px; font-weight: 600; color: #22c7d8; display: flex; align-items: center; gap: 6px;">
                 <span>⚙️ 高级运行与韧性参数配置 (CLI 选项)</span>
                 <span
-                  style="font-size: 11px; background: rgba(0, 210, 255, 0.15); color: #00d2ff; padding: 2px 8px; border-radius: 10px;">{{
+                  style="font-size: 11px; background: rgba(34, 199, 216, 0.15); color: #22c7d8; padding: 2px 8px; border-radius: 10px;">{{
                   taskForm.show_advanced ? '收起' : '展开' }}</span>
               </span>
               <span style="font-size: 12px; color: var(--text-muted);">{{ taskForm.show_advanced ? '▲' : '▼' }}</span>
             </div>
 
             <div v-show="taskForm.show_advanced"
-              style="margin-top: 14px; background: rgba(5, 7, 13, 0.7); padding: 18px; border-radius: 8px; border: 1px solid #1a253c;">
+              style="margin-top: 14px; background: rgba(5, 7, 13, 0.7); padding: 18px; border-radius: 8px; border: 1px solid #263442;">
               <div class="grid-2">
                 <div class="form-group">
                   <label class="form-label">断点续传历史运行目录 (--resume-from)</label>
@@ -1344,7 +1344,7 @@
         </div>
 
         <!-- 弹窗底部操作栏 (确认项 3: 多通道闭环) -->
-        <div style="padding: 14px 24px; border-top: 1px solid #1a253c; background: #0d1424; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+        <div style="padding: 14px 24px; border-top: 1px solid #263442; background: #111821; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
           <div style="font-size: 12px; color: var(--text-muted);">
             💡 提示: “立即启动”将一键拉起巡检；若需沉淀为日常标准方案，可点击“保存为新预设”。
           </div>
@@ -1352,7 +1352,7 @@
             <button type="button" class="btn btn-secondary" @click="taskModalVisible = false" style="padding: 8px 16px;">
               取消
             </button>
-            <button type="button" class="btn btn-secondary" style="border-color: #00d2ff; color: #00d2ff; padding: 8px 16px;"
+            <button type="button" class="btn btn-secondary" style="border-color: #22c7d8; color: #22c7d8; padding: 8px 16px;"
               @click="saveCurrentFormAsPreset(false)" title="将当前配置持久化保存为独立的新预设">
               💾 保存为新预设
             </button>
@@ -1372,9 +1372,9 @@
 
     <!-- 🔍 预设任务详情只读弹窗 (确认项 4: 方案 A) -->
     <div class="modal-overlay" v-if="taskDetailModalVisible && activeDetailPreset" style="z-index: 9999;" @click.self="taskDetailModalVisible = false">
-      <div class="modal-content" style="max-width: 760px; width: 92%; max-height: 85vh; display: flex; flex-direction: column; padding: 0; overflow: hidden; border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,0.8); border: 1px solid #1a253c; background: #0b1120;">
+      <div class="modal-content" style="max-width: 760px; width: 92%; max-height: 85vh; display: flex; flex-direction: column; padding: 0; overflow: hidden; border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,0.8); border: 1px solid #263442; background: #121a24;">
         <!-- 弹窗头部 -->
-        <div class="modal-header" style="padding: 16px 20px; border-bottom: 1px solid #1a253c; display: flex; align-items: center; justify-content: space-between; background: #0d1424;">
+        <div class="modal-header" style="padding: 16px 20px; border-bottom: 1px solid #263442; display: flex; align-items: center; justify-content: space-between; background: #111821;">
           <div style="display: flex; align-items: center; gap: 10px;">
             <span style="font-size: 18px;">🔍</span>
             <div>
@@ -1389,11 +1389,11 @@
         <div style="flex: 1; overflow-y: auto; padding: 20px;">
           <!-- 基础信息栅格 -->
           <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 18px;">
-            <div style="background: rgba(13, 20, 36, 0.7); border: 1px solid #1a253c; border-radius: 6px; padding: 12px;">
+            <div style="background: rgba(13, 20, 36, 0.7); border: 1px solid #263442; border-radius: 6px; padding: 12px;">
               <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">运行矿山</div>
-              <div style="font-size: 13px; font-weight: 600; color: #00d2ff;">🎯 {{ getAppName(activeDetailPreset.app_name) }}</div>
+              <div style="font-size: 13px; font-weight: 600; color: #22c7d8;">🎯 {{ getAppName(activeDetailPreset.app_name) }}</div>
             </div>
-            <div style="background: rgba(13, 20, 36, 0.7); border: 1px solid #1a253c; border-radius: 6px; padding: 12px;">
+            <div style="background: rgba(13, 20, 36, 0.7); border: 1px solid #263442; border-radius: 6px; padding: 12px;">
               <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">运行模式</div>
               <div>
                 <span class="badge" :class="(activeDetailPreset.tour || activeDetailPreset.mode === 'smoke') ? 'badge-running' : (activeDetailPreset.mode === 'case' ? 'badge-low' : 'badge-high')">
@@ -1401,14 +1401,14 @@
                 </span>
               </div>
             </div>
-            <div style="background: rgba(13, 20, 36, 0.7); border: 1px solid #1a253c; border-radius: 6px; padding: 12px;">
+            <div style="background: rgba(13, 20, 36, 0.7); border: 1px solid #263442; border-radius: 6px; padding: 12px;">
               <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">步数与时限</div>
               <div style="font-size: 13px; font-weight: 600; color: #fff;">
                 <span>{{ activeDetailPreset.max_steps ? (activeDetailPreset.max_steps + ' 步') : '无限制 (0步)' }}</span> / 
                 <span style="color: #ffb300;">{{ activeDetailPreset.max_times }} 分钟</span>
               </div>
             </div>
-            <div style="background: rgba(13, 20, 36, 0.7); border: 1px solid #1a253c; border-radius: 6px; padding: 12px;">
+            <div style="background: rgba(13, 20, 36, 0.7); border: 1px solid #263442; border-radius: 6px; padding: 12px;">
               <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">容错与韧性策略</div>
               <div style="font-size: 12px; color: #00e676;">
                 {{ activeDetailPreset.ignore_errors ? '✅ 容错继续 (不阻断)' : '❌ 严格阻断' }}
@@ -1419,7 +1419,7 @@
           <!-- 方案描述 -->
           <div v-if="activeDetailPreset.description" style="margin-bottom: 16px;">
             <div style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 6px;">方案描述说明:</div>
-            <div style="font-size: 13px; color: #cbd5e1; background: rgba(13, 20, 36, 0.5); padding: 10px 14px; border-radius: 6px; border: 1px solid #1a253c; line-height: 1.6;">
+            <div style="font-size: 13px; color: #cbd5e1; background: rgba(13, 20, 36, 0.5); padding: 10px 14px; border-radius: 6px; border: 1px solid #263442; line-height: 1.6;">
               {{ activeDetailPreset.description }}
             </div>
           </div>
@@ -1427,18 +1427,18 @@
           <!-- 宏观提示词展示 (带快捷复制) -->
           <div v-if="activeDetailPreset.macro_objective" style="margin-bottom: 16px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-              <span style="font-size: 12px; font-weight: 600; color: #00d2ff;">🎯 宏观目标探索提示词 (Prompt):</span>
+              <span style="font-size: 12px; font-weight: 600; color: #22c7d8;">🎯 宏观目标探索提示词 (Prompt):</span>
               <button type="button" class="btn btn-secondary" style="padding: 2px 8px; font-size: 11px;" @click="copyPresetPrompt(activeDetailPreset.macro_objective)">
                 📋 复制提示词
               </button>
             </div>
-            <div style="font-size: 12px; color: #cbd5e1; background: rgba(5, 7, 13, 0.8); padding: 12px 14px; border-radius: 6px; border: 1px solid #1a253c; line-height: 1.7; white-space: pre-wrap; font-family: monospace; max-height: 220px; overflow-y: auto;">{{ activeDetailPreset.macro_objective }}</div>
+            <div style="font-size: 12px; color: #cbd5e1; background: rgba(5, 7, 13, 0.8); padding: 12px 14px; border-radius: 6px; border: 1px solid #263442; line-height: 1.7; white-space: pre-wrap; font-family: monospace; max-height: 220px; overflow-y: auto;">{{ activeDetailPreset.macro_objective }}</div>
           </div>
 
           <!-- YAML 用例路径 (如果存在) -->
           <div v-if="activeDetailPreset.case_path" style="margin-bottom: 16px;">
-            <div style="font-size: 12px; font-weight: 600; color: #00d2ff; margin-bottom: 6px;">📋 YAML 脚本路径:</div>
-            <div style="font-size: 12px; color: #fff; background: rgba(5, 7, 13, 0.8); padding: 8px 12px; border-radius: 6px; border: 1px solid #1a253c; font-family: monospace;">
+            <div style="font-size: 12px; font-weight: 600; color: #22c7d8; margin-bottom: 6px;">📋 YAML 脚本路径:</div>
+            <div style="font-size: 12px; color: #fff; background: rgba(5, 7, 13, 0.8); padding: 8px 12px; border-radius: 6px; border: 1px solid #263442; font-family: monospace;">
               {{ activeDetailPreset.case_path }}
             </div>
           </div>
@@ -1446,7 +1446,7 @@
           <!-- 高阶 CLI 参数列表 -->
           <div>
             <div style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 6px;">⚙️ 高阶调优参数:</div>
-            <div style="font-size: 12px; background: rgba(13, 20, 36, 0.5); padding: 10px 14px; border-radius: 6px; border: 1px solid #1a253c; line-height: 1.8; color: #94a3b8;">
+            <div style="font-size: 12px; background: rgba(13, 20, 36, 0.5); padding: 10px 14px; border-radius: 6px; border: 1px solid #263442; line-height: 1.8; color: #94a3b8;">
               <div>• 启动缓冲等待: <strong style="color: #fff;">{{ activeDetailPreset.start_delay != null ? (activeDetailPreset.start_delay + ' 秒') : '默认 15 秒' }}</strong></div>
               <div>• 视觉就绪轮询超时: <strong style="color: #fff;">{{ activeDetailPreset.wait_timeout || 60 }} 秒</strong></div>
               <div>• 环境校验准入: <strong :style="activeDetailPreset.ignore_env_check ? 'color: #ffb300;' : 'color: #00e676;'">{{ activeDetailPreset.ignore_env_check ? '跳过校验直接运行' : '严格准入校验' }}</strong></div>
@@ -1457,7 +1457,7 @@
         </div>
 
         <!-- 弹窗底部操作栏 -->
-        <div style="padding: 14px 20px; border-top: 1px solid #1a253c; background: #0d1424; display: flex; justify-content: flex-end; gap: 10px; align-items: center;">
+        <div style="padding: 14px 20px; border-top: 1px solid #263442; background: #111821; display: flex; justify-content: flex-end; gap: 10px; align-items: center;">
           <button type="button" class="btn btn-secondary" @click="taskDetailModalVisible = false" style="padding: 6px 14px;">
             关闭
           </button>

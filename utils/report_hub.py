@@ -209,18 +209,22 @@ class ReportHub:
                 raw_analysis = ""
 
             b_app = run_app_map.get(r_id)
+            if not b_app and target_run_dir:
+                try:
+                    rel_parts = target_run_dir.relative_to(self.runs_dir).parts
+                    if rel_parts and not is_month_folder(rel_parts[0]):
+                        b_app = rel_parts[0]
+                except Exception:
+                    pass
             if not b_app:
-                if target_run_dir and "liwutong" in target_run_dir.parts:
-                    b_app = "liwutong"
-                else:
-                    b_app = "zhaiwan"
+                b_app = gb.get("app") or gb.get("app_name") or "zhaiwan"
 
             all_bugs_dict[b_id] = {
                 "id": b_id,
                 "title": gb.get("title", ""),
                 "run_id": r_id,
                 "app": b_app,
-                "app_name": APP_NAME_MAP.get(b_app, "寨湾矿山"),
+                "app_name": APP_NAME_MAP.get(b_app, b_app),
                 "rel_run_path": rel_run_path,
                 "date": gb.get("date", ""),
                 "status": status_val,
@@ -391,7 +395,101 @@ class ReportHub:
                 "mtime": r.get("mtime", 0)
             })
 
-        # 计算项目维度全景指标
+        # 动态聚合所有项目维度全景指标（支持任意数量应用自动扩展）
+        app_style_palette = [
+            {
+                "icon": "⛰️",
+                "accent": "#8b5cf6",
+                "glow": "rgba(139,92,246,0.25)",
+                "pill_bg": "linear-gradient(135deg, #6366f1, #8b5cf6)",
+                "pill_shadow": "0 4px 14px rgba(139, 92, 246, 0.45)",
+                "badge_color": "#c4b5fd",
+                "badge_bg": "rgba(139,92,246,0.15)",
+                "badge_border": "rgba(139,92,246,0.3)",
+                "bug_color": "#fda4af",
+            },
+            {
+                "icon": "🏔️",
+                "accent": "#10b981",
+                "glow": "rgba(16,185,129,0.25)",
+                "pill_bg": "linear-gradient(135deg, #059669, #10b981)",
+                "pill_shadow": "0 4px 14px rgba(16, 185, 129, 0.45)",
+                "badge_color": "#6ee7b7",
+                "badge_bg": "rgba(16,185,129,0.15)",
+                "badge_border": "rgba(16,185,129,0.3)",
+                "bug_color": "#6ee7b7",
+            },
+            {
+                "icon": "🪨",
+                "accent": "#06b6d4",
+                "glow": "rgba(6,182,212,0.25)",
+                "pill_bg": "linear-gradient(135deg, #0284c7, #06b6d4)",
+                "pill_shadow": "0 4px 14px rgba(6, 182, 212, 0.45)",
+                "badge_color": "#67e8f9",
+                "badge_bg": "rgba(6,182,212,0.15)",
+                "badge_border": "rgba(6,182,212,0.3)",
+                "bug_color": "#67e8f9",
+            },
+            {
+                "icon": "🏭",
+                "accent": "#f59e0b",
+                "glow": "rgba(245,158,11,0.25)",
+                "pill_bg": "linear-gradient(135deg, #d97706, #f59e0b)",
+                "pill_shadow": "0 4px 14px rgba(245, 158, 11, 0.45)",
+                "badge_color": "#fcd34d",
+                "badge_bg": "rgba(245,158,11,0.15)",
+                "badge_border": "rgba(245,158,11,0.3)",
+                "bug_color": "#fcd34d",
+            },
+            {
+                "icon": "⚡",
+                "accent": "#ec4899",
+                "glow": "rgba(236,72,153,0.25)",
+                "pill_bg": "linear-gradient(135deg, #db2777, #ec4899)",
+                "pill_shadow": "0 4px 14px rgba(236, 72, 153, 0.45)",
+                "badge_color": "#f9a8d4",
+                "badge_bg": "rgba(236,72,153,0.15)",
+                "badge_border": "rgba(236,72,153,0.3)",
+                "bug_color": "#f9a8d4",
+            },
+        ]
+
+        # 收集所有已知应用 key：优先保持 config.yaml / APP_NAME_MAP 顺序，再补充磁盘实际扫描到的新应用
+        discovered_keys = list(APP_NAME_MAP.keys())
+        try:
+            from config.settings import settings
+            for k in (getattr(settings, "apps", {}) or {}).keys():
+                if k and k not in discovered_keys:
+                    discovered_keys.append(k)
+        except Exception:
+            pass
+        for r in summary_runs:
+            k = r.get("app")
+            if k and k not in discovered_keys:
+                discovered_keys.append(k)
+        for b in all_bugs:
+            k = b.get("app")
+            if k and k not in discovered_keys:
+                discovered_keys.append(k)
+
+        app_summaries = []
+        for idx, app_key in enumerate(discovered_keys):
+            a_runs = sum(1 for r in summary_runs if r.get("app") == app_key)
+            a_steps = sum(r.get("kpi", {}).get("total_steps", 0) for r in summary_runs if r.get("app") == app_key)
+            a_bugs = sum(1 for b in all_bugs if b.get("app") == app_key)
+            style = app_style_palette[idx % len(app_style_palette)]
+            display_name = APP_NAME_MAP.get(app_key, app_key)
+            badge_text = "常态化巡检" if a_runs >= 10 else ("持续接入中" if a_runs > 0 else "待发起巡检")
+            app_summaries.append({
+                "key": app_key,
+                "name": display_name,
+                "runs": a_runs,
+                "steps": a_steps,
+                "bugs": a_bugs,
+                "badge_text": badge_text,
+                **style,
+            })
+
         zhaiwan_runs = sum(1 for r in summary_runs if r.get("app") == "zhaiwan")
         zhaiwan_steps = sum(r.get("kpi", {}).get("total_steps", 0) for r in summary_runs if r.get("app") == "zhaiwan")
         zhaiwan_bugs = sum(1 for b in all_bugs if b.get("app") == "zhaiwan")
@@ -403,6 +501,7 @@ class ReportHub:
         available_months = sorted({r["month"] for r in summary_runs if r.get("month")}, reverse=True)
         runs_json = json.dumps(summary_runs, ensure_ascii=False)
         bugs_json = json.dumps(all_bugs, ensure_ascii=False)
+        app_summaries_json = json.dumps(app_summaries, ensure_ascii=False)
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         from jinja2 import Environment, FileSystemLoader
@@ -414,6 +513,8 @@ class ReportHub:
             total_runs=total_runs,
             total_steps=total_steps,
             total_bugs=total_bugs,
+            app_summaries=app_summaries,
+            app_summaries_json=app_summaries_json,
             zhaiwan_runs=zhaiwan_runs,
             zhaiwan_steps=zhaiwan_steps,
             zhaiwan_bugs=zhaiwan_bugs,

@@ -206,30 +206,87 @@ def get_active_bug_run_ids() -> dict:
     return active_map
 
 
+def get_bug_status_sets() -> tuple[set, set]:
+    """
+    获取缺陷状态白名单与可清理集合：
+    - protected_ids: 「激活」「已提单」等受保护缺陷 ID（绝不删除截图）
+    - cleanable_ids: 「已关闭」「误报」且不在受保护集合中的缺陷 ID
+    """
+    import json
+
+    protected_ids: set = set()
+    cleanable_ids: set = set()
+
+    try:
+        from server.database import SessionLocal
+        from server.models import BugRecord
+
+        db = SessionLocal()
+        try:
+            for b in db.query(BugRecord.id, BugRecord.status, BugRecord.zentao_id).all():
+                bid = str(b.id or "").strip().upper()
+                if not bid:
+                    continue
+                st = (b.status or "激活").strip()
+                if st in ("激活", "Open", "", "已提单") or bool(b.zentao_id):
+                    protected_ids.add(bid)
+                elif st in ("已关闭", "误报"):
+                    cleanable_ids.add(bid)
+        finally:
+            db.close()
+    except Exception:
+        pass
+
+    if GLOBAL_BUGS_DIR.exists():
+        for gf in GLOBAL_BUGS_DIR.glob("global_bugs*.json"):
+            try:
+                items = json.loads(gf.read_text(encoding="utf-8"))
+                for b in items:
+                    bid = str(b.get("id") or "").strip().upper()
+                    if not bid:
+                        continue
+                    st = (b.get("status") or "激活").strip()
+                    if st in ("激活", "Open", "", "已提单") or bool(b.get("zentao_id")):
+                        protected_ids.add(bid)
+                    elif st in ("已关闭", "误报"):
+                        cleanable_ids.add(bid)
+            except Exception:
+                pass
+
+    cleanable_ids -= protected_ids
+    return protected_ids, cleanable_ids
+
+
 def clean_temp_screenshots(
     retain_days: int = 7,
     dry_run: bool = False,
     compress_webp: bool = False,
     quality: int = 65,
     protect_active_bugs: bool = True,
+    clean_resolved_bug_shots: bool = False,
 ) -> dict:
-    """安全清理或原地 WebP 压缩过程截图，默认自动保护仍含激活 Bug 的运行目录以保留完整操作上下文"""
+    """安全清理或原地 WebP 压缩过程截图（可选同时清理已关闭/误报缺陷截图，永久保护激活与已提单缺陷截图）"""
+    import re as _re
+
     if not RUNS_DIR.exists():
         print("未检测到 reports/runs/ 目录。")
-        return {"cleaned_files": 0, "freed_bytes": 0, "freed_human": "0.00 B", "protected_runs": [], "dry_run": dry_run}
+        return {"cleaned_files": 0, "freed_bytes": 0, "freed_human": "0.00 B", "protected_runs": [], "affected_runs": [], "dry_run": dry_run}
 
     cutoff_date = datetime.now() - timedelta(days=retain_days)
     run_folders = get_all_run_folders()
     active_bug_runs = get_active_bug_run_ids() if (protect_active_bugs and not compress_webp) else {}
+    protected_bug_ids, cleanable_bug_ids = get_bug_status_sets() if clean_resolved_bug_shots else (set(), set())
 
     cleaned_bytes = 0
     cleaned_files = 0
     protected_runs = []
 
     mode_desc = "WebP 原地高压缩瘦身" if compress_webp else "过期临时大图清理"
-    print(f"\n🧹 启动{mode_desc}程序 | 保留天数: {retain_days} 天 (早于 {cutoff_date.strftime('%Y-%m-%d')} 的过程截图将处理)")
+    print(f"\n🧹 启动{mode_desc}程序 | 保留天数: {retain_days} 天 (早于 {cutoff_date.strftime('%Y-%m-%d')} 的运行将处理)")
     if protect_active_bugs and not compress_webp:
-        print("🛡️ 激活 Bug 保护盾已开启：含未处理「激活」Bug 的报告将保留全部上下文过程截图。")
+        print("🛡️ 激活 Bug 保护盾已开启：含未处理「激活」Bug 的报告将保留上下文过程截图。")
+    if clean_resolved_bug_shots:
+        print(f"🐞 缺陷截图清理已开启：可清理 {len(cleanable_bug_ids)} 个「已关闭/误报」缺陷截图（永久保护 {len(protected_bug_ids)} 个「激活/已提单」缺陷）。")
     if dry_run:
         print("🔍 当前为 [预演模式 (Dry-Run)]，不执行实际写删。")
     sys.stdout.flush()
@@ -265,67 +322,80 @@ def clean_temp_screenshots(
         entry["freed_bytes"] += est_bytes
         entry["files"].append(filename)
 
-    for r in run_folders:
-        shots_dir = r / "screenshots"
-        if not shots_dir.exists():
-            continue
+    def _process_shot_file(run_id: str, run_root: Path, shot: Path, display_name: str):
+        nonlocal cleaned_bytes, cleaned_files
+        file_sz = shot.stat().st_size
+        if compress_webp:
+            if file_sz <= 450 * 1024:
+                return
+            if dry_run:
+                est_saved = int(file_sz * 0.85)
+                cleaned_bytes += est_saved
+                cleaned_files += 1
+                _record_file(run_id, run_root, display_name, est_saved)
+            else:
+                compress_targets.append((run_id, run_root, shot, display_name, file_sz))
+        else:
+            cleaned_bytes += file_sz
+            cleaned_files += 1
+            _record_file(run_id, run_root, display_name, file_sz)
+            if not dry_run:
+                try:
+                    shot.unlink()
+                except Exception as e:
+                    print(f"删除失败: {shot} ({e})")
 
+    for r in run_folders:
         mtime = datetime.fromtimestamp(r.stat().st_mtime)
         if mtime >= cutoff_date and retain_days > 0:
             continue
 
-        # 🛡️ 激活 Bug 保护盾：删除模式下跳过仍挂有未处理激活 Bug 的报告目录
+        # 🛡️ 激活 Bug 保护盾：存在未处理「激活」Bug 的报告目录，整份报告均不删（保留全部过程图与缺陷现场）
         if protect_active_bugs and not compress_webp and r.name in active_bug_runs:
             protected_runs.append({"run_id": r.name, "bug_ids": active_bug_runs[r.name]})
             continue
 
-        for shot in list(shots_dir.iterdir()):
-            if not shot.is_file() or shot.suffix.lower() not in img_exts:
-                continue
-            file_sz = shot.stat().st_size
+        # 1. 处理 screenshots/ 过程截图
+        shots_dir = r / "screenshots"
+        if shots_dir.exists():
+            for shot in list(shots_dir.iterdir()):
+                if shot.is_file() and shot.suffix.lower() in img_exts:
+                    _process_shot_file(r.name, r, shot, f"screenshots/{shot.name}")
 
-            if compress_webp:
-                # 跳过已经很小（<= 450KB）的图，只处理膨胀 PNG 或超大图片
-                if file_sz <= 450 * 1024:
+        # 2. 处理 bugs/ 下「已关闭/误报」且无禅道编号的缺陷物理截图（保留 JSON，永久保护激活与已提单/有禅道编号的缺陷截图）
+        bugs_dir = r / "bugs"
+        if clean_resolved_bug_shots and bugs_dir.exists():
+            for shot in list(bugs_dir.iterdir()):
+                if not shot.is_file() or shot.suffix.lower() not in img_exts:
                     continue
-                if dry_run:
-                    est_saved = int(file_sz * 0.85)
-                    cleaned_bytes += est_saved
-                    cleaned_files += 1
-                    _record_file(r.name, shots_dir, shot.name, est_saved)
-                else:
-                    compress_targets.append((r.name, shots_dir, shot, file_sz))
-            else:
-                cleaned_bytes += file_sz
-                cleaned_files += 1
-                _record_file(r.name, shots_dir, shot.name, file_sz)
-                if not dry_run:
-                    try:
-                        shot.unlink()
-                    except Exception as e:
-                        print(f"删除失败: {shot} ({e})")
+                m_bid = _re.match(r"^(BUG-\d{8}-\d+)", shot.stem, _re.IGNORECASE)
+                if not m_bid:
+                    continue
+                bid = m_bid.group(1).upper()
+                if bid in cleanable_bug_ids and bid not in protected_bug_ids:
+                    _process_shot_file(r.name, r, shot, f"bugs/{shot.name}")
 
     if compress_webp and not dry_run and compress_targets:
         def _compress_one(item):
-            run_id, shots_path, shot_path, orig_sz = item
+            run_id, run_root, shot_path, display_name, orig_sz = item
             try:
                 with Image.open(shot_path) as img:
                     if img.mode not in ("RGB", "L"):
                         img = img.convert("RGB")
                     img.save(shot_path, format="WEBP", quality=quality, method=4)
                 new_sz = shot_path.stat().st_size
-                return run_id, shots_path, shot_path.name, max(0, orig_sz - new_sz), True
+                return run_id, run_root, display_name, max(0, orig_sz - new_sz), True
             except Exception as e:
                 print(f"压缩失败: {shot_path} ({e})")
-                return run_id, shots_path, shot_path.name, 0, False
+                return run_id, run_root, display_name, 0, False
 
         workers = min(8, os.cpu_count() or 4)
         with ThreadPoolExecutor(max_workers=workers) as pool:
-            for run_id, shots_path, fname, saved_b, ok in pool.map(_compress_one, compress_targets):
+            for run_id, run_root, fname, saved_b, ok in pool.map(_compress_one, compress_targets):
                 if ok:
                     cleaned_bytes += saved_b
                     cleaned_files += 1
-                    _record_file(run_id, shots_path, fname, saved_b)
+                    _record_file(run_id, run_root, fname, saved_b)
 
     affected_runs = []
     for entry in affected_runs_map.values():

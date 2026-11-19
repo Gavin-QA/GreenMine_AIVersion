@@ -76,9 +76,9 @@
               <div style="display: flex; gap: 8px;">
                 <button v-for="app in liveAppsStatus" :key="app.app_name" @click="changeLiveApp(app.app_name)"
                   type="button" :style="{
-                    background: liveSelectedApp === app.app_name ? 'rgba(0, 210, 255, 0.15)' : 'rgba(30, 41, 59, 0.5)',
-                    border: liveSelectedApp === app.app_name ? '1px solid #00d2ff' : '1px solid #334155',
-                    color: liveSelectedApp === app.app_name ? '#00d2ff' : '#cbd5e1',
+                    background: liveSelectedApp === app.app_name ? 'rgba(34, 199, 216, 0.15)' : 'rgba(30, 41, 59, 0.5)',
+                    border: liveSelectedApp === app.app_name ? '1px solid #22c7d8' : '1px solid #334155',
+                    color: liveSelectedApp === app.app_name ? '#22c7d8' : '#cbd5e1',
                     padding: '6px 14px',
                     fontSize: '13px',
                     fontWeight: 600,
@@ -115,11 +115,11 @@
             <div style="display: flex; align-items: center; gap: 8px;">
               <span style="font-size: 12px; color: #94a3b8;">历史回溯:</span>
               <div
-                style="display: flex; background: #0b1120; border: 1px solid #1e293b; border-radius: 6px; padding: 2px;">
+                style="display: flex; background: #121a24; border: 1px solid #1e293b; border-radius: 6px; padding: 2px;">
                 <button
                   v-for="span in [{'key':'15m','name':'15分钟'},{'key':'1h','name':'1小时'},{'key':'6h','name':'6小时'},{'key':'24h','name':'24小时'}]"
                   :key="span.key" @click="changeLiveTimeSpan(span.key)" type="button" :style="{
-                    background: liveTimeSpan === span.key ? '#00d2ff' : 'transparent',
+                    background: liveTimeSpan === span.key ? '#22c7d8' : 'transparent',
                     color: liveTimeSpan === span.key ? '#000' : '#94a3b8',
                     border: 'none',
                     padding: '4px 10px',
@@ -140,7 +140,7 @@
               :title="liveSnapshot.cdp_online ? 'Chromium CDP 协议探针在线，实时抓取 2D 页面 DOM 树与事件监听器' : 'CDP 调试端口 (9223) 未激活\n启动大屏附带参数 --remote-debugging-port=9223 即可秒级点亮此卡片'"
               style="cursor: help;">
               <div class="kpi-title">CHROMIUM DOM 节点</div>
-              <div class="kpi-val" style="color: #00d2ff;">{{ liveSnapshot.dom_count.toLocaleString() }}</div>
+              <div class="kpi-val" style="color: #22c7d8;">{{ liveSnapshot.dom_count.toLocaleString() }}</div>
               <div class="kpi-sub">
                 事件监听器: {{ liveSnapshot.listeners_count.toLocaleString() }}
                 <span v-if="!liveSnapshot.cdp_online"

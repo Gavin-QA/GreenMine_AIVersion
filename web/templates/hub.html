@@ -3,10 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Electron Vision AI · 自动化测试大盘</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <title>AI 测试报告平台</title>
   <style>
     :root {
       --bg-base: #07090e;
@@ -163,18 +160,8 @@
 
     .proj-pill-btn.active {
       color: #fff;
-      background: linear-gradient(135deg, #6366f1, #4f46e5);
-      box-shadow: 0 4px 14px rgba(99, 102, 241, 0.45);
-    }
-
-    .proj-pill-btn[data-app="zhaiwan"].active {
-      background: linear-gradient(135deg, #6366f1, #8b5cf6);
-      box-shadow: 0 4px 14px rgba(139, 92, 246, 0.45);
-    }
-
-    .proj-pill-btn[data-app="liwutong"].active {
-      background: linear-gradient(135deg, #059669, #10b981);
-      box-shadow: 0 4px 14px rgba(16, 185, 129, 0.45);
+      background: var(--pill-bg, linear-gradient(135deg, #6366f1, #4f46e5));
+      box-shadow: var(--pill-shadow, 0 4px 14px rgba(99, 102, 241, 0.45));
     }
 
     .proj-pill-btn .pill-num {
@@ -189,10 +176,10 @@
       background: rgba(255, 255, 255, 0.25);
     }
 
-    /* Dual Project Matrix Cards */
+    /* Dynamic Multi-Project Matrix Cards */
     .project-matrix-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
       gap: 16px;
       margin-bottom: 20px;
     }
@@ -743,25 +730,23 @@
     <div class="hero">
       <div class="hero-top">
         <div class="hero-title-group">
-          <h1>⚡ Electron Vision AI · 自动化测试大盘</h1>
+          <h1>⚡ AI 测试报告平台</h1>
           <p>多模态大模型端到端巡检全要素大盘 · 多应用矩阵巡检与全量缺陷沉淀</p>
         </div>
 
         <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
-          <!-- Global App Switcher Segmented -->
-          <div class="project-switcher-pills">
+          <!-- Global App Switcher Segmented (Dynamic Multi-App) -->
+          <div class="project-switcher-pills" style="flex-wrap: wrap;">
             <button class="proj-pill-btn active" data-app="all" onclick="switchGlobalApp('all')">
               <span>🌐 全量汇总</span>
               <span class="pill-num">{{ total_runs }}</span>
             </button>
-            <button class="proj-pill-btn" data-app="zhaiwan" onclick="switchGlobalApp('zhaiwan')">
-              <span>⛰️ 寨湾矿山</span>
-              <span class="pill-num">{{ zhaiwan_runs }}</span>
+            {% for app in app_summaries %}
+            <button class="proj-pill-btn" data-app="{{ app.key }}" style="--pill-bg: {{ app.pill_bg }}; --pill-shadow: {{ app.pill_shadow }};" onclick="switchGlobalApp('{{ app.key }}')">
+              <span>{{ app.icon }} {{ app.name }}</span>
+              <span class="pill-num">{{ app.runs }}</span>
             </button>
-            <button class="proj-pill-btn" data-app="liwutong" onclick="switchGlobalApp('liwutong')">
-              <span>🏔️ 里伍铜矿山</span>
-              <span class="pill-num">{{ liwutong_runs }}</span>
-            </button>
+            {% endfor %}
           </div>
 
           <div class="hero-status-pill">
@@ -771,64 +756,40 @@
 
           <a href="/" id="btnToConsole" target="_blank" style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.25), rgba(139, 92, 246, 0.25)); border: 1px solid rgba(99, 102, 241, 0.45); color: #c7d2fe; padding: 6px 14px; border-radius: 999px; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; text-decoration: none; transition: all 0.2s;" title="直达任务调度与实时性能监控控制台">
             <span style="color:#818cf8;">⚡</span>
-            <span>进入调度控制台中枢</span>
+            <span>进入 AI 自动化测试平台</span>
           </a>
         </div>
       </div>
 
-      <!-- Dual Project Matrix Cards -->
+      <!-- Dynamic Multi-Project Matrix Cards -->
       <div class="project-matrix-grid">
-        <div class="project-matrix-card" id="cardZhaiwan" style="--card-accent:#8b5cf6; --card-glow:rgba(139,92,246,0.25);" onclick="switchGlobalApp('zhaiwan')">
+        {% for app in app_summaries %}
+        <div class="project-matrix-card" data-app-card="{{ app.key }}" style="--card-accent:{{ app.accent }}; --card-glow:{{ app.glow }};" onclick="switchGlobalApp('{{ app.key }}')">
           <div class="pm-card-top">
             <div class="pm-title">
-              <span style="font-size:22px;">⛰️</span>
-              <span>寨湾矿山自动化测试</span>
+              <span style="font-size:22px;">{{ app.icon }}</span>
+              <span>{{ app.name }}自动化测试</span>
             </div>
-            <div class="pm-badge" style="color:#c4b5fd; background:rgba(139,92,246,0.15); border-color:rgba(139,92,246,0.3);">
-              主被测大屏 · 常态化巡检
+            <div class="pm-badge" style="color:{{ app.badge_color }}; background:{{ app.badge_bg }}; border-color:{{ app.badge_border }};">
+              {{ app.badge_text }}
             </div>
           </div>
           <div class="pm-stats-row">
             <div class="pm-stat-item">
-              <div class="val">{{ zhaiwan_runs }} <span style="font-size:12px;color:var(--text-dim);">次</span></div>
+              <div class="val">{{ app.runs }} <span style="font-size:12px;color:var(--text-dim);">次</span></div>
               <div class="lbl">🚀 累计执行巡检</div>
             </div>
             <div class="pm-stat-item">
-              <div class="val">{{ zhaiwan_steps }} <span style="font-size:12px;color:var(--text-dim);">步</span></div>
+              <div class="val">{{ app.steps }} <span style="font-size:12px;color:var(--text-dim);">步</span></div>
               <div class="lbl">🎯 累计探索步数</div>
             </div>
             <div class="pm-stat-item">
-              <div class="val" style="color:#fda4af;">{{ zhaiwan_bugs }} <span style="font-size:12px;color:var(--text-dim);">个</span></div>
+              <div class="val" style="color:{{ app.bug_color }};">{{ app.bugs }} <span style="font-size:12px;color:var(--text-dim);">个</span></div>
               <div class="lbl">🐞 捕获历史缺陷</div>
             </div>
           </div>
         </div>
-
-        <div class="project-matrix-card" id="cardLiwutong" style="--card-accent:#10b981; --card-glow:rgba(16,185,129,0.25);" onclick="switchGlobalApp('liwutong')">
-          <div class="pm-card-top">
-            <div class="pm-title">
-              <span style="font-size:22px;">🏔️</span>
-              <span>里伍铜矿山自动化测试</span>
-            </div>
-            <div class="pm-badge" style="color:#6ee7b7; background:rgba(16,185,129,0.15); border-color:rgba(16,185,129,0.3);">
-              新接入大屏 · 快速推进中
-            </div>
-          </div>
-          <div class="pm-stats-row">
-            <div class="pm-stat-item">
-              <div class="val">{{ liwutong_runs }} <span style="font-size:12px;color:var(--text-dim);">次</span></div>
-              <div class="lbl">🚀 累计执行巡检</div>
-            </div>
-            <div class="pm-stat-item">
-              <div class="val">{{ liwutong_steps }} <span style="font-size:12px;color:var(--text-dim);">步</span></div>
-              <div class="lbl">🎯 累计探索步数</div>
-            </div>
-            <div class="pm-stat-item">
-              <div class="val" style="color:#6ee7b7;">{{ liwutong_bugs }} <span style="font-size:12px;color:var(--text-dim);">个</span></div>
-              <div class="lbl">🐞 捕获历史缺陷</div>
-            </div>
-          </div>
-        </div>
+        {% endfor %}
       </div>
 
       <!-- Global KPIs (Dynamic Reactive) -->
@@ -879,9 +840,9 @@
           <span style="color:var(--text-muted); font-size:13px; font-weight:600;">项目:</span>
           <select id="runAppFilter" class="hub-select" onchange="handleAppFilterChange(this.value)">
             <option value="all">全部被测项目</option>
-            <option value="zhaiwan">⛰️ 寨湾矿山</option>
-            <option value="liwutong">🏔️ 里伍铜矿山</option>
-            <option value="tianrui">🪨 四川天瑞</option>
+            {% for app in app_summaries %}
+            <option value="{{ app.key }}">{{ app.icon }} {{ app.name }}</option>
+            {% endfor %}
           </select>
         </div>
 
@@ -910,8 +871,9 @@
           <span style="color:var(--text-muted); font-size:13px; font-weight:600;">项目:</span>
           <select id="bugAppFilter" class="hub-select" onchange="handleBugAppFilterChange(this.value)">
             <option value="all">全部被测项目</option>
-            <option value="zhaiwan">⛰️ 寨湾矿山</option>
-            <option value="liwutong">🏔️ 里伍铜矿山</option>
+            {% for app in app_summaries %}
+            <option value="{{ app.key }}">{{ app.icon }} {{ app.name }}</option>
+            {% endfor %}
           </select>
         </div>
 
@@ -1029,26 +991,23 @@
       renderRuns();
     }
 
+    const appSummariesList = {{ app_summaries_json }};
     const appKpiStats = {
       all: {
         runs: {{ total_runs }},
         steps: {{ total_steps }},
         bugs: {{ total_bugs }},
         label: '[全部项目]'
-      },
-      zhaiwan: {
-        runs: {{ zhaiwan_runs }},
-        steps: {{ zhaiwan_steps }},
-        bugs: {{ zhaiwan_bugs }},
-        label: '[⛰️ 寨湾矿山]'
-      },
-      liwutong: {
-        runs: {{ liwutong_runs }},
-        steps: {{ liwutong_steps }},
-        bugs: {{ liwutong_bugs }},
-        label: '[🏔️ 里伍铜矿山]'
       }
     };
+    appSummariesList.forEach(a => {
+      appKpiStats[a.key] = {
+        runs: a.runs,
+        steps: a.steps,
+        bugs: a.bugs,
+        label: `[${a.icon} ${a.name}]`
+      };
+    });
 
     function switchGlobalApp(appKey) {
       currentAppFilter = appKey;
@@ -1059,11 +1018,10 @@
         btn.classList.toggle('active', btn.getAttribute('data-app') === appKey);
       });
 
-      // 2. 切换项目矩阵卡片的激活态
-      const cardZhaiwan = document.getElementById('cardZhaiwan');
-      const cardLiwutong = document.getElementById('cardLiwutong');
-      if (cardZhaiwan) cardZhaiwan.classList.toggle('active-focus', appKey === 'zhaiwan');
-      if (cardLiwutong) cardLiwutong.classList.toggle('active-focus', appKey === 'liwutong');
+      // 2. 动态切换项目矩阵卡片的激活态
+      document.querySelectorAll('[data-app-card]').forEach(card => {
+        card.classList.toggle('active-focus', card.getAttribute('data-app-card') === appKey);
+      });
 
       // 3. 更新动态 KPI 指标
       const stat = appKpiStats[appKey] || appKpiStats['all'];

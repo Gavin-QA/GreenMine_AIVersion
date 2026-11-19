@@ -10,11 +10,11 @@
                 <!-- 1. 全局关键字检索 (适中固定宽度) -->
                 <div style="width: 240px; position: relative;">
                   <input type="text"
-                    style="width: 100%; background: #0b1120; color: #e2e8f0; border: 1px solid var(--border-color); border-radius: 6px; padding: 5px 28px 5px 10px; font-size: 12px; outline: none;"
+                    style="width: 100%; background: #121a24; color: #e2e8f0; border: 1px solid var(--border-color); border-radius: 6px; padding: 5px 28px 5px 10px; font-size: 12px; outline: none;"
                     placeholder="🔍 检索编号 / 标题 / 报错 / 禅道..." v-model="bugSearch" @input="onBugSearchInput"
                     @keydown.enter="fetchBugs">
                   <span v-if="isBugsLoading"
-                    style="position: absolute; right: 9px; top: 50%; transform: translateY(-50%); font-size: 12px; color: #00d2ff;"
+                    style="position: absolute; right: 9px; top: 50%; transform: translateY(-50%); font-size: 12px; color: #22c7d8;"
                     title="正在快速过滤...">
                     ⚡
                   </span>
@@ -24,7 +24,7 @@
                 <div style="display: flex; align-items: center; gap: 6px;">
                   <span style="font-size: 12px; font-weight: 600; color: #94a3b8; white-space: nowrap;">🎯 矿山(应用):</span>
                   <select v-model="bugAppFilter" @change="fetchBugs({ resetPage: true })"
-                    style="background: #0b1120; color: #e2e8f0; border: 1px solid var(--border-color); border-radius: 6px; padding: 5px 10px; font-size: 12px; outline: none; cursor: pointer; min-width: 120px;">
+                    style="background: #121a24; color: #e2e8f0; border: 1px solid var(--border-color); border-radius: 6px; padding: 5px 10px; font-size: 12px; outline: none; cursor: pointer; min-width: 120px;">
                     <option value="">全部</option>
                     <option v-for="a in options.apps" :key="a.key" :value="a.key">
                       {{ a.name }}
@@ -36,7 +36,7 @@
                 <div style="display: flex; align-items: center; gap: 6px;">
                   <span style="font-size: 12px; font-weight: 600; color: #94a3b8; white-space: nowrap;">⚡ 严重程度:</span>
                   <select v-model="bugSeverityFilter" @change="fetchBugs({ resetPage: true })"
-                    style="background: #0b1120; color: #e2e8f0; border: 1px solid var(--border-color); border-radius: 6px; padding: 5px 10px; font-size: 12px; outline: none; cursor: pointer; min-width: 105px;">
+                    style="background: #121a24; color: #e2e8f0; border: 1px solid var(--border-color); border-radius: 6px; padding: 5px 10px; font-size: 12px; outline: none; cursor: pointer; min-width: 105px;">
                     <option value="">全部</option>
                     <option value="High">🔴 High (高)</option>
                     <option value="Medium">🟡 Medium (中)</option>
@@ -48,7 +48,7 @@
                 <div style="display: flex; align-items: center; gap: 6px;">
                   <span style="font-size: 12px; font-weight: 600; color: #94a3b8; white-space: nowrap;">👤 责任人:</span>
                   <select v-model="bugAssigneeFilter" @change="fetchBugs({ resetPage: true })"
-                    style="background: #0b1120; color: #e2e8f0; border: 1px solid var(--border-color); border-radius: 6px; padding: 5px 10px; font-size: 12px; outline: none; cursor: pointer; min-width: 115px;">
+                    style="background: #121a24; color: #e2e8f0; border: 1px solid var(--border-color); border-radius: 6px; padding: 5px 10px; font-size: 12px; outline: none; cursor: pointer; min-width: 115px;">
                     <option value="">全部</option>
                     <option value="陈贻雄">👨‍💻 陈贻雄 (前端)</option>
                     <option value="梅本霞">👩‍💻 梅本霞 (后端)</option>
@@ -61,7 +61,7 @@
                 <div style="display: flex; align-items: center; gap: 6px;">
                   <span style="font-size: 12px; font-weight: 600; color: #94a3b8; white-space: nowrap;">📌 状态:</span>
                   <select v-model="bugStatusFilter" @change="fetchBugs({ resetPage: true })"
-                    style="background: #0b1120; color: #e2e8f0; border: 1px solid var(--border-color); border-radius: 6px; padding: 5px 10px; font-size: 12px; outline: none; cursor: pointer; min-width: 95px;">
+                    style="background: #121a24; color: #e2e8f0; border: 1px solid var(--border-color); border-radius: 6px; padding: 5px 10px; font-size: 12px; outline: none; cursor: pointer; min-width: 95px;">
                     <option value="">全部</option>
                     <option value="激活">🔥 激活 (Open)</option>
                     <option value="已提单">📋 已提单</option>
@@ -74,7 +74,7 @@
                 <div style="display: flex; align-items: center; gap: 6px;">
                   <span style="font-size: 12px; font-weight: 600; color: #94a3b8; white-space: nowrap;">🔄 复现频次:</span>
                   <select v-model="bugOccurrencesFilter" @change="fetchBugs({ resetPage: true })"
-                    style="background: #0b1120; color: #e2e8f0; border: 1px solid var(--border-color); border-radius: 6px; padding: 5px 10px; font-size: 12px; outline: none; cursor: pointer; min-width: 120px;">
+                    style="background: #121a24; color: #e2e8f0; border: 1px solid var(--border-color); border-radius: 6px; padding: 5px 10px; font-size: 12px; outline: none; cursor: pointer; min-width: 120px;">
                     <option value="">全部</option>
                     <option value="1-2">🌱 偶发/初现 (1~2 次)</option>
                     <option value="3-9">⚡ 多发/频现 (3~9 次)</option>
@@ -100,7 +100,7 @@
               <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
                 <!-- 后台批量推禅道进度条 -->
                 <div v-if="batchZentaoJob && batchZentaoJob.status === 'running'"
-                  style="display: flex; align-items: center; gap: 8px; padding: 4px 10px; border-radius: 6px; background: rgba(0, 210, 255, 0.1); border: 1px solid rgba(0, 210, 255, 0.35); font-size: 12px; color: #00d2ff;">
+                  style="display: flex; align-items: center; gap: 8px; padding: 4px 10px; border-radius: 6px; background: rgba(34, 199, 216, 0.1); border: 1px solid rgba(34, 199, 216, 0.35); font-size: 12px; color: #22c7d8;">
                   <span class="spinner-icon"></span>
                   <span>
                     后台推禅道中: <strong>{{ batchZentaoJob.processed }}/{{ batchZentaoJob.total }}</strong>
@@ -111,7 +111,7 @@
                 <!-- 勾选批量操作栏 -->
                 <template v-if="selectedBugIds && selectedBugIds.length > 0">
                   <span style="font-size: 12px; color: #94a3b8;">
-                    已选 <strong style="color: #00d2ff;">{{ selectedBugIds.length }}</strong> 条
+                    已选 <strong style="color: #22c7d8;">{{ selectedBugIds.length }}</strong> 条
                   </span>
                   <button class="btn btn-primary"
                     style="padding: 5px 12px; font-size: 12px;"
@@ -148,7 +148,7 @@
                         :disabled="!selectableBugsOnPage || selectableBugsOnPage.length === 0"
                         @change="toggleSelectAllPageBugs"
                         title="全选/取消全选当前页未提单缺陷"
-                        style="cursor: pointer; accent-color: #00d2ff; width: 15px; height: 15px;">
+                        style="cursor: pointer; accent-color: #22c7d8; width: 15px; height: 15px;">
                     </th>
 
                     <th>Bug 编号</th>
@@ -176,7 +176,7 @@
 
                   <tr v-if="isBugsLoading && (!bugs || bugs.length === 0)">
 
-                    <td colspan="10" style="text-align: center; padding: 28px; color: #00d2ff;">
+                    <td colspan="10" style="text-align: center; padding: 28px; color: #22c7d8;">
 
                       ⚡ 正在极速检索缺陷资产...
 
@@ -203,11 +203,11 @@
                         :disabled="!!b.zentao_id"
                         @change="toggleBugSelection(b)"
                         :title="b.zentao_id ? '已提交禅道 (#' + b.zentao_id + ')，无需重复勾选' : '勾选该缺陷用于批量推禅道'"
-                        style="accent-color: #00d2ff; width: 15px; height: 15px;"
+                        style="accent-color: #22c7d8; width: 15px; height: 15px;"
                         :style="{ cursor: b.zentao_id ? 'not-allowed' : 'pointer', opacity: b.zentao_id ? 0.35 : 1 }">
                     </td>
 
-                    <td style="font-family: monospace; font-weight: 600; color: #00d2ff;">
+                    <td style="font-family: monospace; font-weight: 600; color: #22c7d8;">
                       {{ b.id }}
                       <div v-if="b.app_name" style="font-size: 10px; color: #64748b; margin-top: 2px;">
                         {{ getAppName(b.app_name) }}
@@ -267,7 +267,7 @@
                       </button>
 
                       <button class="btn btn-secondary"
-                        style="padding: 4px 8px; font-size: 12px; margin-left: 6px; border-color: #00d2ff; color: #00d2ff;"
+                        style="padding: 4px 8px; font-size: 12px; margin-left: 6px; border-color: #22c7d8; color: #22c7d8;"
                         @click="openEditBugModal(b)">
 
                         编辑
@@ -304,7 +304,7 @@
             <!-- 缺陷治理中枢分页工具栏 -->
             <div class="pagination-container" v-if="totalBugs > 0">
               <div class="pagination-left">
-                <span>共筛选出 <strong style="color: #00d2ff;">{{ totalBugs }}</strong> 条缺陷</span>
+                <span>共筛选出 <strong style="color: #22c7d8;">{{ totalBugs }}</strong> 条缺陷</span>
                 <span style="color: var(--border-color);">|</span>
                 <span>每页显示</span>
                 <select class="pagination-select" v-model.number="bugPageSize" @change="onBugPageSizeChange">

@@ -51,9 +51,9 @@
           <div class="stat-sub">共 {{ storageSummary.screenshots_count ?? 0 }} 张</div>
         </div>
         <div class="storage-stat">
-          <div class="stat-label">崩溃案发现场 (bugs/ 永久留存)</div>
+          <div class="stat-label">缺陷现场截图 (bugs/)</div>
           <div class="stat-value" style="color: #ff5252;">{{ storageSummary.bugs_human || '0 B' }}</div>
-          <div class="stat-sub">检查点记忆: {{ storageSummary.checkpoint_human || '0 B' }}</div>
+          <div class="stat-sub">永久保护「激活」与「已提单」 · 检查点 {{ storageSummary.checkpoint_human || '0 B' }}</div>
         </div>
         <div class="storage-stat">
           <div class="stat-label">全局持久资产库 (artifacts/)</div>
@@ -78,6 +78,11 @@
           <label class="ctrl-checkbox">
             <input type="checkbox" v-model="cleanupOpts.protect_active_bugs" />
             <span>保护含「激活」Bug 的报告</span>
+          </label>
+
+          <label class="ctrl-checkbox">
+            <input type="checkbox" v-model="cleanupOpts.clean_resolved_bug_shots" />
+            <span>清理「已关闭 / 误报」缺陷现场截图（保护激活与已提单）</span>
           </label>
 
           <label class="ctrl-checkbox">
@@ -316,6 +321,7 @@ export default {
     const cleanupOpts = reactive({
       retain_days: 7,
       protect_active_bugs: true,
+      clean_resolved_bug_shots: true,
       compress_webp: false,
     })
 

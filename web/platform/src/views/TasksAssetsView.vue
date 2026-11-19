@@ -30,22 +30,22 @@
                     <div style="display: inline-flex; gap: 4px; margin-left: 4px;">
                       <button type="button" class="btn btn-secondary"
                         @click="applyQuickTaskDateRange('all')"
-                        :style="taskQuickDateRange === 'all' ? 'padding: 4px 10px; font-size: 11px; border-color: #00d2ff; color: #00d2ff; background: rgba(0, 210, 255, 0.12);' : 'padding: 4px 10px; font-size: 11px;'">
+                        :style="taskQuickDateRange === 'all' ? 'padding: 4px 10px; font-size: 11px; border-color: #22c7d8; color: #22c7d8; background: rgba(34, 199, 216, 0.12);' : 'padding: 4px 10px; font-size: 11px;'">
                         全部
                       </button>
                       <button type="button" class="btn btn-secondary"
                         @click="applyQuickTaskDateRange('today')"
-                        :style="taskQuickDateRange === 'today' ? 'padding: 4px 10px; font-size: 11px; border-color: #00d2ff; color: #00d2ff; background: rgba(0, 210, 255, 0.12);' : 'padding: 4px 10px; font-size: 11px;'">
+                        :style="taskQuickDateRange === 'today' ? 'padding: 4px 10px; font-size: 11px; border-color: #22c7d8; color: #22c7d8; background: rgba(34, 199, 216, 0.12);' : 'padding: 4px 10px; font-size: 11px;'">
                         今天
                       </button>
                       <button type="button" class="btn btn-secondary"
                         @click="applyQuickTaskDateRange('7d')"
-                        :style="taskQuickDateRange === '7d' ? 'padding: 4px 10px; font-size: 11px; border-color: #00d2ff; color: #00d2ff; background: rgba(0, 210, 255, 0.12);' : 'padding: 4px 10px; font-size: 11px;'">
+                        :style="taskQuickDateRange === '7d' ? 'padding: 4px 10px; font-size: 11px; border-color: #22c7d8; color: #22c7d8; background: rgba(34, 199, 216, 0.12);' : 'padding: 4px 10px; font-size: 11px;'">
                         近 7 天
                       </button>
                       <button type="button" class="btn btn-secondary"
                         @click="applyQuickTaskDateRange('month')"
-                        :style="taskQuickDateRange === 'month' ? 'padding: 4px 10px; font-size: 11px; border-color: #00d2ff; color: #00d2ff; background: rgba(0, 210, 255, 0.12);' : 'padding: 4px 10px; font-size: 11px;'">
+                        :style="taskQuickDateRange === 'month' ? 'padding: 4px 10px; font-size: 11px; border-color: #22c7d8; color: #22c7d8; background: rgba(34, 199, 216, 0.12);' : 'padding: 4px 10px; font-size: 11px;'">
                         本月
                       </button>
                     </div>
@@ -55,7 +55,7 @@
                   <div style="display: flex; align-items: center; gap: 8px;">
                     <span style="font-size: 12px; font-weight: 600; color: #94a3b8; white-space: nowrap;">🎯 应用:</span>
                     <select v-model="taskAppFilter" @change="onTaskPageSizeChange()"
-                      style="background: #0b1120; color: #e2e8f0; border: 1px solid var(--border); border-radius: 6px; padding: 5px 12px; font-size: 12px; outline: none; cursor: pointer; min-width: 150px;">
+                      style="background: #121a24; color: #e2e8f0; border: 1px solid var(--border); border-radius: 6px; padding: 5px 12px; font-size: 12px; outline: none; cursor: pointer; min-width: 150px;">
                       <option value="all">全部矿山应用</option>
                       <option v-for="app in options.apps" :key="app.key" :value="app.key">{{ app.name }}</option>
                     </select>
@@ -114,7 +114,7 @@
                       </td>
                       <td>
                         <span v-if="t.trigger_type === 'scheduled'" class="badge"
-                          style="background: rgba(0, 210, 255, 0.15); color: #00d2ff; border: 1px solid rgba(0, 210, 255, 0.3); font-weight: 600; padding: 2px 8px; font-size: 11px; white-space: nowrap;">
+                          style="background: rgba(34, 199, 216, 0.15); color: #22c7d8; border: 1px solid rgba(34, 199, 216, 0.3); font-weight: 600; padding: 2px 8px; font-size: 11px; white-space: nowrap;">
                           ⏱️ 计划排程
                         </span>
                         <span v-else class="badge"
@@ -162,7 +162,7 @@
                         </a>
 
                         <button class="btn btn-secondary"
-                          style="padding: 4px 10px; font-size: 12px; margin-left: 6px; border-color: #00d2ff; color: #00d2ff;"
+                          style="padding: 4px 10px; font-size: 12px; margin-left: 6px; border-color: #22c7d8; color: #22c7d8;"
                           @click="openEnvInfoModal(t)">
 
                           运行环境
@@ -198,7 +198,7 @@
               <!-- 任务列表分页工具栏 -->
               <div class="pagination-container" v-if="filteredTasks && filteredTasks.length > 0">
                 <div class="pagination-left">
-                  <span>共 <strong style="color: #00d2ff;">{{ filteredTasks.length }}</strong> 个任务批次</span>
+                  <span>共 <strong style="color: #22c7d8;">{{ filteredTasks.length }}</strong> 个任务批次</span>
                   <span style="color: var(--border-color);">|</span>
                   <span>每页显示</span>
                   <select class="pagination-select" v-model.number="taskPageSize" @change="onTaskPageSizeChange">
@@ -246,7 +246,7 @@
                 <div class="card-title">⏱️ 调度执行队列与定时任务</div>
                 <div style="display: flex; gap: 10px; align-items: center;">
                   <button class="btn btn-primary"
-                    style="font-size: 12px; padding: 6px 14px; background: linear-gradient(135deg, #00d2ff, #0072ff); border: none; font-weight: 600; display: inline-flex; align-items: center; gap: 6px;"
+                    style="font-size: 12px; padding: 6px 14px; background: linear-gradient(135deg, #22c7d8, #0072ff); border: none; font-weight: 600; display: inline-flex; align-items: center; gap: 6px;"
                     @click="openCreateScheduleModal">
                     <span>➕ 新建调度计划</span>
                   </button>
@@ -257,7 +257,7 @@
               </div>
 
               <div
-                style="padding: 12px 20px; background: rgba(0, 210, 255, 0.05); border-bottom: 1px solid #1a253c; font-size: 13px; color: var(--text-muted); display: flex; align-items: center; gap: 8px;">
+                style="padding: 12px 20px; background: rgba(34, 199, 216, 0.05); border-bottom: 1px solid #263442; font-size: 13px; color: var(--text-muted); display: flex; align-items: center; gap: 8px;">
                 <span>💡 <strong>执行器机制说明：</strong>
                   系统单机独占运行，待执行任务将按顺序依次拉起。前序任务结束或终止后，执行器会自动深度清洗进程环境、释放显存并无缝执行下一个项目。</span>
               </div>
@@ -313,11 +313,11 @@
                           🔄 每月 ({{ q.cron_spec || 1 }}日)
                         </span>
                         <span v-else-if="q.cron_mode === 'minute'" class="badge"
-                          style="background: rgba(0, 210, 255, 0.15); color: #00d2ff; border: 1px solid rgba(0, 210, 255, 0.3); font-weight: 600; font-size: 11px; white-space: nowrap;">
+                          style="background: rgba(34, 199, 216, 0.15); color: #22c7d8; border: 1px solid rgba(34, 199, 216, 0.3); font-weight: 600; font-size: 11px; white-space: nowrap;">
                           ⚡ 每 {{ q.cron_spec || 30 }} 分钟
                         </span>
                         <span v-else-if="q.cron_mode === 'hour'" class="badge"
-                          style="background: rgba(0, 210, 255, 0.15); color: #00d2ff; border: 1px solid rgba(0, 210, 255, 0.3); font-weight: 600; font-size: 11px; white-space: nowrap;">
+                          style="background: rgba(34, 199, 216, 0.15); color: #22c7d8; border: 1px solid rgba(34, 199, 216, 0.3); font-weight: 600; font-size: 11px; white-space: nowrap;">
                           ⏱️ 每 {{ q.cron_spec || 1 }} 小时
                         </span>
                         <span v-else class="badge"
@@ -422,10 +422,10 @@
 
                 <!-- 顶部两档分段器 (无括号、无数字) -->
                 <div
-                  style="display: flex; background: rgba(5, 7, 13, 0.8); padding: 4px; border-radius: 8px; border: 1px solid #1a253c; width: fit-content;">
+                  style="display: flex; background: rgba(5, 7, 13, 0.8); padding: 4px; border-radius: 8px; border: 1px solid #263442; width: fit-content;">
 
                   <button type="button" @click="casesSubTab = 'manual'" :style="{
-                    background: casesSubTab === 'manual' ? '#00d2ff' : 'transparent',
+                    background: casesSubTab === 'manual' ? '#22c7d8' : 'transparent',
                     color: casesSubTab === 'manual' ? '#000' : '#8b9bb4',
                     border: 'none',
                     padding: '8px 22px',
@@ -438,7 +438,7 @@
                   </button>
 
                   <button type="button" @click="casesSubTab = 'auto'" :style="{
-                    background: casesSubTab === 'auto' ? '#00d2ff' : 'transparent',
+                    background: casesSubTab === 'auto' ? '#22c7d8' : 'transparent',
                     color: casesSubTab === 'auto' ? '#000' : '#8b9bb4',
                     border: 'none',
                     padding: '8px 22px',
@@ -503,7 +503,7 @@
 
                       <td style="font-family: monospace; font-size: 12px; color: #8b9bb4;">{{ c.path }}</td>
 
-                      <td><b style="color: #00d2ff;">{{ c.steps_count }}</b> 步</td>
+                      <td><b style="color: #22c7d8;">{{ c.steps_count }}</b> 步</td>
 
                       <td style="color: var(--text-muted); font-size: 12px;">{{ c.size_kb }} KB</td>
 
@@ -578,7 +578,7 @@
 
                       <td>
 
-                        <div style="font-weight: 600; font-family: monospace; color: #00d2ff;">{{ c.run_id }}</div>
+                        <div style="font-weight: 600; font-family: monospace; color: #22c7d8;">{{ c.run_id }}</div>
 
                       </td>
 

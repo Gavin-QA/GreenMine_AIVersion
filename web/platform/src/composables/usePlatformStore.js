@@ -181,6 +181,9 @@ export function usePlatformStore() {
 
     function openNewTaskModal() {
       clearLoadedPreset();
+      if (!taskForm.app_name && options.apps && options.apps.length > 0) {
+        taskForm.app_name = options.apps[0].key;
+      }
       taskForm.name = '';
       taskForm.mode = 'explore';
       taskForm.tour = false;
@@ -451,8 +454,8 @@ export function usePlatformStore() {
     }
 
 
-    // 矿山应用权威选中状态 (优先从本地缓存读取，默认寨湾)
-    const storedApp = localStorage.getItem('vision_platform_app_name') || 'zhaiwan';
+    // 矿山应用选中状态 (默认不选择，底部探针目标显示 "--"，用户主动在监控大屏或任务中选中后再联动)
+    const storedApp = localStorage.getItem('vision_platform_app_name') || '';
     const liveSelectedApp = ref(storedApp);
 
     const liveTimeSpan = ref('24h');
@@ -543,10 +546,12 @@ export function usePlatformStore() {
       ignore_env_check: false
     });
 
-    // 全局当前权威选中的矿山名称 (用于顶栏、侧边栏和看板联动)
+    // 全局当前权威选中的矿山名称 (未选择时默认显示 "--")
     const currentAppName = computed(() => {
-      const found = (options.apps || []).find(a => a.key === taskForm.app_name);
-      return found ? found.name : (taskForm.app_name || '待选择');
+      const key = liveSelectedApp.value || '';
+      if (!key) return '--';
+      const found = (options.apps || []).find(a => a.key === key);
+      return found ? found.name : key;
     });
 
 
@@ -875,6 +880,7 @@ export function usePlatformStore() {
       try {
 
         const targetApp = (activeTaskId.value === '__live__') ? liveSelectedApp.value : taskForm.app_name;
+        if (!targetApp) return;
 
         const res = await fetch(`${apiBase}/api/metrics/live/snapshot?app_name=${targetApp}`);
 
@@ -3168,16 +3174,20 @@ export function usePlatformStore() {
       const retainDays = opts.retain_days !== undefined ? Number(opts.retain_days) : 7;
       const compressWebp = Boolean(opts.compress_webp);
       const protectActiveBugs = opts.protect_active_bugs !== undefined ? Boolean(opts.protect_active_bugs) : true;
+      const cleanResolvedBugShots = Boolean(opts.clean_resolved_bug_shots);
       const dryRun = Boolean(opts.dry_run);
 
       if (!dryRun) {
         const actionDesc = compressWebp
           ? `将对 ${retainDays} 天前的临时过程截图执行 WebP 高压缩转码`
           : `将安全清理 ${retainDays} 天前的临时过程截图`;
-        const protDesc = protectActiveBugs ? '（自动跳过仍含「激活」Bug 的未处理报告，100% 保留 Bug 现场与记忆）' : '（注意：已关闭激活 Bug 保护）';
+        const bugDesc = cleanResolvedBugShots
+          ? '\n同时清理「已关闭 / 误报」缺陷现场截图（永久保护「激活」与「已提单」缺陷截图）。'
+          : '';
+        const protDesc = protectActiveBugs ? '（自动跳过仍含「激活」Bug 的未处理报告）' : '（注意：已关闭激活 Bug 保护）';
         const ok = await showConfirm({
           title: '执行产物安全瘦身',
-          message: `当前 runs 目录总占用：${storageSummary.value.runs_total_human || '未知'}（过程截图占比 ${storageSummary.value.screenshots_ratio || 0}%）。\n\n${actionDesc}${protDesc}，是否确认执行？`,
+          message: `当前 runs 目录总占用：${storageSummary.value.runs_total_human || '未知'}（过程截图占比 ${storageSummary.value.screenshots_ratio || 0}%）。\n\n${actionDesc}${protDesc}${bugDesc}\n\n是否确认执行？`,
           confirmText: '立即执行',
           cancelText: '取消',
           danger: !protectActiveBugs,
@@ -3191,6 +3201,7 @@ export function usePlatformStore() {
           retain_days: String(retainDays),
           compress_webp: String(compressWebp),
           protect_active_bugs: String(protectActiveBugs),
+          clean_resolved_bug_shots: String(cleanResolvedBugShots),
           dry_run: String(dryRun),
         });
         const res = await fetch(`${apiBase}/api/system/cleanup?${params.toString()}`, { method: 'POST' });
@@ -3470,6 +3481,7 @@ export function usePlatformStore() {
         localStorage.removeItem(TAB_STORAGE_KEY);
         localStorage.removeItem(ASSETS_SUBTAB_KEY);
         localStorage.removeItem(SETTINGS_SUBTAB_KEY);
+        localStorage.removeItem('vision_platform_app_name');
       }
     }
 

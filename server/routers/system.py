@@ -362,6 +362,7 @@ def trigger_system_cleanup(
     retain_days: int = 7,
     compress_webp: bool = False,
     protect_active_bugs: bool = True,
+    clean_resolved_bug_shots: bool = False,
     dry_run: bool = False,
 ):
     from utils.cleaner import clean_temp_screenshots, get_disk_usage_summary
@@ -371,6 +372,7 @@ def trigger_system_cleanup(
         dry_run=dry_run,
         compress_webp=compress_webp,
         protect_active_bugs=protect_active_bugs,
+        clean_resolved_bug_shots=clean_resolved_bug_shots,
     )
     result["storage_after"] = get_disk_usage_summary()
     return result
