@@ -23,7 +23,7 @@
         <div class="kpi-sub">{{ runningTasksCount > 0 ? '任务执行中，点击进入监控大屏' : '当前无运行中任务' }}</div>
       </div>
 
-      <div class="kpi-card danger" style="cursor: pointer;" @click="currentTab = 'bugs'" title="点击进入缺陷治理中枢">
+      <div class="kpi-card danger" style="cursor: pointer;" @click="goToBugsHub({ status: '激活', resetFilters: true })" title="点击进入缺陷治理中枢（默认筛选状态=激活）">
         <div class="kpi-title">未处理激活缺陷</div>
         <div class="kpi-val" :style="{ color: totalActiveBugsCount > 0 ? 'var(--accent-danger)' : 'var(--accent-green)' }">
           {{ totalActiveBugsCount }}

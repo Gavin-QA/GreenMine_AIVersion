@@ -1089,6 +1089,26 @@ export function usePlatformStore() {
 
     }
 
+    function goToBugsHub(options = {}) {
+      const { status = '', resetFilters = false } = options || {};
+      if (resetFilters) {
+        if (bugSearchTimer) clearTimeout(bugSearchTimer);
+        bugSearch.value = '';
+        bugAppFilter.value = '';
+        bugSeverityFilter.value = '';
+        bugAssigneeFilter.value = '';
+        bugOccurrencesFilter.value = '';
+      }
+      bugStatusFilter.value = status;
+      bugPage.value = 1;
+      bugPageJump.value = 1;
+      if (currentTab.value !== 'bugs') {
+        currentTab.value = 'bugs';
+      } else {
+        fetchBugs({ resetPage: true });
+      }
+    }
+
 
 
     // =========================================================================
@@ -2117,13 +2137,24 @@ export function usePlatformStore() {
 
         // DOM / Heap 图表
 
+        const commonTooltip = {
+          trigger: 'axis',
+          axisPointer: {
+            type: 'line',
+            lineStyle: { color: '#818cf8', width: 1, type: 'dashed' }
+          },
+          backgroundColor: 'rgba(15, 23, 42, 0.92)',
+          borderColor: 'rgba(99, 102, 241, 0.35)',
+          textStyle: { color: '#f8fafc', fontSize: 12 }
+        };
+
         domChart = echarts.init(domEl);
 
         domChart.setOption({
 
           title: { text: 'Chrome 渲染端指标 (DOM / Listeners / JSHeap)', textStyle: { color: '#8b9bb4', fontSize: 13 } },
 
-          tooltip: { trigger: 'axis' },
+          tooltip: commonTooltip,
 
           legend: { data: ['DOM 节点数', '事件监听器', 'V8 JS堆 (MB)'], textStyle: { color: '#8b9bb4' } },
 
@@ -2163,7 +2194,7 @@ export function usePlatformStore() {
 
           title: { text: '伴生 UE5 引擎与 WebRTC 像素流 / GPU (CPU / 内存 / FPS)', textStyle: { color: '#8b9bb4', fontSize: 13 } },
 
-          tooltip: { trigger: 'axis' },
+          tooltip: commonTooltip,
 
           legend: { data: ['UE5 CPU (%)', 'UE5 内存 (MB)', 'WebRTC FPS / GPU (%)'], textStyle: { color: '#8b9bb4' } },
 
@@ -2194,6 +2225,12 @@ export function usePlatformStore() {
           ]
 
         });
+
+        // 原生双图联动：悬浮任意一张图，另一张图同步显示同一时刻准星与数值弹窗（纯前端计算，零后端开销）
+        echarts.disconnect('monitor-sync-group');
+        domChart.group = 'monitor-sync-group';
+        ueChart.group = 'monitor-sync-group';
+        echarts.connect('monitor-sync-group');
 
       });
 
@@ -3657,6 +3694,7 @@ export function usePlatformStore() {
       bugOccurrencesFilter,
 
       resetBugFilters,
+      goToBugsHub,
 
       selectedBug,
 
