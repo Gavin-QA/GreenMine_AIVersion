@@ -161,8 +161,10 @@ def calculate_next_run_time(
     return None
 
 
-def spawn_task_from_plan(plan: SchedulePlan, db: Session) -> Optional[TaskRun]:
-    """根据调度计划常驻规则实例化生成一次真实的巡检任务并送入执行队列"""
+def spawn_task_from_plan(plan: SchedulePlan, db: Session, is_manual: bool = False) -> Optional[TaskRun]:
+    """根据调度计划常驻规则实例化生成一次真实的巡检任务并送入执行队列。
+    is_manual=True 时仅借用计划配置执行一次手动任务，不计入定时 run_count，也不改写 next_run_time 或完结单次计划。
+    """
     import uuid
 
     preset = db.query(PresetTaskRecord).filter(PresetTaskRecord.id == plan.preset_id).first()
@@ -194,7 +196,7 @@ def spawn_task_from_plan(plan: SchedulePlan, db: Session) -> Optional[TaskRun]:
         wait_timeout=preset.wait_timeout,
         ignore_env_check=bool(plan.ignore_env_check or getattr(preset, "ignore_env_check", False)),
         explore_context=getattr(preset, "explore_context", None) or getattr(plan, "explore_context", None) or f"docs/explore_rules_{plan.app_name}.md",
-        trigger_type="scheduled",
+        trigger_type="manual" if is_manual else "scheduled",
         start_time=now,
     )
     db.add(new_task)
@@ -215,6 +217,12 @@ def spawn_task_from_plan(plan: SchedulePlan, db: Session) -> Optional[TaskRun]:
         created_at=now,
     )
     db.add(q_item)
+
+    # 手动立即执行仅记录一次手动任务实例，不污染定时调度的次数、状态与下次触发时间
+    if is_manual:
+        db.commit()
+        logger.info(f"⚡ [Manual Run] 已基于调度计划 [{plan.name}] 下发手动任务 [{new_task.id}]，原定时计划次数与时间保持不变。")
+        return new_task
 
     # 回填调度计划统计状态
     plan.last_run_time = now

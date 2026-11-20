@@ -330,7 +330,7 @@ def run_schedule_plan_now(
     if not plan:
         raise HTTPException(status_code=404, detail="未找到指定的调度计划")
 
-    new_task = spawn_task_from_plan(plan, db)
+    new_task = spawn_task_from_plan(plan, db, is_manual=True)
     if not new_task:
         raise HTTPException(status_code=500, detail="下发任务执行失败")
 
