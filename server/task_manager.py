@@ -648,7 +648,7 @@ class TaskManager:
 
                     # 1. 常驻调度计划巡检扫描 (SchedulePlan)
                     from .models import SchedulePlan
-                    from .schedule_service import parse_time_parts, calculate_next_run_time, spawn_task_from_plan
+                    from .schedule_service import parse_time_parts, calculate_next_run_time, spawn_task_from_plan, DuplicatePlanTaskError
 
                     active_plans = db.query(SchedulePlan).filter(
                         SchedulePlan.is_active == 1,
@@ -703,7 +703,22 @@ class TaskManager:
                                         continue
 
                             # 实例化生成真实任务并注入 TaskQueueItem
-                            spawn_task_from_plan(plan, db)
+                            try:
+                                spawn_task_from_plan(plan, db, trigger_type="scheduled")
+                            except DuplicatePlanTaskError:
+                                if plan.conflict_policy == "skip":
+                                    logger.warning(f"⚠️ 调度计划 [{plan.name}] 队列中已有未完成实例，根据策略跳过本次触发。")
+                                    plan.next_run_time = calculate_next_run_time(
+                                        cron_mode=plan.cron_mode,
+                                        cron_spec=plan.cron_spec,
+                                        start_time_str=plan.start_time,
+                                        start_date_str=plan.start_date,
+                                        end_date_str=plan.end_date,
+                                        after_time=now_local,
+                                    )
+                                    db.commit()
+                                else:
+                                    logger.info(f"⏳ 调度计划 [{plan.name}] 队列中已有未完成实例，策略为顺延等待。")
                         except Exception as plan_err:
                             logger.error(f"下发调度计划 [{plan.id}] 异常: {plan_err}")
                             # 防死循环雪崩：如果本次下发失败，安全推演下一次执行时间或单次任务标记为失败，避免每 4 秒疯狂重试刷屏

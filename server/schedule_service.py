@@ -1,12 +1,22 @@
 import datetime
 import calendar
 import logging
+import threading
+import uuid
 from typing import Optional, List, Dict, Any, Tuple
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from .models import SchedulePlan, TaskQueueItem, TaskRun, PresetTaskRecord
 
 logger = logging.getLogger("server.schedule")
+
+# 进程内原子锁：确保基于 schedule_plan_id 的队列查重、TaskRun 创建与 TaskQueueItem 入队原子执行
+_spawn_lock = threading.RLock()
+
+
+class DuplicatePlanTaskError(Exception):
+    """同一调度计划已存在 pending 或 running 的执行实例时抛出"""
 
 
 def parse_time_parts(time_str: str, default_h: int = 18, default_m: int = 35, default_s: int = 0) -> Tuple[int, int, int]:
@@ -161,99 +171,122 @@ def calculate_next_run_time(
     return None
 
 
-def spawn_task_from_plan(plan: SchedulePlan, db: Session, is_manual: bool = False) -> Optional[TaskRun]:
+def _has_active_queue_item(plan: SchedulePlan, db: Session) -> bool:
+    """检查指定调度计划是否已有 pending 或 running 状态的队列实例（不改表结构，通过队列 ID 前缀与 last_task_id 识别）。"""
+    conditions = [TaskQueueItem.id.like(f"queue_{plan.id}_%")]
+    if plan.last_task_id:
+        conditions.append(TaskQueueItem.task_id == plan.last_task_id)
+    return (
+        db.query(TaskQueueItem.id)
+        .filter(
+            TaskQueueItem.status.in_(["pending", "running"]),
+            or_(*conditions),
+        )
+        .first()
+        is not None
+    )
+
+
+def spawn_task_from_plan(
+    plan: SchedulePlan,
+    db: Session,
+    trigger_type: str = "scheduled",
+) -> Optional[TaskRun]:
     """根据调度计划常驻规则实例化生成一次真实的巡检任务并送入执行队列。
-    is_manual=True 时仅借用计划配置执行一次手动任务，不计入定时 run_count，也不改写 next_run_time 或完结单次计划。
+    仅 trigger_type == "scheduled" 时更新定时调度状态（run_count、next_run_time、单次计划完结）；
+    "manual" 及其他非定时触发仅借用计划配置执行一次，不消耗或改写定时调度状态。
     """
-    import uuid
+    with _spawn_lock:
+        if _has_active_queue_item(plan, db):
+            raise DuplicatePlanTaskError("该任务已在队列中或正在执行")
 
-    preset = db.query(PresetTaskRecord).filter(PresetTaskRecord.id == plan.preset_id).first()
-    if not preset:
-        logger.error(f"❌ 调度计划 [{plan.id}] 关联的预设模板 [{plan.preset_id}] 不存在，跳过下发！")
-        return None
+        preset = db.query(PresetTaskRecord).filter(PresetTaskRecord.id == plan.preset_id).first()
+        if not preset:
+            logger.error(f"❌ 调度计划 [{plan.id}] 关联的预设模板 [{plan.preset_id}] 不存在，跳过下发！")
+            return None
 
-    now = datetime.datetime.now()
-    new_task_id = f"task_{now.strftime('%Y%m%d_%H%M%S')}"
+        now = datetime.datetime.now()
+        new_task_id = f"task_{now.strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:4]}"
 
-    # 拷贝预设配置参数
-    new_task = TaskRun(
-        id=new_task_id,
-        name=plan.name,
-        app_name=plan.app_name,
-        mode=preset.mode,
-        status="pending",
-        macro_objective=preset.macro_objective,
-        max_steps=preset.max_steps,
-        max_times=preset.max_times,
-        reset_memory=preset.reset_memory,
-        ignore_errors=preset.ignore_errors,
-        case_path=preset.case_path,
-        tour=preset.tour,
-        resume_from=preset.resume_from,
-        reexplore=preset.reexplore,
-        start_delay=preset.start_delay,
-        wait_ready=preset.wait_ready,
-        wait_timeout=preset.wait_timeout,
-        ignore_env_check=bool(plan.ignore_env_check or getattr(preset, "ignore_env_check", False)),
-        explore_context=getattr(preset, "explore_context", None) or getattr(plan, "explore_context", None) or f"docs/explore_rules_{plan.app_name}.md",
-        trigger_type="manual" if is_manual else "scheduled",
-        start_time=now,
-    )
-    db.add(new_task)
-    db.flush()
+        # 拷贝预设配置参数
+        new_task = TaskRun(
+            id=new_task_id,
+            name=plan.name,
+            app_name=plan.app_name,
+            mode=preset.mode,
+            status="pending",
+            macro_objective=preset.macro_objective,
+            max_steps=preset.max_steps,
+            max_times=preset.max_times,
+            reset_memory=preset.reset_memory,
+            ignore_errors=preset.ignore_errors,
+            case_path=preset.case_path,
+            tour=preset.tour,
+            resume_from=preset.resume_from,
+            reexplore=preset.reexplore,
+            start_delay=preset.start_delay,
+            wait_ready=preset.wait_ready,
+            wait_timeout=preset.wait_timeout,
+            ignore_env_check=bool(plan.ignore_env_check or getattr(preset, "ignore_env_check", False)),
+            explore_context=getattr(preset, "explore_context", None) or getattr(plan, "explore_context", None) or f"docs/explore_rules_{plan.app_name}.md",
+            trigger_type=trigger_type,
+            start_time=now,
+        )
+        db.add(new_task)
+        db.flush()
 
-    # 注入单机独占 RPA 排队队列
-    queue_id = f"queue_{now.strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
-    q_item = TaskQueueItem(
-        id=queue_id,
-        task_id=new_task.id,
-        priority=plan.priority,
-        status="pending",
-        scheduled_at=None, # 已到点，立即排队进入就绪态
-        cron_mode=plan.cron_mode,
-        cron_spec=plan.cron_spec,
-        time_of_day=plan.start_time,
-        is_active=1,
-        created_at=now,
-    )
-    db.add(q_item)
-
-    # 手动立即执行仅记录一次手动任务实例，不污染定时调度的次数、状态与下次触发时间
-    if is_manual:
-        db.commit()
-        logger.info(f"⚡ [Manual Run] 已基于调度计划 [{plan.name}] 下发手动任务 [{new_task.id}]，原定时计划次数与时间保持不变。")
-        return new_task
-
-    # 回填调度计划统计状态
-    plan.last_run_time = now
-    plan.last_task_id = new_task.id
-    plan.run_count = (plan.run_count or 0) + 1
-
-    # 推演下一次执行时刻
-    if plan.cron_mode == "once":
-        plan.is_active = 0
-        plan.status = "completed"
-        plan.next_run_time = None
-        logger.info(f"✅ 单次调度计划 [{plan.name}] 已成功下发任务 [{new_task.id}]，计划自动归档完成。")
-    else:
-        next_dt = calculate_next_run_time(
+        # 注入单机独占 RPA 排队队列（将 plan.id 编入队列主键，实现零改表的持久化计划级去重）
+        queue_id = f"queue_{plan.id}_{uuid.uuid4().hex[:6]}"
+        q_item = TaskQueueItem(
+            id=queue_id,
+            task_id=new_task.id,
+            priority=plan.priority,
+            status="pending",
+            scheduled_at=None, # 已到点，立即排队进入就绪态
             cron_mode=plan.cron_mode,
             cron_spec=plan.cron_spec,
-            start_time_str=plan.start_time,
-            start_date_str=plan.start_date,
-            end_date_str=plan.end_date,
-            after_time=now,
+            time_of_day=plan.start_time,
+            is_active=1,
+            created_at=now,
         )
-        if next_dt:
-            plan.next_run_time = next_dt
-            plan.status = "active"
-            logger.info(f"🔄 周期调度计划 [{plan.name}] 已成功下发任务 [{new_task.id}]，下次执行时间已预约至: {next_dt.strftime('%Y-%m-%d %H:%M:%S')}")
-        else:
-            plan.is_active = 0
-            plan.status = "expired"
-            plan.next_run_time = None
-            logger.info(f"🏁 周期调度计划 [{plan.name}] 已到达结束日期，自动标记为已到期 (expired)。")
+        db.add(q_item)
 
-    db.commit()
-    return new_task
+        # 非定时触发（如 manual）仅记录本次任务实例，不污染定时调度的次数、状态与下次触发时间
+        if trigger_type != "scheduled":
+            db.commit()
+            logger.info(f"⚡ [{trigger_type}] 已基于调度计划 [{plan.name}] 下发任务 [{new_task.id}]，原定时计划次数与时间保持不变。")
+            return new_task
+
+        # 回填调度计划统计状态
+        plan.last_run_time = now
+        plan.last_task_id = new_task.id
+        plan.run_count = (plan.run_count or 0) + 1
+
+        # 推演下一次执行时刻
+        if plan.cron_mode == "once":
+            plan.is_active = 0
+            plan.status = "completed"
+            plan.next_run_time = None
+            logger.info(f"✅ 单次调度计划 [{plan.name}] 已成功下发任务 [{new_task.id}]，计划自动归档完成。")
+        else:
+            next_dt = calculate_next_run_time(
+                cron_mode=plan.cron_mode,
+                cron_spec=plan.cron_spec,
+                start_time_str=plan.start_time,
+                start_date_str=plan.start_date,
+                end_date_str=plan.end_date,
+                after_time=now,
+            )
+            if next_dt:
+                plan.next_run_time = next_dt
+                plan.status = "active"
+                logger.info(f"🔄 周期调度计划 [{plan.name}] 已成功下发任务 [{new_task.id}]，下次执行时间已预约至: {next_dt.strftime('%Y-%m-%d %H:%M:%S')}")
+            else:
+                plan.is_active = 0
+                plan.status = "expired"
+                plan.next_run_time = None
+                logger.info(f"🏁 周期调度计划 [{plan.name}] 已到达结束日期，自动标记为已到期 (expired)。")
+
+        db.commit()
+        return new_task
 

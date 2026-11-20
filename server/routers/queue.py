@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import TaskRun, TaskQueueItem, PresetTaskRecord, SchedulePlan
 from ..task_manager import task_manager
-from ..schedule_service import calculate_next_run_time, spawn_task_from_plan
+from ..schedule_service import calculate_next_run_time, spawn_task_from_plan, DuplicatePlanTaskError
 from .presets import DEFAULT_PRESET_TASKS
 from ..schemas import (
     QueueItemResponse,
@@ -330,7 +330,10 @@ def run_schedule_plan_now(
     if not plan:
         raise HTTPException(status_code=404, detail="未找到指定的调度计划")
 
-    new_task = spawn_task_from_plan(plan, db, is_manual=True)
+    try:
+        new_task = spawn_task_from_plan(plan, db, trigger_type="manual")
+    except DuplicatePlanTaskError:
+        raise HTTPException(status_code=409, detail="该任务已在队列中或正在执行")
     if not new_task:
         raise HTTPException(status_code=500, detail="下发任务执行失败")
 
