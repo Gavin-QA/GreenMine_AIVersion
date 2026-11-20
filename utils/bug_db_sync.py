@@ -115,7 +115,8 @@ def save_bug_to_db(bug_dict: Dict[str, Any]) -> Optional[str]:
         from utils.bug_enricher import normalize_severity_label
         title = bug_dict.get("title", "")
         severity = normalize_severity_label(bug_dict.get("severity", "Medium"))
-        status = bug_dict.get("status", "激活")
+        explicit_status = bug_dict.get("status")
+        status = explicit_status or "激活"
         assignee = bug_dict.get("assignee", "陈贻雄")
         zentao_id = str(bug_dict.get("zentao_id")) if bug_dict.get("zentao_id") else None
         ui_path = bug_dict.get("ui_path")
@@ -193,8 +194,8 @@ def save_bug_to_db(bug_dict: Dict[str, Any]) -> Optional[str]:
                 record.task_id = task_id
             if title:
                 record.title = title
-            if status:
-                record.status = status
+            if explicit_status:
+                record.status = explicit_status
             if assignee and record.assignee in ("Unassigned", "", None):
                 record.assignee = assignee
             if zentao_id:
